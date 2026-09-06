@@ -6,9 +6,9 @@ function makeNode(id: string, ring: number, fixed = false): GraphNode {
     return new GraphNode({id: id, label: id, kind: 'agent', ring: ring, fixed: fixed}, 10, 10);
 }
 
-function settle(layout: RadialLayout, nodes: GraphNode[], ticks = 300): void {
+function settle(layout: RadialLayout, nodes: GraphNode[], width = 600, height = 600, ticks = 300): void {
     for (let i = 0; i < ticks; i++) {
-        layout.tick(nodes, [], 800, 600);
+        layout.tick(nodes, [], width, height);
     }
 }
 
@@ -19,11 +19,11 @@ describe('RadialLayout', () => {
 
         settle(layout, [hub]);
 
-        expect(hub.x).toBeCloseTo(400, 0);
+        expect(hub.x).toBeCloseTo(300, 0);
         expect(hub.y).toBeCloseTo(300, 0);
     });
 
-    it('places ring members equidistant from the center, inner ring closer than outer', () => {
+    it('places ring members equidistant on a square canvas, inner ring closer than outer', () => {
         const hub = makeNode('hub', 0);
         const inner = ['a', 'b', 'c', 'd'].map((id) => makeNode(id, 1));
         const outer = ['x', 'y'].map((id) => makeNode(id, 2));
@@ -31,7 +31,7 @@ describe('RadialLayout', () => {
 
         settle(layout, [hub, ...inner, ...outer]);
 
-        const dist = (n: GraphNode): number => Math.hypot(n.x - 400, n.y - 300);
+        const dist = (n: GraphNode): number => Math.hypot(n.x - 300, n.y - 300);
         const innerRadii = inner.map(dist);
         const outerRadii = outer.map(dist);
         const innerAvg = innerRadii.reduce((s, r) => s + r, 0) / innerRadii.length;
@@ -43,6 +43,44 @@ describe('RadialLayout', () => {
         for (const r of outerRadii) {
             expect(r).toBeGreaterThan(innerAvg + 40);
         }
+    });
+
+    it('spreads rings elliptically on a wide canvas — wider than tall', () => {
+        const hub = makeNode('hub', 0);
+        const members = Array.from({length: 8}, (_, i) => makeNode(`m${i}`, 1));
+        const layout = new RadialLayout();
+
+        settle(layout, [hub, ...members], 1200, 400);
+
+        const spreadX = Math.max(...members.map((n) => Math.abs(n.x - 600)));
+        const spreadY = Math.max(...members.map((n) => Math.abs(n.y - 200)));
+
+        expect(spreadX).toBeGreaterThan(spreadY * 1.5);
+    });
+
+    it('widens a crowded ring until every member has room', () => {
+        const many = Array.from({length: 16}, (_, i) => makeNode(`n${i}`, 1));
+        const layout = new RadialLayout();
+
+        // Small canvas: the naive ring radius would be far too tight for 16 nodes.
+        settle(layout, [makeNode('hub', 0), ...many], 900, 300);
+
+        let minPairDist = Number.POSITIVE_INFINITY;
+
+        for (let i = 0; i < many.length; i++) {
+            for (let j = i + 1; j < many.length; j++) {
+                const a = many[i];
+                const b = many[j];
+
+                if (a === undefined || b === undefined) {
+                    continue;
+                }
+
+                minPairDist = Math.min(minPairDist, Math.hypot(a.x - b.x, a.y - b.y));
+            }
+        }
+
+        expect(minPairDist).toBeGreaterThan(30);
     });
 
     it('is deterministic — same input order, same slots every run', () => {
