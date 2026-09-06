@@ -62,10 +62,18 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   unless there's a strong reason (this lib needs to be safe to drop into any consumer without
   dependency/version conflicts).
 
+## V1.1 additions
+
+- `layout/RadialLayout.ts` — deterministic hub-and-ring layout (`layoutMode: 'radial'`,
+  `node.ring`: 0 = center); same `tick()` interface as ForceLayout, eases nodes to fixed
+  slots so the picture never drifts (built for consumers like nornen's agent-flow view).
+- Node `sublabel` (second label line), `pulse` (animated status-color glow ring),
+  kinds `agent` (robot head) + `gateway` (hub hexagon).
+- `getPositions()`/`setPositions()` — dragged positions are now persistable.
+
 ## Known gaps (V1)
 
 - No edge-hover tooltip (only node hover).
-- Dragged node positions are not persisted/restorable.
 - No built-in toolbar (pause/labels/etc.) — that's presentation-specific, left to the consuming
   app; `examples/index.html` shows a minimal one.
 - Visual match to the yFiles reference demo was done from a textual description (no ability to

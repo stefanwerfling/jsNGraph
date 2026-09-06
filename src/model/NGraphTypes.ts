@@ -6,7 +6,7 @@ export type NodeStatus = 'ok' | 'warning' | 'critical' | 'down';
 /**
  * Device archetype, selects which icon glyph is drawn inside a node.
  */
-export type NodeKind = 'pc' | 'laptop' | 'tablet' | 'server' | 'database' | 'router' | 'generic';
+export type NodeKind = 'pc' | 'laptop' | 'tablet' | 'server' | 'database' | 'router' | 'agent' | 'gateway' | 'generic';
 
 /**
  * Input shape for a node, as passed to NGraph.setData / addNode / updateNode.
@@ -19,6 +19,12 @@ export interface NGraphNodeData {
     /** Utilization 0..1, shown as a bar in the node detail panel. */
     load?: number;
     ip?: string;
+    /** Smaller second line under the label (e.g. "9 checks · ok"). */
+    sublabel?: string;
+    /** Draw an animated glow ring in the node's status color (e.g. "working"). */
+    pulse?: boolean;
+    /** Radial layout only: ring index — 0 = center hub, 1..n = outer rings. Default 1. */
+    ring?: number;
     /** Optional pinned position; omit to let the force layout place it. */
     x?: number;
     y?: number;

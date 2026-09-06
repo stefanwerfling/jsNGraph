@@ -34,6 +34,12 @@ export class NodeIcons {
             case 'pc':
                 NodeIcons.pc(ctx, size);
                 break;
+            case 'agent':
+                NodeIcons.agent(ctx, size);
+                break;
+            case 'gateway':
+                NodeIcons.gateway(ctx, size);
+                break;
             default:
                 NodeIcons.generic(ctx, size);
         }
@@ -115,6 +121,67 @@ export class NodeIcons {
         ctx.moveTo(-w * 0.3, h / 2 + s * 0.14);
         ctx.lineTo(w * 0.3, h / 2 + s * 0.14);
         ctx.stroke();
+    }
+
+    /** Robot head: rounded face, two eyes, antenna — a worker agent. */
+    private static agent(ctx: CanvasRenderingContext2D, s: number): void {
+        const w = s * 0.72;
+        const h = s * 0.58;
+
+        NodeIcons.roundRectStroke(ctx, -w / 2, -h / 2 + s * 0.08, w, h, 5);
+
+        ctx.beginPath();
+        ctx.moveTo(0, -h / 2 + s * 0.08);
+        ctx.lineTo(0, -h / 2 - s * 0.1);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, -h / 2 - s * 0.16, s * 0.06, 0, Math.PI * 2);
+        ctx.fill();
+
+        const eyeY = s * 0.08;
+        const eyeDx = w * 0.22;
+
+        ctx.beginPath();
+        ctx.arc(-eyeDx, eyeY, s * 0.07, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(eyeDx, eyeY, s * 0.07, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    /** Hub hexagon with spokes and a core — the steering gateway. */
+    private static gateway(ctx: CanvasRenderingContext2D, s: number): void {
+        const r = s * 0.42;
+
+        ctx.beginPath();
+
+        for (let i = 0; i < 6; i++) {
+            const angle = -Math.PI / 2 + (i / 6) * Math.PI * 2;
+            const x = Math.cos(angle) * r;
+            const y = Math.sin(angle) * r;
+
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        }
+
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.22, 0, Math.PI * 2);
+        ctx.fill();
+
+        for (let i = 0; i < 6; i++) {
+            const angle = -Math.PI / 2 + (i / 6) * Math.PI * 2;
+
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(angle) * r * 0.35, Math.sin(angle) * r * 0.35);
+            ctx.lineTo(Math.cos(angle) * r * 0.78, Math.sin(angle) * r * 0.78);
+            ctx.stroke();
+        }
     }
 
     private static generic(ctx: CanvasRenderingContext2D, s: number): void {

@@ -1,4 +1,5 @@
 import { ForceLayoutOptions, ForceLayout } from './layout/ForceLayout';
+import { RadialLayoutOptions, RadialLayout } from './layout/RadialLayout';
 import { GraphEdge } from './model/GraphEdge';
 import { GraphNode } from './model/GraphNode';
 import { NGraphEdgeData, NGraphNodeData } from './model/NGraphTypes';
@@ -18,7 +19,10 @@ export interface NGraphOptions {
     draggable?: boolean;
     /** Show the built-in click-to-open detail panel. Default true. */
     detailPanel?: boolean;
+    /** 'force' (default): springy self-organizing. 'radial': deterministic hub-and-ring via node.ring. */
+    layoutMode?: 'force' | 'radial';
     layout?: ForceLayoutOptions;
+    radialLayout?: RadialLayoutOptions;
 }
 
 interface NGraphEvents {
@@ -37,7 +41,7 @@ export class NGraph {
     private readonly root: HTMLDivElement;
     private readonly canvas: HTMLCanvasElement;
     private readonly renderer: CanvasRenderer;
-    private readonly layout: ForceLayout;
+    private readonly layout: ForceLayout | RadialLayout;
     private readonly interaction: InteractionController;
     private readonly tooltip: Tooltip;
     private readonly panel: NodePanel;
@@ -70,7 +74,9 @@ export class NGraph {
         this.root.appendChild(this.canvas);
 
         this.renderer = new CanvasRenderer(this.canvas, this.theme);
-        this.layout = new ForceLayout(options.layout);
+        this.layout = options.layoutMode === 'radial'
+            ? new RadialLayout(options.radialLayout)
+            : new ForceLayout(options.layout);
         this.tooltip = new Tooltip(this.root, this.theme);
         this.panel = new NodePanel(this.root, this.theme);
         this.panel.onClose(() => {
@@ -162,6 +168,43 @@ export class NGraph {
 
     public setShowLabels(show: boolean): void {
         this.showLabels = show;
+    }
+
+    /**
+     * Snapshot of all current node positions — persist it to restore a
+     * hand-arranged view later via setPositions.
+     */
+    public getPositions(): Record<string, {x: number; y: number}> {
+        const positions: Record<string, {x: number; y: number}> = {};
+
+        for (const [id, node] of this.nodes) {
+            positions[id] = {x: node.x, y: node.y};
+        }
+
+        return positions;
+    }
+
+    /**
+     * Restore previously saved positions. With fix=true (default) the nodes
+     * are pinned there; with fix=false the layout may move them again.
+     */
+    public setPositions(positions: Record<string, {x: number; y: number}>, fix = true): void {
+        for (const [id, position] of Object.entries(positions)) {
+            const node = this.nodes.get(id);
+
+            if (node === undefined) {
+                continue;
+            }
+
+            node.x = position.x;
+            node.y = position.y;
+            node.vx = 0;
+            node.vy = 0;
+
+            if (fix) {
+                node.fixed = true;
+            }
+        }
     }
 
     public on<K extends keyof NGraphEvents>(event: K, listener: (payload: NGraphEvents[K]) => void): void {

@@ -51,7 +51,7 @@ export class CanvasRenderer {
         }
 
         for (const node of nodes) {
-            this.drawNode(node, node.id === hoveredId, node.id === selectedId, options.showLabels);
+            this.drawNode(node, node.id === hoveredId, node.id === selectedId, options.showLabels, timeMs);
         }
 
         ctx.restore();
@@ -120,12 +120,25 @@ export class CanvasRenderer {
         ctx.restore();
     }
 
-    private drawNode(node: GraphNode, hovered: boolean, selected: boolean, showLabel: boolean): void {
+    private drawNode(node: GraphNode, hovered: boolean, selected: boolean, showLabel: boolean, timeMs: number): void {
         const {ctx, theme} = this;
         const r = node.radius;
 
         ctx.save();
         ctx.translate(node.x, node.y);
+
+        // Pulse: an animated glow ring in the status color ("working here").
+        if (node.pulse) {
+            const phase = (Math.sin(timeMs * 0.005) + 1) / 2;
+
+            ctx.beginPath();
+            ctx.arc(0, 0, r + 6 + phase * 7, 0, Math.PI * 2);
+            ctx.strokeStyle = CanvasRenderer.statusColor(node.status, theme);
+            ctx.globalAlpha = 0.25 + phase * 0.55;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+        }
 
         // Status ring
         if (node.status !== 'ok') {
@@ -165,6 +178,13 @@ export class CanvasRenderer {
             ctx.font = '11px system-ui, sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText(node.label, node.x, node.y + r + 14);
+
+            if (node.sublabel !== null) {
+                ctx.globalAlpha = 0.75;
+                ctx.font = '9.5px system-ui, sans-serif';
+                ctx.fillText(node.sublabel, node.x, node.y + r + 26);
+            }
+
             ctx.restore();
         }
     }

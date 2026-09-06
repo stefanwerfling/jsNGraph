@@ -46,7 +46,11 @@ graph.updateNode('srv-1', {load: 0.82, status: 'warning'});
 graph.updateEdge('e1', {load: 0.9});
 ```
 
-Node kinds: `pc | laptop | tablet | server | database | router | generic`.
+Node kinds: `pc | laptop | tablet | server | database | router | agent | gateway | generic`.
+Extra node fields: `sublabel` (small second line), `pulse` (animated status-color glow),
+`ring` (for the radial layout). Options: `layoutMode: 'force' | 'radial'` — radial is a
+deterministic hub-and-ring arrangement (ring 0 = center) that never drifts.
+Positions: `getPositions()` / `setPositions(map, fix?)` persist a hand-arranged view.
 Status: `ok | warning | critical | down` (drives the status ring + a stop-sign overlay for `down`).
 
 ## Development

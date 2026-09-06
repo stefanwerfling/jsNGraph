@@ -12,6 +12,9 @@ export class GraphNode {
     public status: NodeStatus;
     public load: number;
     public ip: string | null;
+    public sublabel: string | null;
+    public pulse: boolean;
+    public ring: number;
     public fixed: boolean;
 
     public x: number;
@@ -27,6 +30,9 @@ export class GraphNode {
         this.status = data.status ?? 'ok';
         this.load = GraphNode.clamp01(data.load ?? 0);
         this.ip = data.ip ?? null;
+        this.sublabel = data.sublabel ?? null;
+        this.pulse = data.pulse ?? false;
+        this.ring = data.ring ?? 1;
         this.fixed = data.fixed ?? false;
         this.x = data.x ?? fallbackX;
         this.y = data.y ?? fallbackY;
@@ -54,6 +60,18 @@ export class GraphNode {
 
         if (patch.ip !== undefined) {
             this.ip = patch.ip;
+        }
+
+        if (patch.sublabel !== undefined) {
+            this.sublabel = patch.sublabel;
+        }
+
+        if (patch.pulse !== undefined) {
+            this.pulse = patch.pulse;
+        }
+
+        if (patch.ring !== undefined) {
+            this.ring = patch.ring;
         }
 
         if (patch.fixed !== undefined) {
