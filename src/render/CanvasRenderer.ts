@@ -5,6 +5,9 @@ import { ThemeTokens } from './Theme';
 
 export interface RenderOptions {
     showLabels: boolean;
+    /** 'line' (default): straight edges. 'curve': horizontal cubic beziers
+     *  from node border to node border — the workflow-editor look. */
+    edgeStyle?: 'line' | 'curve';
 }
 
 /**
@@ -47,7 +50,7 @@ export class CanvasRenderer {
         this.drawGrid(width, height);
 
         for (const edge of edges) {
-            this.drawEdge(edge, timeMs);
+            this.drawEdge(edge, timeMs, options.edgeStyle ?? 'line');
         }
 
         for (const node of nodes) {
@@ -70,9 +73,8 @@ export class CanvasRenderer {
         }
     }
 
-    private drawEdge(edge: GraphEdge, timeMs: number): void {
+    private drawEdge(edge: GraphEdge, timeMs: number, style: 'line' | 'curve'): void {
         const {ctx, theme} = this;
-        const {source, target} = edge;
         const color = CanvasRenderer.lerpEdgeColor(edge.load, theme);
 
         ctx.save();
@@ -80,17 +82,60 @@ export class CanvasRenderer {
         ctx.lineWidth = 1.5 + edge.load * 2.5;
         ctx.globalAlpha = 0.85;
         ctx.beginPath();
-        ctx.moveTo(source.x, source.y);
-        ctx.lineTo(target.x, target.y);
+
+        if (style === 'curve') {
+            const [p0, p1, p2, p3] = CanvasRenderer.curvePoints(edge);
+
+            ctx.moveTo(p0.x, p0.y);
+            ctx.bezierCurveTo(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+        } else {
+            ctx.moveTo(edge.source.x, edge.source.y);
+            ctx.lineTo(edge.target.x, edge.target.y);
+        }
+
         ctx.stroke();
         ctx.restore();
 
         if (edge.animated && edge.load > 0.02) {
-            this.drawTrafficDots(edge, color, timeMs);
+            this.drawTrafficDots(edge, color, timeMs, style);
         }
     }
 
-    private drawTrafficDots(edge: GraphEdge, color: string, timeMs: number): void {
+    /** Border-to-border horizontal bezier: leaves the source's facing side,
+     *  enters the target's facing side — the workflow-editor edge. */
+    private static curvePoints(edge: GraphEdge): [
+        {x: number; y: number}, {x: number; y: number},
+        {x: number; y: number}, {x: number; y: number}
+    ] {
+        const {source, target} = edge;
+        const dir = target.x >= source.x ? 1 : -1;
+        const sHalf = source.shape === 'card' ? CanvasRenderer.cardSize(source).w / 2 : source.radius;
+        const tHalf = target.shape === 'card' ? CanvasRenderer.cardSize(target).w / 2 : target.radius;
+        const p0 = {x: source.x + dir * sHalf, y: source.y};
+        const p3 = {x: target.x - dir * tHalf, y: target.y};
+        const bend = Math.max(30, Math.abs(p3.x - p0.x) / 2);
+
+        return [p0, {x: p0.x + dir * bend, y: p0.y}, {x: p3.x - dir * bend, y: p3.y}, p3];
+    }
+
+    private static cubicPoint(p: [
+        {x: number; y: number}, {x: number; y: number},
+        {x: number; y: number}, {x: number; y: number}
+    ], u: number): {x: number; y: number} {
+        const v = 1 - u;
+        const a = v * v * v;
+        const b = 3 * v * v * u;
+        const c = 3 * v * u * u;
+        const d = u * u * u;
+        const [p0, p1, p2, p3] = p;
+
+        return {
+            x: a * p0.x + b * p1.x + c * p2.x + d * p3.x,
+            y: a * p0.y + b * p1.y + c * p2.y + d * p3.y
+        };
+    }
+
+    private drawTrafficDots(edge: GraphEdge, color: string, timeMs: number, style: 'line' | 'curve'): void {
         const {ctx} = this;
         const {source, target} = edge;
         const dx = target.x - source.x;
@@ -103,17 +148,19 @@ export class CanvasRenderer {
 
         const speed = 0.00012 + edge.load * 0.00035;
         const count = 1 + Math.round(edge.load * 3);
+        const curve = style === 'curve' ? CanvasRenderer.curvePoints(edge) : null;
 
         ctx.save();
         ctx.fillStyle = color;
 
         for (let i = 0; i < count; i++) {
             const phase = (edge.dashPhase + i / count + timeMs * speed) % 1;
-            const x = source.x + dx * phase;
-            const y = source.y + dy * phase;
+            const point = curve !== null
+                ? CanvasRenderer.cubicPoint(curve, phase)
+                : {x: source.x + dx * phase, y: source.y + dy * phase};
 
             ctx.beginPath();
-            ctx.arc(x, y, 2.4, 0, Math.PI * 2);
+            ctx.arc(point.x, point.y, 2.4, 0, Math.PI * 2);
             ctx.fill();
         }
 

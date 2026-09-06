@@ -1,5 +1,6 @@
 import { ForceLayoutOptions, ForceLayout } from './layout/ForceLayout';
 import { RadialLayoutOptions, RadialLayout } from './layout/RadialLayout';
+import { LayeredLayoutOptions, LayeredLayout } from './layout/LayeredLayout';
 import { GraphEdge } from './model/GraphEdge';
 import { GraphNode } from './model/GraphNode';
 import { NGraphEdgeData, NGraphNodeData } from './model/NGraphTypes';
@@ -19,10 +20,14 @@ export interface NGraphOptions {
     draggable?: boolean;
     /** Show the built-in click-to-open detail panel. Default true. */
     detailPanel?: boolean;
-    /** 'force' (default): springy self-organizing. 'radial': deterministic hub-and-ring via node.ring. */
-    layoutMode?: 'force' | 'radial';
+    /** 'force' (default): springy self-organizing. 'radial': hub-and-ring via
+     *  node.ring. 'layered': Sugiyama-style columns via node.ring (0 = left). */
+    layoutMode?: 'force' | 'radial' | 'layered';
     layout?: ForceLayoutOptions;
     radialLayout?: RadialLayoutOptions;
+    layeredLayout?: LayeredLayoutOptions;
+    /** Edge rendering: straight 'line' (default) or workflow-style 'curve'. */
+    edgeStyle?: 'line' | 'curve';
 }
 
 interface NGraphEvents {
@@ -41,7 +46,8 @@ export class NGraph {
     private readonly root: HTMLDivElement;
     private readonly canvas: HTMLCanvasElement;
     private readonly renderer: CanvasRenderer;
-    private readonly layout: ForceLayout | RadialLayout;
+    private readonly layout: ForceLayout | RadialLayout | LayeredLayout;
+    private readonly edgeStyle: 'line' | 'curve';
     private readonly interaction: InteractionController;
     private readonly tooltip: Tooltip;
     private readonly panel: NodePanel;
@@ -76,7 +82,10 @@ export class NGraph {
         this.renderer = new CanvasRenderer(this.canvas, this.theme);
         this.layout = options.layoutMode === 'radial'
             ? new RadialLayout(options.radialLayout)
-            : new ForceLayout(options.layout);
+            : options.layoutMode === 'layered'
+                ? new LayeredLayout(options.layeredLayout)
+                : new ForceLayout(options.layout);
+        this.edgeStyle = options.edgeStyle ?? 'line';
         this.tooltip = new Tooltip(this.root, this.theme);
         this.panel = new NodePanel(this.root, this.theme);
         this.panel.onClose(() => {
@@ -271,7 +280,7 @@ export class NGraph {
             this.hoveredId,
             this.selectedId,
             timeMs,
-            {showLabels: this.showLabels}
+            {showLabels: this.showLabels, edgeStyle: this.edgeStyle}
         );
 
         this.rafId = requestAnimationFrame(this.frame);
