@@ -1,4 +1,5 @@
 import { GraphNode } from '../model/GraphNode';
+import { CanvasRenderer } from '../render/CanvasRenderer';
 
 export interface InteractionCallbacks {
     onHover(node: GraphNode | null): void;
@@ -48,6 +49,16 @@ export class InteractionController {
 
             const dx = x - node.x;
             const dy = y - node.y;
+
+            if (node.shape === 'card') {
+                const size = CanvasRenderer.cardSize(node);
+
+                if (Math.abs(dx) <= size.w / 2 && Math.abs(dy) <= size.h / 2) {
+                    return node;
+                }
+
+                continue;
+            }
 
             if (dx * dx + dy * dy <= node.radius * node.radius) {
                 return node;

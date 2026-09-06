@@ -28,6 +28,9 @@ export interface NGraphNodeData {
     pulse?: boolean;
     /** Radial layout only: ring index — 0 = center hub, 1..n = outer rings. Default 1. */
     ring?: number;
+    /** 'circle' (classic device dot, default) or 'card' — a rounded rectangle
+     *  with the icon chip, label and sublabel drawn INSIDE the node. */
+    shape?: 'circle' | 'card';
     /** Optional pinned position; omit to let the force layout place it. */
     x?: number;
     y?: number;

@@ -121,6 +121,11 @@ export class CanvasRenderer {
     }
 
     private drawNode(node: GraphNode, hovered: boolean, selected: boolean, showLabel: boolean, timeMs: number): void {
+        if (node.shape === 'card') {
+            this.drawCardNode(node, hovered, selected, timeMs);
+            return;
+        }
+
         const {ctx, theme} = this;
         const r = node.radius;
 
@@ -187,6 +192,98 @@ export class CanvasRenderer {
 
             ctx.restore();
         }
+    }
+
+    /** Card width/height used for drawing AND hit-testing. */
+    public static cardSize(node: GraphNode): {w: number; h: number} {
+        const labelW = 7.2 * node.label.length;
+        const subW = node.sublabel !== null ? 5.4 * node.sublabel.length : 0;
+        const w = Math.max(120, Math.min(210, 52 + Math.max(labelW, subW) + 14));
+
+        return {w: w, h: 46};
+    }
+
+    /**
+     * Agent/service card: rounded rect with an icon chip on the left, the
+     * label + sublabel INSIDE the node, and a status dot top-right — the
+     * n8n/orchestrator-style node instead of a device circle.
+     */
+    private drawCardNode(node: GraphNode, hovered: boolean, selected: boolean, timeMs: number): void {
+        const {ctx, theme} = this;
+        const {w, h} = CanvasRenderer.cardSize(node);
+        const statusColor = CanvasRenderer.statusColor(node.status, theme);
+
+        ctx.save();
+        ctx.translate(node.x, node.y);
+
+        if (node.pulse) {
+            const phase = (Math.sin(timeMs * 0.005) + 1) / 2;
+
+            ctx.globalAlpha = 0.2 + phase * 0.5;
+            ctx.strokeStyle = statusColor;
+            ctx.lineWidth = 3;
+            CanvasRenderer.roundRectPath(ctx, -w / 2 - 4, -h / 2 - 4, w + 8, h + 8, 12);
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+        }
+
+        CanvasRenderer.roundRectPath(ctx, -w / 2, -h / 2, w, h, 9);
+        ctx.fillStyle = theme.nodeFill;
+        ctx.fill();
+        ctx.lineWidth = selected ? 2.5 : hovered ? 2 : 1.4;
+        ctx.strokeStyle = selected
+            ? theme.nodeSelectedStroke
+            : hovered
+                ? theme.nodeHoverStroke
+                : node.status !== 'ok' ? statusColor : theme.nodeStroke;
+        ctx.stroke();
+
+        // icon chip
+        const chip = h - 16;
+
+        CanvasRenderer.roundRectPath(ctx, -w / 2 + 8, -chip / 2, chip, chip, 7);
+        ctx.fillStyle = theme.background;
+        ctx.fill();
+        ctx.strokeStyle = theme.nodeStroke;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.save();
+        ctx.translate(-w / 2 + 8 + chip / 2, 0);
+        NodeIcons.draw(ctx, node.kind, chip * 0.72, theme.nodeIcon);
+        ctx.restore();
+
+        // texts inside the card
+        const textX = -w / 2 + 8 + chip + 9;
+
+        ctx.textAlign = 'left';
+        ctx.fillStyle = theme.panelText;
+        ctx.font = '600 11.5px system-ui, sans-serif';
+        ctx.fillText(node.label, textX, node.sublabel !== null ? -2 : 4, w - chip - 30);
+
+        if (node.sublabel !== null) {
+            ctx.fillStyle = theme.nodeLabel;
+            ctx.font = '9.5px system-ui, sans-serif';
+            ctx.fillText(node.sublabel, textX, 12, w - chip - 30);
+        }
+
+        // status dot
+        ctx.beginPath();
+        ctx.arc(w / 2 - 9, -h / 2 + 9, 3.2, 0, Math.PI * 2);
+        ctx.fillStyle = statusColor;
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    private static roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number,
+        w: number, h: number, r: number): void {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
     }
 
     private static drawStopSign(ctx: CanvasRenderingContext2D, size: number, theme: ThemeTokens): void {

@@ -16,6 +16,7 @@ export class GraphNode {
     public sublabel: string | null;
     public pulse: boolean;
     public ring: number;
+    public shape: 'circle' | 'card';
     public fixed: boolean;
 
     public x: number;
@@ -35,6 +36,11 @@ export class GraphNode {
         this.sublabel = data.sublabel ?? null;
         this.pulse = data.pulse ?? false;
         this.ring = data.ring ?? 1;
+        this.shape = data.shape ?? 'circle';
+
+        if (this.shape === 'card') {
+            this.radius = 30;
+        }
         this.fixed = data.fixed ?? false;
         this.x = data.x ?? fallbackX;
         this.y = data.y ?? fallbackY;
@@ -78,6 +84,10 @@ export class GraphNode {
 
         if (patch.ring !== undefined) {
             this.ring = patch.ring;
+        }
+
+        if (patch.shape !== undefined) {
+            this.shape = patch.shape;
         }
 
         if (patch.fixed !== undefined) {
