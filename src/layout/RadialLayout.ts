@@ -87,17 +87,18 @@ export class RadialLayout {
                 }
             }
 
+            // Slot angles by EQUAL ARC LENGTH, not equal parameter angle — on a
+            // flat ellipse the parametric angle bunches nodes at the sides.
+            const angles = RadialLayout.arcUniformAngles(rx, ry, members.length, ring);
+
             for (let i = 0; i < members.length; i++) {
                 const node = members[i];
+                const angle = angles[i];
 
-                if (node === undefined || node.fixed) {
+                if (node === undefined || angle === undefined || node.fixed) {
                     continue;
                 }
 
-                // Start at 12 o'clock; stagger even rings by half a slot so
-                // neighboring rings interleave instead of lining up.
-                const stagger = ring % 2 === 1 ? 0 : Math.PI / Math.max(1, members.length);
-                const angle = -Math.PI / 2 + (i / Math.max(1, members.length)) * Math.PI * 2 + stagger;
                 const tx = cx + Math.cos(angle) * rx;
                 const ty = cy + Math.sin(angle) * ry;
 
@@ -107,6 +108,54 @@ export class RadialLayout {
                 node.vy = 0;
             }
         }
+    }
+
+    /**
+     * n parameter-angles whose slots are equally spaced by arc length along
+     * the ellipse (rx, ry), starting at 12 o'clock. Even rings are staggered
+     * by half a slot so neighboring rings interleave instead of lining up.
+     */
+    private static arcUniformAngles(rx: number, ry: number, n: number, ring: number): number[] {
+        if (n <= 0) {
+            return [];
+        }
+
+        const SAMPLES = 256;
+        const cumulative: number[] = [0];
+        let prevX = Math.cos(-Math.PI / 2) * rx;
+        let prevY = Math.sin(-Math.PI / 2) * ry;
+        let total = 0;
+
+        for (let s = 1; s <= SAMPLES; s++) {
+            const angle = -Math.PI / 2 + (s / SAMPLES) * Math.PI * 2;
+            const x = Math.cos(angle) * rx;
+            const y = Math.sin(angle) * ry;
+
+            total += Math.hypot(x - prevX, y - prevY);
+            cumulative.push(total);
+            prevX = x;
+            prevY = y;
+        }
+
+        const stagger = ring % 2 === 0 ? total / n / 2 : 0;
+        const angles: number[] = [];
+        let cursor = 0;
+
+        for (let i = 0; i < n; i++) {
+            const target = ((i / n) * total + stagger) % (total || 1);
+
+            if (target < (cumulative[cursor] ?? 0)) {
+                cursor = 0;
+            }
+
+            while (cursor < SAMPLES && (cumulative[cursor + 1] ?? total) < target) {
+                cursor++;
+            }
+
+            angles.push(-Math.PI / 2 + (cursor / SAMPLES) * Math.PI * 2);
+        }
+
+        return angles;
     }
 
     private static circumference(rx: number, ry: number): number {
