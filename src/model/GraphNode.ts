@@ -12,6 +12,7 @@ export class GraphNode {
     public status: NodeStatus;
     public load: number;
     public ip: string | null;
+    public meta: Record<string, string> | null;
     public sublabel: string | null;
     public pulse: boolean;
     public ring: number;
@@ -30,6 +31,7 @@ export class GraphNode {
         this.status = data.status ?? 'ok';
         this.load = GraphNode.clamp01(data.load ?? 0);
         this.ip = data.ip ?? null;
+        this.meta = data.meta ?? null;
         this.sublabel = data.sublabel ?? null;
         this.pulse = data.pulse ?? false;
         this.ring = data.ring ?? 1;
@@ -60,6 +62,10 @@ export class GraphNode {
 
         if (patch.ip !== undefined) {
             this.ip = patch.ip;
+        }
+
+        if (patch.meta !== undefined) {
+            this.meta = patch.meta;
         }
 
         if (patch.sublabel !== undefined) {

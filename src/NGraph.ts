@@ -237,7 +237,8 @@ export class NGraph {
         }
 
         const rect = this.canvas.getBoundingClientRect();
-        this.tooltip.show(`${node.label} · ${Math.round(node.load * 100)}% load`, node.x + rect.left, node.y + rect.top);
+        const detail = node.sublabel ?? `${Math.round(node.load * 100)}% load`;
+        this.tooltip.show(`${node.label} · ${detail}`, node.x + rect.left, node.y + rect.top);
     }
 
     private handleClick(node: GraphNode | null, clientX: number, clientY: number): void {

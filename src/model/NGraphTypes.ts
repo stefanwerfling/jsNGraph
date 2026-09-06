@@ -19,6 +19,9 @@ export interface NGraphNodeData {
     /** Utilization 0..1, shown as a bar in the node detail panel. */
     load?: number;
     ip?: string;
+    /** Generic key/value rows for the detail panel (e.g. role, current task).
+     *  When set, the panel shows these instead of the device IP/load block. */
+    meta?: Record<string, string>;
     /** Smaller second line under the label (e.g. "9 checks · ok"). */
     sublabel?: string;
     /** Draw an animated glow ring in the node's status color (e.g. "working"). */
