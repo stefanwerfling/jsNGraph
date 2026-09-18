@@ -23,6 +23,7 @@
     "url": "git+https://github.com/stefanwerfling/jsNGraph.git"
   },
   "scripts": {
+    "prepare": "tsup",
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
