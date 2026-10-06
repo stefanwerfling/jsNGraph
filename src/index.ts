@@ -10,6 +10,7 @@ export { RectBox, RectArrow, RectPipeline } from './rect/RectBox';
 export { RectGroup } from './rect/RectGroup';
 export { RectElbow, RectBranch } from './rect/RectConnectors';
 export { RectHeader, RectChip, RectLegend } from './rect/RectLabels';
+export { RectSymbols, RectGlossary } from './rect/RectReference';
 export { Heatmap, BarStrip, FeatureColumn, Sparkline, Scatter, Network, Matrix, Timeline } from './rect/RectCharts';
 export { RectColor } from './rect/RectColor';
 export { RectRandom } from './rect/RectRandom';
@@ -35,6 +36,10 @@ export type {
     RectChipOptions,
     RectLegendItem,
     RectLegendOptions,
+    RectSymbolItem,
+    RectSymbolsOptions,
+    RectGlossaryTerm,
+    RectGlossaryOptions,
     RectSide,
     RectElbowOptions,
     RectBranchOptions

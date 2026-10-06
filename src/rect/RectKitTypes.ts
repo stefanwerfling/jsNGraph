@@ -199,6 +199,39 @@ export interface RectLegendOptions {
     layout?: 'row' | 'column';
 }
 
+export interface RectSymbolItem {
+    /** The glyph, e.g. 'z', 'xₜ', 'ρ'. */
+    symbol: string;
+    color?: RectAccent;
+    /** What the symbol is called. */
+    name: string;
+    /** Shape / type, e.g. 'n counts at bin t'. */
+    type?: string;
+    /** A dim trailing note. */
+    note?: string;
+}
+
+export interface RectSymbolsOptions {
+    title?: string;
+    subtitle?: string;
+    items: RectSymbolItem[];
+}
+
+export interface RectGlossaryTerm {
+    term: string;
+    def: string;
+}
+
+export interface RectGlossaryOptions {
+    title?: string;
+    subtitle?: string;
+    terms: RectGlossaryTerm[];
+    /** Number of columns to flow the terms into. Default 1. */
+    columns?: number;
+    /** Accent colour of the term headwords. */
+    accent?: RectAccent;
+}
+
 export interface RectGroupOptions {
     /** Uppercase frame title shown on the top border. */
     title?: string;
