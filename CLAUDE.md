@@ -47,9 +47,10 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   wiring-diagram visuals. Blocks: `RectBox` (labeled block, optional `glow`), `RectGroup`
   (nested container frame). Mini-charts (`RectCharts.ts`): `Heatmap`, `BarStrip`,
   `FeatureColumn`, `Sparkline`, `Scatter` (opt. axes/target), `Network` (layered node-link),
-  `Timeline` (opt. cursor/ticks). Labels (`RectLabels.ts`): `RectHeader`, `RectChip`,
-  `RectLegend`. Connectors: `RectArrow`/`RectPipeline` — directional (`RectDirection`),
-  labeled, and optionally `animated` (flowing dashes). Opt-in animations inject one keyframe
+  `Matrix` (axis-labeled grid), `Timeline` (opt. cursor/ticks). Labels (`RectLabels.ts`):
+  `RectHeader`, `RectChip`, `RectLegend`. Connectors: `RectArrow`/`RectPipeline` — directional
+  (`RectDirection`), labeled, optionally `animated` (flowing dashes); plus `RectConnectors.ts`
+  `RectElbow` (right-angle L-route) and `RectBranch` (1→n fan-out). Opt-in animations inject one keyframe
   `<style>` once via `RectAnim`. Deterministic (`RectRandom`), inline-styled like the other
   DOM overlays — no stylesheet for static use, zero deps. Not canvas/graph-related; shares
   the package because consumers compose it alongside NGraph (see `examples/explainer.html`).

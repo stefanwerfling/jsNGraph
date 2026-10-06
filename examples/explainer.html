@@ -145,8 +145,8 @@
 <script src="../dist/jsngraph.global.js"></script>
 <script>
     const NG = JSNGraph.NGraph;
-    const {RectBox, RectPipeline, RectGroup, RectHeader, RectChip, RectLegend,
-        Heatmap, BarStrip, FeatureColumn, Sparkline, Scatter, Network, Timeline} = JSNGraph;
+    const {RectBox, RectPipeline, RectGroup, RectElbow, RectBranch, RectHeader, RectChip, RectLegend,
+        Heatmap, BarStrip, FeatureColumn, Sparkline, Scatter, Network, Matrix, Timeline} = JSNGraph;
     const board = document.getElementById('board');
     const viewport = document.getElementById('viewport');
 
@@ -167,7 +167,9 @@
         {id: 'kinds',   x: 2640, y: 1020, w: 820,  h: 680, kicker: 'F · VISUALS', title: 'Node kinds & status',
          desc: 'Nine device/role glyphs and four health colours, drawn by hand on the canvas — no icon fonts or images.'},
         {id: 'rect',    x: 80,   y: 1840, w: 2040, h: 820, kicker: 'G · DIAGRAM ELEMENTS', title: 'Rect-element kit',
-         desc: 'A reusable set of rect elements — labeled boxes with inner mini-charts (heatmap, bars, feature column, sparkline, scatter + axes/target, network, timeline + cursor/ticks), legends, chips, section headers, directional + labeled + animated connectors, and nested group frames. Exported from the library; pure DOM + SVG, scales crisply with the board.'}
+         desc: 'A reusable set of rect elements — labeled boxes with inner mini-charts (heatmap, bars, feature column, sparkline, scatter + axes/target, network, timeline + cursor/ticks), legends, chips, section headers, directional + labeled + animated connectors, and nested group frames. Exported from the library; pure DOM + SVG, scales crisply with the board.'},
+        {id: 'conn',    x: 80,   y: 2740, w: 1560, h: 560, kicker: 'H · CONNECTORS & MATRIX', title: 'Elbow, branch & matrix',
+         desc: 'Orthogonal elbow (right-angle) routing, a 1→n branch fan-out, and an axis-labeled matrix — the remaining wiring-diagram primitives, all from the rect kit.'}
     ];
 
     const graphs = [];
@@ -408,7 +410,63 @@
         else if (b.id === 'events') graphs.push(buildEvents(host));
         else if (b.id === 'kinds') graphs.push(buildKinds(host, b.w, b.h));
         else if (b.id === 'rect') buildRect(host);
+        else if (b.id === 'conn') buildConnectors(host);
     });
+
+    // a small captioned wrapper so each figure in section H is labeled
+    function figure(caption, node) {
+        const fig = document.createElement('div');
+        fig.style.cssText = 'display:flex; flex-direction:column; align-items:center; gap:10px;';
+        fig.appendChild(node);
+        const cap = document.createElement('div');
+        cap.textContent = caption;
+        cap.style.cssText = 'font:11px system-ui,sans-serif; color:#8595b5; letter-spacing:0.04em;';
+        fig.appendChild(cap);
+        return fig;
+    }
+
+    function buildConnectors(host) {
+        host.style.pointerEvents = 'none';
+        host.style.display = 'flex';
+        host.style.alignItems = 'center';
+
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex; align-items:flex-start; gap:56px; padding-top:8px;';
+
+        // 1 → n branch fan-out
+        const branchFig = document.createElement('div');
+        branchFig.style.cssText = 'display:flex; align-items:center; gap:0;';
+        branchFig.appendChild(new RectBox({title: 'Router', subtitle: 'dispatch', accent: 'blue'}).render());
+        branchFig.appendChild(new RectBranch({count: 3, direction: 'right', color: 'blue', animated: true, width: 76, height: 150}).render());
+        const outs = document.createElement('div');
+        outs.style.cssText = 'display:flex; flex-direction:column; gap:22px;';
+        ['handler A', 'handler B', 'handler C'].forEach((t) => outs.appendChild(new RectBox({title: t}).render()));
+        branchFig.appendChild(outs);
+        row.appendChild(figure('1 → n branch', branchFig));
+
+        // elbow (L-route) connecting two nodes around a corner
+        const elbowFig = document.createElement('div');
+        elbowFig.style.cssText = 'position:relative; width:170px; height:150px;';
+        const src = new RectChip({label: 'event', filled: true, color: 'cyan'}).render();
+        src.style.cssText += 'position:absolute; left:0; top:12px;';
+        const dst = new RectBox({title: 'handler', subtitle: 'on()'}).render();
+        dst.style.cssText += 'position:absolute; left:70px; top:92px;';
+        const elbow = new RectElbow({from: 'left', to: 'bottom', width: 92, height: 92, color: 'cyan', animated: true}).render();
+        elbow.style.cssText += 'position:absolute; left:28px; top:18px;';
+        elbowFig.appendChild(elbow);
+        elbowFig.appendChild(src);
+        elbowFig.appendChild(dst);
+        row.appendChild(figure('elbow · L-route', elbowFig));
+
+        // axis-labeled matrix
+        const matrixBox = new RectBox({title: 'Confusion', subtitle: 'pred × true', accent: 'cyan',
+            body: new Matrix({rows: 5, cols: 5, cell: 13,
+                rowLabels: ['pc', 'srv', 'db', 'rtr', 'gw'], colLabels: ['pc', 'srv', 'db', 'rtr', 'gw'],
+                accent: 'cyan', seed: 5}).render()}).render();
+        row.appendChild(figure('axis-labeled matrix', matrixBox));
+
+        host.appendChild(row);
+    }
 
     // showcase every rect-kit element type in one wiring-diagram pipeline,
     // all built from the library's exported RectBox / chart classes
