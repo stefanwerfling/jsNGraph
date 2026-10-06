@@ -264,12 +264,17 @@ export class NGraph {
 
     private resize(): void {
         const dpr = window.devicePixelRatio || 1;
-        const rect = this.root.getBoundingClientRect();
+        // clientWidth/Height report the CSS *layout* size, which — unlike
+        // getBoundingClientRect — is not distorted by a CSS transform on an
+        // ancestor. That keeps the graph laid out correctly when it lives
+        // inside a zoomed/scaled container (e.g. a pan-zoom board).
+        const width = this.root.clientWidth;
+        const height = this.root.clientHeight;
 
-        this.width = rect.width;
-        this.height = rect.height;
-        this.canvas.width = Math.max(1, Math.round(rect.width * dpr));
-        this.canvas.height = Math.max(1, Math.round(rect.height * dpr));
+        this.width = width;
+        this.height = height;
+        this.canvas.width = Math.max(1, Math.round(width * dpr));
+        this.canvas.height = Math.max(1, Math.round(height * dpr));
     }
 
     private readonly frame = (timeMs: number): void => {
