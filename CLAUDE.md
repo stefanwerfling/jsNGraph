@@ -43,6 +43,12 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   bar) — both plain DOM+CSS overlays positioned over the canvas, not canvas-drawn (crisper text,
   no charting dependency needed for one bar).
 - `util/EventEmitter.ts` — tiny typed pub/sub backing `NGraph.on`/`off`.
+- `rect/` — a secondary, standalone export: a DOM+SVG "rect element" diagram kit
+  (`RectBox` labeled block + mini-chart classes `Heatmap`/`BarStrip`/`FeatureColumn`/
+  `Sparkline`/`Timeline`, plus `RectArrow`/`RectPipeline`). Wiring-diagram style, deterministic
+  (`RectRandom`), inline-styled like the other DOM overlays — no stylesheet, zero deps. Not
+  canvas/graph-related; shares the package because consumers compose it alongside NGraph (see
+  `examples/explainer.html`). All exported from `index.ts`.
 
 ## Commands
 
@@ -55,8 +61,10 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   monitoring demo with theme/label toggles, simulated-failure/recover, a jittered load loop),
   `layered.html` (layered + curved edges with a live barycenter-`sweeps` slider and crossing
   counter), `radial.html` (hub-and-ring, agent/gateway, pulse/sublabel), `kinds.html` (every
-  node kind × shape × status × pulse as a static grid) and `api.html` (exercises every public
-  method: add/update/remove node+edge, get/setPositions, setTheme, setShowLabels).
+  node kind × shape × status × pulse as a static grid), `api.html` (exercises every public
+  method: add/update/remove node+edge, get/setPositions, setTheme, setShowLabels) and
+  `explainer.html` (a pan/zoom board documenting the library — each section a jsNGraph diagram,
+  plus a section built from the `rect/` kit).
 
 ## Conventions
 

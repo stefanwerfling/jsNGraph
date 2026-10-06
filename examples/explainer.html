@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — API explainer</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    html, body { height: 100%; overflow: hidden; }
+
+    #viewport {
+        position: absolute;
+        inset: 48px 0 0 0;
+        overflow: hidden;
+        cursor: grab;
+        background:
+            radial-gradient(circle at 20% 15%, rgba(122,162,255,0.06), transparent 40%),
+            radial-gradient(circle at 80% 80%, rgba(80,220,180,0.05), transparent 40%),
+            var(--bg);
+    }
+    #viewport.grabbing { cursor: grabbing; }
+
+    #board {
+        position: absolute;
+        top: 0; left: 0;
+        transform-origin: 0 0;
+        will-change: transform;
+    }
+    #board.animate { transition: transform 0.55s cubic-bezier(0.22, 0.61, 0.36, 1); }
+
+    .block {
+        position: absolute;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: rgba(20, 27, 44, 0.55);
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+        padding: 14px 16px 10px;
+    }
+    .block .kicker { flex: 0 0 auto; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; color: var(--accent); }
+    .block h2 { flex: 0 0 auto; margin: 2px 0 2px; font-size: 20px; color: #fff; }
+    .block p.desc { flex: 0 0 auto; margin: 0 0 8px; font-size: 13px; color: var(--text-dim); line-height: 1.45; max-width: 60ch; }
+    /* the diagram host takes only the space left under the heading, so nodes
+       stay inside the card instead of spilling past its bottom edge */
+    .block .graph { flex: 1 1 auto; min-height: 0; width: 100%; pointer-events: none; }
+    /* .graph is a flex item with a resolved pixel height, so the trio fills it
+       with height:100% (flex:1 wouldn't apply — .graph itself isn't a flexbox) */
+    .block .trio { display: flex; gap: 10px; height: 100%; min-height: 0; }
+    .block .trio .cell { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .block .trio .cell .cap { flex: 0 0 auto; font-size: 12px; color: var(--text); margin-bottom: 4px; }
+    .block .trio .cell .cap code { color: var(--accent); }
+    .block .trio .g { flex: 1 1 0; min-height: 0; min-width: 0; pointer-events: none; }
+
+    /* floating chrome */
+    .hud { position: absolute; z-index: 40; }
+    #hint {
+        top: 58px; left: 50%; transform: translateX(-50%);
+        font-size: 12px; color: var(--text-dim);
+        background: rgba(15,20,32,0.7); padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border);
+    }
+    #legend {
+        top: 58px; left: 14px;
+        display: flex; gap: 8px; flex-wrap: wrap;
+    }
+    #legend .chip, #zoombar .chip {
+        font-size: 11px; color: var(--text-dim);
+        background: rgba(26,34,54,0.8); border: 1px solid var(--border);
+        padding: 3px 8px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px;
+    }
+    #legend .dot { width: 9px; height: 9px; border-radius: 50%; }
+
+    #zoombar { top: 58px; right: 14px; display: flex; gap: 6px; }
+    #zoombar button {
+        background: var(--bg-soft); color: var(--text); border: 1px solid var(--border);
+        border-radius: 6px; width: 30px; height: 28px; font-size: 15px; cursor: pointer;
+    }
+    #zoombar button:hover { border-color: var(--accent); }
+
+    #tour {
+        left: 50%; bottom: 18px; transform: translateX(-50%);
+        max-width: min(960px, 94vw);
+        background: rgba(17, 23, 38, 0.92); backdrop-filter: blur(8px);
+        border: 1px solid var(--border); border-radius: 14px;
+        padding: 14px 16px;
+    }
+    #tour .head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+    #tour .head .label { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; color: var(--text-dim); }
+    #tour .head .title { font-size: 17px; color: #fff; font-weight: 600; }
+    #tour .head .count { margin-left: auto; font-size: 12px; color: var(--text-dim); }
+    #tour .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    #tour .chips button {
+        background: var(--bg-soft); color: var(--text); border: 1px solid var(--border);
+        border-radius: 8px; padding: 6px 11px; font: 12px system-ui, sans-serif; cursor: pointer;
+    }
+    #tour .chips button:hover { border-color: var(--accent); }
+    #tour .chips button.active { border-color: var(--accent); color: var(--accent); background: rgba(122,162,255,0.12); }
+    #tour .chips button .k {
+        display: inline-block; min-width: 18px; text-align: center; margin-right: 6px;
+        font-weight: 700; color: var(--accent);
+    }
+    #tour .nav { display: flex; gap: 8px; margin-left: 8px; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="monitoring.html">Monitoring</a>
+    <a href="layered.html">Layered flow</a>
+    <a href="radial.html">Radial</a>
+    <a href="kinds.html">Node gallery</a>
+    <a href="api.html">API playground</a>
+    <a href="explainer.html" class="active">Explainer</a>
+</nav>
+
+<div id="legend" class="hud">
+    <span class="chip"><span class="dot" style="background:#2fd27a"></span>ok</span>
+    <span class="chip"><span class="dot" style="background:#f5c451"></span>warning</span>
+    <span class="chip"><span class="dot" style="background:#ff6a6a"></span>critical</span>
+    <span class="chip">card = concept</span>
+    <span class="chip">pulse = entry point</span>
+</div>
+<div id="hint" class="hud">Drag to pan · scroll to zoom · ↑ ↓ to step</div>
+<div id="zoombar" class="hud">
+    <button id="zoom-in" title="Zoom in">+</button>
+    <button id="zoom-out" title="Zoom out">−</button>
+    <button id="zoom-fit" title="Fit all" style="width:auto;padding:0 10px;font-size:12px">fit</button>
+</div>
+
+<div id="viewport">
+    <div id="board"></div>
+</div>
+
+<div id="tour" class="hud">
+    <div class="head">
+        <span class="label">EXPLAINER</span>
+        <span class="title" id="tour-title">The jsNGraph API</span>
+        <span class="count" id="tour-count"></span>
+    </div>
+    <div class="chips" id="tour-chips"></div>
+</div>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+    const NG = JSNGraph.NGraph;
+    const {RectBox, RectPipeline, Heatmap, BarStrip, FeatureColumn, Sparkline, Timeline} = JSNGraph;
+    const board = document.getElementById('board');
+    const viewport = document.getElementById('viewport');
+
+    // ---- Board model: each block is a titled card hosting a jsNGraph canvas ----
+    // Positions are in board (world) coordinates; the whole board is pan/zoomed
+    // via one CSS transform, so every diagram scales together.
+    const BLOCKS = [
+        {id: 'arch',    x: 80,   y: 80,   w: 940,  h: 740, kicker: 'A · ARCHITECTURE', title: 'The NGraph class',
+         desc: 'One public class wires a canvas to a layout, a renderer and the interaction + overlay layers. Everything else is internal.'},
+        {id: 'api',     x: 1120, y: 80,   w: 1200, h: 860, kicker: 'B · PUBLIC API', title: 'Methods, by category',
+         desc: 'The full method surface as a hub-and-ring tree — data mutation, view, position persistence, events and lifecycle.'},
+        {id: 'model',   x: 2420, y: 80,   w: 1040, h: 800, kicker: 'C · DATA MODEL', title: 'Node & edge input shapes',
+         desc: 'What you pass to setData / addNode / addEdge. Gateway-coloured fields are required, the rest optional.'},
+        {id: 'layouts', x: 80,   y: 1020, w: 1340, h: 680, kicker: 'D · LAYOUT MODES', title: 'force · radial · layered',
+         desc: 'The same data, three arrangements — chosen with layoutMode. Radial uses node.ring; layered uses it as the column.'},
+        {id: 'events',  x: 1520, y: 1020, w: 1020, h: 720, kicker: 'E · EVENT FLOW', title: 'From pointer to callback',
+         desc: 'Manual canvas hit-testing turns a pointer move/click into hover/selection, emitted to your on() listeners.'},
+        {id: 'kinds',   x: 2640, y: 1020, w: 820,  h: 680, kicker: 'F · VISUALS', title: 'Node kinds & status',
+         desc: 'Nine device/role glyphs and four health colours, drawn by hand on the canvas — no icon fonts or images.'},
+        {id: 'rect',    x: 80,   y: 1840, w: 1900, h: 520, kicker: 'G · DIAGRAM ELEMENTS', title: 'Rect-element kit',
+         desc: 'A reusable set of labeled rectangle blocks with inner mini-charts — heatmap matrix, bar strip, feature-vector column, sparkline and a status timeline — wired by arrow connectors. Exported from the library (RectBox / Heatmap / …); pure DOM + SVG, scales crisply with the board.'}
+    ];
+
+    const graphs = [];
+    const hostOf = {};
+
+    function makeBlock(b) {
+        const el = document.createElement('div');
+        el.className = 'block';
+        el.style.left = b.x + 'px';
+        el.style.top = b.y + 'px';
+        el.style.width = b.w + 'px';
+        el.style.height = b.h + 'px';
+        el.innerHTML =
+            '<div class="kicker">' + b.kicker + '</div>' +
+            '<h2>' + b.title + '</h2>' +
+            '<p class="desc">' + b.desc + '</p>';
+        const host = document.createElement('div');
+        host.className = 'graph';
+        el.appendChild(host);
+        board.appendChild(el);
+        hostOf[b.id] = {block: el, host};
+        return host;
+    }
+
+    function trio(el) {
+        const wrap = document.createElement('div');
+        wrap.className = 'trio';
+        const cells = {};
+        [['force', "layoutMode:'force'"], ['radial', "layoutMode:'radial'"], ['layered', "layoutMode:'layered'"]].forEach(([key, cap]) => {
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            cell.innerHTML = '<div class="cap"><code>' + cap + '</code></div>';
+            const g = document.createElement('div');
+            g.className = 'g';
+            cell.appendChild(g);
+            wrap.appendChild(cell);
+            cells[key] = g;
+        });
+        el.appendChild(wrap);
+        return cells;
+    }
+
+    // ---------- diagram data ----------
+    function buildArch(host) {
+        // Card nodes + layered columns: the label sits INSIDE each node, so
+        // there are no free-floating labels to collide — reads cleanly.
+        const g = new NG(host, {theme: 'dark', layoutMode: 'layered', edgeStyle: 'curve',
+            draggable: false, detailPanel: false, layeredLayout: {marginX: 180, maxSpacing: 92, easing: 1}});
+        g.setData([
+            {id: 'ngraph', label: 'NGraph', kind: 'gateway', ring: 0, shape: 'card', pulse: true, sublabel: 'public class'},
+            {id: 'canvas', label: 'Canvas', kind: 'generic', ring: 1, shape: 'card', sublabel: '2D context'},
+            {id: 'layout', label: 'Layout', kind: 'agent', ring: 1, shape: 'card', sublabel: 'force / radial / layered'},
+            {id: 'renderer', label: 'CanvasRenderer', kind: 'server', ring: 1, shape: 'card', sublabel: 'draws each frame'},
+            {id: 'interaction', label: 'Interaction', kind: 'agent', ring: 1, shape: 'card', sublabel: 'hit-testing'},
+            {id: 'tooltip', label: 'Tooltip', kind: 'generic', ring: 1, shape: 'card', sublabel: 'hover overlay'},
+            {id: 'panel', label: 'NodePanel', kind: 'generic', ring: 1, shape: 'card', sublabel: 'click overlay'},
+            {id: 'emitter', label: 'EventEmitter', kind: 'generic', ring: 1, shape: 'card', sublabel: 'on / off'}
+        ], [
+            {id: 'a1', source: 'ngraph', target: 'canvas', load: 0.5},
+            {id: 'a2', source: 'ngraph', target: 'layout', load: 0.7},
+            {id: 'a3', source: 'ngraph', target: 'renderer', load: 0.6},
+            {id: 'a4', source: 'ngraph', target: 'interaction', load: 0.5},
+            {id: 'a5', source: 'ngraph', target: 'tooltip', load: 0.3},
+            {id: 'a6', source: 'ngraph', target: 'panel', load: 0.3},
+            {id: 'a7', source: 'ngraph', target: 'emitter', load: 0.4}
+        ]);
+        return g;
+    }
+
+    function buildApi(host) {
+        // Layered tree of card nodes: instance → category → method. Cards keep
+        // their text inside, so even 14 methods in one column stay readable.
+        const g = new NG(host, {theme: 'dark', layoutMode: 'layered', edgeStyle: 'curve',
+            draggable: false, detailPanel: false, layeredLayout: {sweeps: 6, marginX: 230, maxSpacing: 62, easing: 1}});
+        const cats = [
+            ['Data', ['setData', 'addNode', 'updateNode', 'removeNode', 'addEdge', 'updateEdge', 'removeEdge']],
+            ['View', ['setTheme', 'setShowLabels']],
+            ['Positions', ['getPositions', 'setPositions']],
+            ['Events', ['on', 'off']],
+            ['Lifecycle', ['destroy']]
+        ];
+        const nodes = [{id: 'inst', label: 'graph', kind: 'gateway', ring: 0, shape: 'card', pulse: true, sublabel: 'new NGraph(el, opts)'}];
+        const edges = [];
+        cats.forEach(([cat, methods], ci) => {
+            const cid = 'cat-' + ci;
+            nodes.push({id: cid, label: cat, kind: 'gateway', ring: 1, shape: 'card', sublabel: methods.length + ' methods'});
+            edges.push({id: 'e-inst-' + ci, source: 'inst', target: cid, load: 0.6});
+            methods.forEach((m, mi) => {
+                const mid = 'm-' + ci + '-' + mi;
+                nodes.push({id: mid, label: m + '()', kind: 'generic', ring: 2, shape: 'card', sublabel: cat.toLowerCase()});
+                edges.push({id: 'e-' + ci + '-' + mi, source: cid, target: mid, load: 0.4});
+            });
+        });
+        g.setData(nodes, edges);
+        return g;
+    }
+
+    // Layered card tree: type (col 0) → required fields (col 1) → optional
+    // fields (col 2). Splitting the fields across two columns keeps them from
+    // piling into one tall stack, and reads as "required are closer".
+    function buildFieldModel(host, centerId, centerLabel, centerKind, required, optional) {
+        const g = new NG(host, {theme: 'dark', layoutMode: 'layered', edgeStyle: 'curve',
+            draggable: false, detailPanel: false, layeredLayout: {marginX: 150, maxSpacing: 60, easing: 1}});
+        const nodes = [{id: centerId, label: centerLabel, kind: centerKind, ring: 0, shape: 'card', pulse: true}];
+        const edges = [];
+        required.forEach(([id, label], i) => {
+            nodes.push({id, label, kind: 'gateway', ring: 1, shape: 'card', sublabel: 'required'});
+            edges.push({id: centerId + '-r' + i, source: centerId, target: id, load: 0.5});
+        });
+        optional.forEach(([id, label], i) => {
+            nodes.push({id, label, kind: 'generic', ring: 2, shape: 'card', sublabel: 'optional'});
+            edges.push({id: centerId + '-o' + i, source: centerId, target: id, load: 0.3});
+        });
+        g.setData(nodes, edges);
+        return g;
+    }
+
+    function buildModel(host) {
+        return buildFieldModel(host, 'node', 'NGraphNodeData', 'agent',
+            [['n-id', 'id'], ['n-label', 'label'], ['n-kind', 'kind']],
+            [['n-status', 'status'], ['n-load', 'load'], ['n-ip', 'ip'], ['n-meta', 'meta'],
+             ['n-sub', 'sublabel'], ['n-pulse', 'pulse'], ['n-ring', 'ring'], ['n-shape', 'shape'],
+             ['n-xy', 'x / y'], ['n-fixed', 'fixed']]);
+    }
+
+    function buildEdgeModel(host) {
+        return buildFieldModel(host, 'edge', 'NGraphEdgeData', 'router',
+            [['e-id', 'id'], ['e-src', 'source'], ['e-tgt', 'target']],
+            [['e-load', 'load'], ['e-anim', 'animated']]);
+    }
+
+    function buildLayoutDemo(host, mode) {
+        const opts = {theme: 'dark', layoutMode: mode, draggable: false, detailPanel: false, showLabels: false};
+        // snap radial/layered to their deterministic slots in one tick (force
+        // stays physics-based — it's the point of that cell)
+        if (mode === 'radial') opts.radialLayout = {easing: 1};
+        if (mode === 'layered') { opts.edgeStyle = 'curve'; opts.layeredLayout = {easing: 1}; }
+        const g = new NG(host, opts);
+        if (mode === 'force') {
+            g.setData([
+                {id: 'h', label: 'hub', kind: 'router', status: 'ok'},
+                {id: 'n1', label: 'n1', kind: 'server', status: 'ok'},
+                {id: 'n2', label: 'n2', kind: 'server', status: 'warning'},
+                {id: 'n3', label: 'n3', kind: 'database', status: 'ok'},
+                {id: 'n4', label: 'n4', kind: 'pc', status: 'critical'}
+            ], [
+                {id: 'f1', source: 'h', target: 'n1', load: 0.5}, {id: 'f2', source: 'h', target: 'n2', load: 0.7},
+                {id: 'f3', source: 'h', target: 'n3', load: 0.4}, {id: 'f4', source: 'n1', target: 'n4', load: 0.6}
+            ]);
+        } else if (mode === 'radial') {
+            g.setData([
+                {id: 'h', label: 'hub', kind: 'gateway', ring: 0, pulse: true},
+                {id: 'n1', label: 'a', kind: 'agent', ring: 1, status: 'ok'},
+                {id: 'n2', label: 'b', kind: 'agent', ring: 1, status: 'warning'},
+                {id: 'n3', label: 'c', kind: 'agent', ring: 1, status: 'ok'},
+                {id: 'n4', label: 'd', kind: 'agent', ring: 1, status: 'critical'}
+            ], [
+                {id: 'r1', source: 'h', target: 'n1', load: 0.5}, {id: 'r2', source: 'h', target: 'n2', load: 0.6},
+                {id: 'r3', source: 'h', target: 'n3', load: 0.4}, {id: 'r4', source: 'h', target: 'n4', load: 0.7}
+            ]);
+        } else {
+            g.setData([
+                {id: 'a', label: 'in', kind: 'gateway', ring: 0},
+                {id: 'b1', label: 'p', kind: 'agent', ring: 1, status: 'ok'}, {id: 'b2', label: 'q', kind: 'agent', ring: 1, status: 'ok'},
+                {id: 'c1', label: 'x', kind: 'server', ring: 2, status: 'warning'}, {id: 'c2', label: 'y', kind: 'database', ring: 2, status: 'ok'}
+            ], [
+                {id: 'l1', source: 'a', target: 'b1', load: 0.5}, {id: 'l2', source: 'a', target: 'b2', load: 0.5},
+                {id: 'l3', source: 'b1', target: 'c2', load: 0.6}, {id: 'l4', source: 'b2', target: 'c1', load: 0.6}
+            ]);
+        }
+        return g;
+    }
+
+    function buildEvents(host) {
+        const g = new NG(host, {theme: 'dark', layoutMode: 'layered', edgeStyle: 'curve',
+            draggable: false, detailPanel: false, layeredLayout: {sweeps: 6, marginX: 160, maxSpacing: 120, easing: 1}});
+        g.setData([
+            {id: 'pointer', label: 'pointer', kind: 'generic', ring: 0, shape: 'card', sublabel: 'move / click', pulse: true},
+            {id: 'hit', label: 'Interaction', kind: 'agent', ring: 1, shape: 'card', sublabel: 'circle hit-test'},
+            {id: 'hover', label: 'hover', kind: 'generic', ring: 2, shape: 'card', sublabel: 'tooltip'},
+            {id: 'select', label: 'select', kind: 'generic', ring: 2, shape: 'card', sublabel: 'open panel'},
+            {id: 'emit', label: 'EventEmitter', kind: 'gateway', ring: 3, shape: 'card', sublabel: 'typed pub/sub'},
+            {id: 'cbh', label: "on('nodeHover')", kind: 'generic', ring: 4, shape: 'card', status: 'ok'},
+            {id: 'cbc', label: "on('nodeClick')", kind: 'generic', ring: 4, shape: 'card', status: 'ok'}
+        ], [
+            {id: 'v1', source: 'pointer', target: 'hit', load: 0.6},
+            {id: 'v2', source: 'hit', target: 'hover', load: 0.5},
+            {id: 'v3', source: 'hit', target: 'select', load: 0.5},
+            {id: 'v4', source: 'hover', target: 'emit', load: 0.4},
+            {id: 'v5', source: 'select', target: 'emit', load: 0.4},
+            {id: 'v6', source: 'emit', target: 'cbh', load: 0.5},
+            {id: 'v7', source: 'emit', target: 'cbc', load: 0.5}
+        ]);
+        return g;
+    }
+
+    function buildKinds(host, w, h) {
+        const g = new NG(host, {theme: 'dark', draggable: false, detailPanel: false});
+        const KINDS = ['pc', 'laptop', 'tablet', 'server', 'database', 'router', 'agent', 'gateway', 'generic'];
+        const STATUSES = ['ok', 'warning', 'critical', 'down'];
+        const cols = 5;
+        const x0 = 70, y0 = 60, dx = (w - 120) / (cols - 1), dy = 92;
+        const nodes = [];
+        KINDS.forEach((kind, i) => {
+            nodes.push({id: 'k-' + kind, label: kind, kind, status: 'ok', fixed: true,
+                x: x0 + (i % cols) * dx, y: y0 + Math.floor(i / cols) * dy});
+        });
+        STATUSES.forEach((status, i) => {
+            nodes.push({id: 's-' + status, label: status, kind: 'server', status, fixed: true,
+                x: x0 + i * dx, y: y0 + 2 * dy + 30});
+        });
+        g.setData(nodes, []);
+        return g;
+    }
+
+    // ---------- build every block ----------
+    BLOCKS.forEach((b) => {
+        const host = makeBlock(b);
+        if (b.id === 'arch') graphs.push(buildArch(host));
+        else if (b.id === 'api') graphs.push(buildApi(host));
+        else if (b.id === 'model') {
+            // two radials sharing the block
+            const wrap = document.createElement('div');
+            wrap.className = 'trio';
+            const g1 = document.createElement('div'); g1.className = 'g';
+            const g2 = document.createElement('div'); g2.className = 'g';
+            wrap.appendChild(g1); wrap.appendChild(g2);
+            host.appendChild(wrap);
+            graphs.push(buildModel(g1));
+            graphs.push(buildEdgeModel(g2));
+        }
+        else if (b.id === 'layouts') {
+            const cells = trio(host);
+            graphs.push(buildLayoutDemo(cells.force, 'force'));
+            graphs.push(buildLayoutDemo(cells.radial, 'radial'));
+            graphs.push(buildLayoutDemo(cells.layered, 'layered'));
+        }
+        else if (b.id === 'events') graphs.push(buildEvents(host));
+        else if (b.id === 'kinds') graphs.push(buildKinds(host, b.w, b.h));
+        else if (b.id === 'rect') buildRect(host);
+    });
+
+    // showcase every rect-kit element type in one wiring-diagram pipeline,
+    // all built from the library's exported RectBox / chart classes
+    function buildRect(host) {
+        host.style.pointerEvents = 'none';
+        host.style.display = 'flex';
+        host.style.alignItems = 'center';
+        host.style.paddingTop = '8px';
+
+        const col = document.createElement('div');
+        col.style.cssText = 'display:flex; flex-direction:column; gap:14px;';
+
+        col.appendChild(new RectPipeline([
+            new RectBox({badge: 'IN', title: 'Signal', subtitle: 'per channel', dashed: true,
+                body: new Heatmap({rows: 6, cols: 12, accent: 'blue', seed: 3}).render()}),
+            new RectBox({title: 'Threshold', subtitle: 'crossings', accent: 'green',
+                body: new Heatmap({rows: 6, cols: 10, accent: 'green', seed: 8}).render()}),
+            new RectBox({title: 'Binning', subtitle: 'feature extraction', dashed: true, accent: 'amber',
+                body: new BarStrip({count: 14, accent: 'amber', seed: 21, height: 54}).render()}),
+            new RectBox({title: 'Features', subtitle: 'vector', accent: 'cyan',
+                body: new FeatureColumn({rows: 11, accent: 'cyan', seed: 4}).render()}),
+            new RectBox({title: 'Decoder', subtitle: 'linear readout', accent: 'violet',
+                body: new Sparkline({count: 26, accent: 'violet', seed: 14}).render()}),
+            new RectBox({badge: 'OUT', title: 'Cursor', subtitle: 'x · y velocity',
+                body: new Sparkline({count: 26, accent: 'blue', seed: 31, width: 96}).render()})
+        ], {gap: 34}).render());
+
+        const strip = new RectBox({title: 'Decoder lifetime', subtitle: 'daily recalibration · red = drift',
+            body: new Timeline({count: 54, accent: 'green', seed: 42, height: 18}).render()}).render();
+        strip.style.alignSelf = 'flex-start';
+        col.appendChild(strip);
+
+        host.appendChild(col);
+    }
+
+    // ---------- pan / zoom ----------
+    const BOARD_W = Math.max(...BLOCKS.map((b) => b.x + b.w)) + 120;
+    const BOARD_H = Math.max(...BLOCKS.map((b) => b.y + b.h)) + 120;
+    board.style.width = BOARD_W + 'px';
+    board.style.height = BOARD_H + 'px';
+
+    const view = {s: 1, tx: 0, ty: 0};
+    const MIN_S = 0.12, MAX_S = 2.4;
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+    function apply(animate) {
+        board.classList.toggle('animate', !!animate);
+        board.style.transform = 'translate(' + view.tx + 'px,' + view.ty + 'px) scale(' + view.s + ')';
+    }
+
+    function fitRect(x, y, w, h, pad, animate) {
+        const vw = viewport.clientWidth, vh = viewport.clientHeight;
+        pad = pad == null ? 60 : pad;
+        const s = clamp(Math.min((vw - 2 * pad) / w, (vh - 2 * pad) / h), MIN_S, MAX_S);
+        view.s = s;
+        view.tx = vw / 2 - s * (x + w / 2);
+        view.ty = vh / 2 - s * (y + h / 2);
+        apply(animate);
+    }
+
+    function fitAll(animate) { fitRect(0, 0, BOARD_W, BOARD_H, 40, animate); }
+    function fitBlock(b, animate) { fitRect(b.x, b.y, b.w, b.h, 70, animate); }
+
+    function zoomAt(cx, cy, factor) {
+        const ns = clamp(view.s * factor, MIN_S, MAX_S);
+        view.tx = cx - ((cx - view.tx) / view.s) * ns;
+        view.ty = cy - ((cy - view.ty) / view.s) * ns;
+        view.s = ns;
+        apply(false);
+    }
+
+    viewport.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const r = viewport.getBoundingClientRect();
+        zoomAt(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.12 : 1 / 1.12);
+    }, {passive: false});
+
+    let dragging = false, lastX = 0, lastY = 0, moved = false;
+    viewport.addEventListener('pointerdown', (e) => {
+        dragging = true; moved = false; lastX = e.clientX; lastY = e.clientY;
+        viewport.classList.add('grabbing');
+        viewport.setPointerCapture(e.pointerId);
+    });
+    viewport.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const dx = e.clientX - lastX, dy = e.clientY - lastY;
+        if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+        view.tx += dx; view.ty += dy; lastX = e.clientX; lastY = e.clientY;
+        apply(false);
+    });
+    const endDrag = () => { dragging = false; viewport.classList.remove('grabbing'); };
+    viewport.addEventListener('pointerup', endDrag);
+    viewport.addEventListener('pointercancel', endDrag);
+
+    document.getElementById('zoom-in').addEventListener('click', () => zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, 1.25));
+    document.getElementById('zoom-out').addEventListener('click', () => zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, 1 / 1.25));
+    document.getElementById('zoom-fit').addEventListener('click', () => { step = -1; syncChips(); fitAll(true); });
+
+    // ---------- guided tour / chips ----------
+    const chipsEl = document.getElementById('tour-chips');
+    const titleEl = document.getElementById('tour-title');
+    const countEl = document.getElementById('tour-count');
+    let step = -1; // -1 = whole canvas
+
+    BLOCKS.forEach((b, i) => {
+        const btn = document.createElement('button');
+        btn.innerHTML = '<span class="k">' + (i + 1) + '</span>' + b.title;
+        btn.addEventListener('click', () => goTo(i));
+        chipsEl.appendChild(btn);
+    });
+    const allBtn = document.createElement('button');
+    allBtn.innerHTML = '<span class="k">⤢</span>Whole canvas';
+    allBtn.addEventListener('click', () => { step = -1; syncChips(); fitAll(true); });
+    chipsEl.appendChild(allBtn);
+
+    function syncChips() {
+        [...chipsEl.children].forEach((c, i) => c.classList.toggle('active', i === step));
+        if (step < 0) { titleEl.textContent = 'The jsNGraph API'; countEl.textContent = BLOCKS.length + ' sections'; }
+        else { titleEl.textContent = BLOCKS[step].title; countEl.textContent = (step + 1) + ' / ' + BLOCKS.length; }
+    }
+
+    function goTo(i) {
+        step = clamp(i, 0, BLOCKS.length - 1);
+        syncChips();
+        fitBlock(BLOCKS[step], true);
+    }
+
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowRight' || e.key === 'PageDown') {
+            e.preventDefault(); goTo(step < 0 ? 0 : step + 1);
+        } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'PageUp') {
+            e.preventDefault();
+            if (step <= 0) { step = -1; syncChips(); fitAll(true); } else goTo(step - 1);
+        } else if (e.key === 'Home') { step = -1; syncChips(); fitAll(true); }
+    });
+
+    window.addEventListener('resize', () => { if (step < 0) fitAll(false); else fitBlock(BLOCKS[step], false); });
+
+    // initial view — block rects are fixed, so no need to re-fit after settle
+    syncChips();
+    fitAll(false);
+</script>
+</body>
+</html>
