@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — layered workflow</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="monitoring.html">Monitoring</a>
+    <a href="layered.html" class="active">Layered flow</a>
+    <a href="radial.html">Radial</a>
+    <a href="kinds.html">Node gallery</a>
+    <a href="api.html">API playground</a>
+</nav>
+
+<div class="toolbar tl">
+    <label>
+        barycenter sweeps
+        <input type="range" id="sweeps" min="1" max="8" step="1" value="4">
+        <strong id="sweeps-val">4</strong>
+    </label>
+    <span id="crossings" style="font-size:12px;color:var(--text-dim)">crossings: –</span>
+    <button id="toggle-theme">Toggle theme</button>
+    <button id="toggle-shape">Toggle card/circle</button>
+</div>
+
+<div id="graph" class="graph-stage"></div>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+    // node.ring = COLUMN (0 = leftmost). Cross-wired on purpose so the
+    // barycenter sweeps have crossings to resolve — slide "sweeps" to watch
+    // the crossing counter drop as the back-and-forth ordering kicks in.
+    let shape = 'card';
+
+    function makeNodes() {
+        return [
+            {id: 'trigger', label: 'Webhook', kind: 'gateway', status: 'ok', ring: 0, shape,
+             sublabel: 'trigger', meta: {type: 'HTTP', path: '/ingest'}, pulse: true},
+
+            {id: 'parse-a', label: 'Parse JSON', kind: 'agent', status: 'ok', ring: 1, shape, sublabel: 'transform'},
+            {id: 'parse-b', label: 'Validate', kind: 'agent', status: 'warning', ring: 1, shape, sublabel: '2 warnings'},
+            {id: 'parse-c', label: 'Enrich', kind: 'agent', status: 'ok', ring: 1, shape, sublabel: 'geo + ua'},
+
+            {id: 'route-a', label: 'Classifier', kind: 'agent', status: 'ok', ring: 2, shape, sublabel: 'LLM', pulse: true},
+            {id: 'route-b', label: 'Dedupe', kind: 'server', status: 'ok', ring: 2, shape, sublabel: 'redis'},
+            {id: 'route-c', label: 'Score', kind: 'agent', status: 'ok', ring: 2, shape, sublabel: 'model v3'},
+
+            {id: 'out-a', label: 'Postgres', kind: 'database', status: 'ok', ring: 3, shape, sublabel: 'events'},
+            {id: 'out-b', label: 'Alert', kind: 'server', status: 'critical', ring: 3, shape, sublabel: 'pagerduty'},
+            {id: 'out-c', label: 'Archive', kind: 'database', status: 'ok', ring: 3, shape, sublabel: 's3'}
+        ];
+    }
+
+    const edges = [
+        {id: 'a1', source: 'trigger', target: 'parse-a', load: 0.6},
+        {id: 'a2', source: 'trigger', target: 'parse-b', load: 0.4},
+        {id: 'a3', source: 'trigger', target: 'parse-c', load: 0.5},
+
+        {id: 'b1', source: 'parse-a', target: 'route-c', load: 0.7},
+        {id: 'b2', source: 'parse-b', target: 'route-a', load: 0.5},
+        {id: 'b3', source: 'parse-c', target: 'route-b', load: 0.6},
+        {id: 'b4', source: 'parse-a', target: 'route-a', load: 0.3},
+        {id: 'b5', source: 'parse-c', target: 'route-c', load: 0.45},
+
+        {id: 'c1', source: 'route-a', target: 'out-b', load: 0.8},
+        {id: 'c2', source: 'route-b', target: 'out-a', load: 0.5},
+        {id: 'c3', source: 'route-c', target: 'out-c', load: 0.4},
+        {id: 'c4', source: 'route-a', target: 'out-a', load: 0.35},
+        {id: 'c5', source: 'route-c', target: 'out-a', load: 0.3}
+    ];
+
+    const ringOf = {};
+    let dark = true;
+    let graph = null;
+
+    function build(sweeps) {
+        if (graph) graph.destroy();
+        const nodes = makeNodes();
+        nodes.forEach((n) => { ringOf[n.id] = n.ring; });
+        graph = new JSNGraph.NGraph(document.getElementById('graph'), {
+            theme: dark ? 'dark' : 'light',
+            layoutMode: 'layered',
+            edgeStyle: 'curve',
+            layeredLayout: {sweeps}
+        });
+        graph.setData(nodes, edges);
+    }
+
+    // Count how many edges spanning the same adjacent columns cross, read
+    // straight from the live layout via getPositions().
+    function countCrossings() {
+        if (!graph) return 0;
+        const pos = graph.getPositions();
+        let count = 0;
+        for (let i = 0; i < edges.length; i++) {
+            for (let j = i + 1; j < edges.length; j++) {
+                const a = edges[i], b = edges[j];
+                const aMin = Math.min(ringOf[a.source], ringOf[a.target]);
+                const aMax = Math.max(ringOf[a.source], ringOf[a.target]);
+                const bMin = Math.min(ringOf[b.source], ringOf[b.target]);
+                const bMax = Math.max(ringOf[b.source], ringOf[b.target]);
+                if (aMin !== bMin || aMax !== bMax) continue;
+                const aL = ringOf[a.source] < ringOf[a.target] ? a.source : a.target;
+                const aR = ringOf[a.source] < ringOf[a.target] ? a.target : a.source;
+                const bL = ringOf[b.source] < ringOf[b.target] ? b.source : b.target;
+                const bR = ringOf[b.source] < ringOf[b.target] ? b.target : b.source;
+                if ((pos[aL].y - pos[bL].y) * (pos[aR].y - pos[bR].y) < 0) count++;
+            }
+        }
+        return count;
+    }
+
+    const sweepsEl = document.getElementById('sweeps');
+    const sweepsVal = document.getElementById('sweeps-val');
+    sweepsEl.addEventListener('input', () => {
+        sweepsVal.textContent = sweepsEl.value;
+        build(parseInt(sweepsEl.value, 10));
+    });
+
+    document.getElementById('toggle-theme').addEventListener('click', () => {
+        dark = !dark;
+        graph.setTheme(dark ? 'dark' : 'light');
+        document.body.style.background = dark ? '#0f1420' : '#f4f6fb';
+    });
+
+    document.getElementById('toggle-shape').addEventListener('click', () => {
+        shape = shape === 'card' ? 'circle' : 'card';
+        build(parseInt(sweepsEl.value, 10));
+    });
+
+    build(4);
+    setInterval(() => {
+        document.getElementById('crossings').textContent = 'crossings: ' + countCrossings();
+    }, 500);
+</script>
+</body>
+</html>

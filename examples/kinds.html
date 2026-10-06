@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — node gallery</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="monitoring.html">Monitoring</a>
+    <a href="layered.html">Layered flow</a>
+    <a href="radial.html">Radial</a>
+    <a href="kinds.html" class="active">Node gallery</a>
+    <a href="api.html">API playground</a>
+</nav>
+
+<div class="toolbar tl">
+    <button id="toggle-theme">Toggle theme</button>
+    <button id="toggle-labels">Toggle labels</button>
+    <span style="font-size:12px;color:var(--text-dim)">rows: card kinds · circle kinds · statuses · pulse</span>
+</div>
+
+<div id="graph" class="graph-stage"></div>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+    const KINDS = ['pc', 'laptop', 'tablet', 'server', 'database', 'router', 'agent', 'gateway', 'generic'];
+    const STATUSES = ['ok', 'warning', 'critical', 'down'];
+
+    const stage = document.getElementById('graph');
+
+    function buildNodes() {
+        const w = stage.clientWidth || 1200;
+        const colGap = Math.min(150, (w - 140) / Math.max(KINDS.length - 1, 1));
+        const x0 = 90;
+        const nodes = [];
+        const rowY = {cards: 90, circles: 230, status: 360, pulse: 470};
+
+        // Row 1 — every kind as a card
+        KINDS.forEach((kind, i) => nodes.push({
+            id: 'card-' + kind, label: kind, kind, status: 'ok', shape: 'card',
+            sublabel: 'card', load: 0.5, ring: 0, fixed: true, x: x0 + i * colGap, y: rowY.cards
+        }));
+
+        // Row 2 — every kind as a circle
+        KINDS.forEach((kind, i) => nodes.push({
+            id: 'dot-' + kind, label: kind, kind, status: 'ok', shape: 'circle',
+            load: 0.5, ring: 0, fixed: true, x: x0 + i * colGap, y: rowY.circles
+        }));
+
+        // Row 3 — the four statuses on one kind
+        STATUSES.forEach((status, i) => nodes.push({
+            id: 'st-' + status, label: status, kind: 'server', status, shape: 'circle',
+            load: status === 'down' ? 0 : 0.6, ring: 0, fixed: true, x: x0 + i * colGap, y: rowY.status
+        }));
+
+        // Row 4 — pulse glow, one per status colour
+        STATUSES.forEach((status, i) => nodes.push({
+            id: 'pl-' + status, label: 'pulse ' + status, kind: 'agent', status, shape: 'circle',
+            pulse: true, load: 0.6, ring: 0, fixed: true, x: x0 + i * colGap, y: rowY.pulse
+        }));
+
+        return nodes;
+    }
+
+    let dark = true;
+    const graph = new JSNGraph.NGraph(stage, {theme: 'dark', detailPanel: true});
+    graph.setData(buildNodes(), []);
+
+    let labels = true;
+    document.getElementById('toggle-theme').addEventListener('click', () => {
+        dark = !dark;
+        graph.setTheme(dark ? 'dark' : 'light');
+        document.body.style.background = dark ? '#0f1420' : '#f4f6fb';
+    });
+    document.getElementById('toggle-labels').addEventListener('click', () => {
+        labels = !labels;
+        graph.setShowLabels(labels);
+    });
+
+    // Re-grid on resize so the gallery stays spread across the viewport.
+    let t = null;
+    window.addEventListener('resize', () => {
+        clearTimeout(t);
+        t = setTimeout(() => graph.setData(buildNodes(), []), 150);
+    });
+</script>
+</body>
+</html>

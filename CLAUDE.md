@@ -49,9 +49,14 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
 - `npm run dev` — `tsup --watch`. `npm run build` — `dist/index.{js,cjs,d.ts}` (npm) +
   `dist/jsngraph.global.js` (IIFE, `window.JSNGraph`).
 - `npm run typecheck` — `tsc --noEmit`. `npm test` — Vitest (`test/**/*.test.ts`).
-- `examples/index.html` — open directly in a browser after `npm run build` (references
-  `../dist/jsngraph.global.js`, no bundler needed) for a live demo with theme/label toggles,
-  a simulated-failure button, and a `setInterval` load-jitter loop for the "live monitoring" feel.
+- `examples/` — open any page directly in a browser after `npm run build` (each references
+  `../dist/jsngraph.global.js`, no bundler needed; shared chrome in `shared.css`).
+  `index.html` is a gallery hub linking to: `monitoring.html` (force layout, the network-
+  monitoring demo with theme/label toggles, simulated-failure/recover, a jittered load loop),
+  `layered.html` (layered + curved edges with a live barycenter-`sweeps` slider and crossing
+  counter), `radial.html` (hub-and-ring, agent/gateway, pulse/sublabel), `kinds.html` (every
+  node kind × shape × status × pulse as a static grid) and `api.html` (exercises every public
+  method: add/update/remove node+edge, get/setPositions, setTheme, setShowLabels).
 
 ## Conventions
 
@@ -67,6 +72,12 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
 - `layout/RadialLayout.ts` — deterministic hub-and-ring layout (`layoutMode: 'radial'`,
   `node.ring`: 0 = center); same `tick()` interface as ForceLayout, eases nodes to fixed
   slots so the picture never drifts (built for consumers like nornen's agent-flow view).
+- `layout/LayeredLayout.ts` — Sugiyama-style columns (`layoutMode: 'layered'`, `node.ring` =
+  column, 0 = left). Crossing reduction is an iterative barycenter sweep that alternates
+  forward/backward across the columns (`sweeps` option, default 4) over an adjacency map;
+  nodes with no neighbor in the reference column hold their current slot. `edgeStyle: 'curve'`
+  draws the workflow-style beziers. See `test/LayeredLayout.test.ts` for the multi-sweep
+  crossing-reduction case.
 - Node `sublabel` (second label line), `pulse` (animated status-color glow ring),
   kinds `agent` (robot head) + `gateway` (hub hexagon).
 - `getPositions()`/`setPositions()` — dragged positions are now persistable.

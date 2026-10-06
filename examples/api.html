@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — API playground</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="monitoring.html">Monitoring</a>
+    <a href="layered.html">Layered flow</a>
+    <a href="radial.html">Radial</a>
+    <a href="kinds.html">Node gallery</a>
+    <a href="api.html" class="active">API playground</a>
+</nav>
+
+<div class="toolbar tl">
+    <button id="add-node">addNode</button>
+    <button id="update-node">updateNode</button>
+    <button id="remove-node">removeNode</button>
+    <button id="add-edge">addEdge</button>
+    <button id="remove-edge">removeEdge</button>
+    <button id="save-pos">getPositions</button>
+    <button id="scatter">scatter</button>
+    <button id="restore-pos">setPositions</button>
+    <button id="theme">setTheme</button>
+    <button id="labels">setShowLabels</button>
+    <button id="reset">setData (reset)</button>
+</div>
+
+<div id="graph" class="graph-stage"></div>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+    const KINDS = ['pc', 'laptop', 'server', 'database', 'router', 'agent', 'gateway', 'generic'];
+    const STATUSES = ['ok', 'warning', 'critical', 'down'];
+    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+    function seed() {
+        return {
+            nodes: [
+                {id: 'core', label: 'Core', kind: 'router', status: 'ok', load: 0.4, ip: '10.0.0.1', fixed: true},
+                {id: 'n1', label: 'Server 1', kind: 'server', status: 'ok', load: 0.5, ip: '10.0.1.1'},
+                {id: 'n2', label: 'Server 2', kind: 'server', status: 'warning', load: 0.8, ip: '10.0.1.2'},
+                {id: 'n3', label: 'DB', kind: 'database', status: 'ok', load: 0.3, ip: '10.0.2.1'}
+            ],
+            edges: [
+                {id: 'e-core-n1', source: 'core', target: 'n1', load: 0.5},
+                {id: 'e-core-n2', source: 'core', target: 'n2', load: 0.8},
+                {id: 'e-n1-n3', source: 'n1', target: 'n3', load: 0.3}
+            ]
+        };
+    }
+
+    let dark = true;
+    let labels = true;
+    let counter = 0;
+    let saved = null;
+
+    const graph = new JSNGraph.NGraph(document.getElementById('graph'), {theme: 'dark', draggable: true});
+    let state = seed();
+    graph.setData(state.nodes, state.edges);
+    graph.on('nodeClick', (n) => console.log('[api] click', n && n.id));
+
+    const log = (msg) => console.log('[api] ' + msg);
+
+    document.getElementById('add-node').addEventListener('click', () => {
+        counter++;
+        const id = 'node-' + counter;
+        graph.addNode({id, label: 'Node ' + counter, kind: pick(KINDS), status: pick(STATUSES), load: Math.random()});
+        // connect it to a random existing node so it doesn't float alone
+        const existing = state.nodes.length ? pick(state.nodes).id : 'core';
+        graph.addEdge({id: 'e-' + id, source: existing, target: id, load: Math.random()});
+        state.nodes.push({id});
+        state.edges.push({id: 'e-' + id});
+        log('addNode ' + id + ' + edge from ' + existing);
+    });
+
+    document.getElementById('update-node').addEventListener('click', () => {
+        const id = pick(state.nodes).id;
+        graph.updateNode(id, {status: pick(STATUSES), load: Math.random()});
+        log('updateNode ' + id);
+    });
+
+    document.getElementById('remove-node').addEventListener('click', () => {
+        const removable = state.nodes.filter((n) => n.id !== 'core');
+        if (!removable.length) return log('nothing to remove');
+        const id = pick(removable).id;
+        graph.removeNode(id); // also drops its edges
+        state.nodes = state.nodes.filter((n) => n.id !== id);
+        log('removeNode ' + id);
+    });
+
+    document.getElementById('add-edge').addEventListener('click', () => {
+        if (state.nodes.length < 2) return;
+        const a = pick(state.nodes).id, b = pick(state.nodes).id;
+        if (a === b) return;
+        const id = 'edge-' + (counter++);
+        graph.addEdge({id, source: a, target: b, load: Math.random()});
+        state.edges.push({id});
+        log('addEdge ' + a + ' -> ' + b);
+    });
+
+    document.getElementById('remove-edge').addEventListener('click', () => {
+        if (!state.edges.length) return;
+        const id = pick(state.edges).id;
+        graph.removeEdge(id);
+        state.edges = state.edges.filter((e) => e.id !== id);
+        log('removeEdge ' + id);
+    });
+
+    document.getElementById('save-pos').addEventListener('click', () => {
+        saved = graph.getPositions();
+        log('getPositions -> ' + Object.keys(saved).length + ' nodes saved');
+    });
+
+    document.getElementById('scatter').addEventListener('click', () => {
+        const pos = graph.getPositions();
+        const w = document.getElementById('graph').clientWidth || 800;
+        const h = document.getElementById('graph').clientHeight || 600;
+        const next = {};
+        for (const id of Object.keys(pos)) next[id] = {x: Math.random() * w, y: Math.random() * h};
+        graph.setPositions(next, false); // false = not pinned, force layout re-settles
+        log('scatter (setPositions, fix=false)');
+    });
+
+    document.getElementById('restore-pos').addEventListener('click', () => {
+        if (!saved) return log('nothing saved yet — hit getPositions first');
+        graph.setPositions(saved, true); // true = pin to the saved spots
+        log('setPositions (restored + pinned)');
+    });
+
+    document.getElementById('theme').addEventListener('click', () => {
+        dark = !dark;
+        graph.setTheme(dark ? 'dark' : 'light');
+        document.body.style.background = dark ? '#0f1420' : '#f4f6fb';
+    });
+
+    document.getElementById('labels').addEventListener('click', () => {
+        labels = !labels;
+        graph.setShowLabels(labels);
+    });
+
+    document.getElementById('reset').addEventListener('click', () => {
+        counter = 0; saved = null;
+        state = seed();
+        graph.setData(state.nodes, state.edges);
+        log('setData (reset to seed)');
+    });
+</script>
+</body>
+</html>

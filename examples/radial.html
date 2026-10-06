@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — radial layout</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="monitoring.html">Monitoring</a>
+    <a href="layered.html">Layered flow</a>
+    <a href="radial.html" class="active">Radial</a>
+    <a href="kinds.html">Node gallery</a>
+    <a href="api.html">API playground</a>
+</nav>
+
+<div class="toolbar tl">
+    <button id="toggle-theme">Toggle theme</button>
+    <button id="toggle-pulse">Toggle pulse</button>
+    <button id="add-leaf">Add ring-2 node</button>
+</div>
+
+<div id="graph" class="graph-stage"></div>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+    // node.ring: 0 = center hub, 1 = inner ring, 2 = outer ring.
+    const nodes = [
+        {id: 'hub', label: 'Orchestrator', kind: 'gateway', status: 'ok', ring: 0,
+         sublabel: 'coordinator', pulse: true, meta: {role: 'router', agents: '6'}},
+
+        {id: 'a1', label: 'Research', kind: 'agent', status: 'ok', ring: 1, sublabel: 'working', pulse: true,
+         meta: {task: 'gather sources', step: '3/8'}},
+        {id: 'a2', label: 'Writer', kind: 'agent', status: 'ok', ring: 1, sublabel: 'idle'},
+        {id: 'a3', label: 'Reviewer', kind: 'agent', status: 'warning', ring: 1, sublabel: '1 retry'},
+        {id: 'a4', label: 'Verifier', kind: 'agent', status: 'ok', ring: 1, sublabel: 'idle'},
+
+        {id: 't1', label: 'web.search', kind: 'generic', status: 'ok', ring: 2, sublabel: 'tool'},
+        {id: 't2', label: 'db.query', kind: 'database', status: 'ok', ring: 2, sublabel: 'tool'},
+        {id: 't3', label: 'fs.write', kind: 'generic', status: 'ok', ring: 2, sublabel: 'tool'},
+        {id: 't4', label: 'code.run', kind: 'server', status: 'critical', ring: 2, sublabel: 'sandbox down'}
+    ];
+
+    const edges = [
+        {id: 'h1', source: 'hub', target: 'a1', load: 0.7},
+        {id: 'h2', source: 'hub', target: 'a2', load: 0.3},
+        {id: 'h3', source: 'hub', target: 'a3', load: 0.5},
+        {id: 'h4', source: 'hub', target: 'a4', load: 0.4},
+        {id: 'r1', source: 'a1', target: 't1', load: 0.6},
+        {id: 'r2', source: 'a1', target: 't2', load: 0.5},
+        {id: 'r3', source: 'a2', target: 't3', load: 0.3},
+        {id: 'r4', source: 'a4', target: 't4', load: 0, animated: false}
+    ];
+
+    let dark = true;
+    const graph = new JSNGraph.NGraph(document.getElementById('graph'), {
+        theme: 'dark',
+        layoutMode: 'radial'
+    });
+    graph.setData(nodes, edges);
+
+    document.getElementById('toggle-theme').addEventListener('click', () => {
+        dark = !dark;
+        graph.setTheme(dark ? 'dark' : 'light');
+        document.body.style.background = dark ? '#0f1420' : '#f4f6fb';
+    });
+
+    let pulse = true;
+    document.getElementById('toggle-pulse').addEventListener('click', () => {
+        pulse = !pulse;
+        graph.updateNode('hub', {pulse});
+        graph.updateNode('a1', {pulse});
+    });
+
+    let added = 0;
+    document.getElementById('add-leaf').addEventListener('click', () => {
+        added++;
+        const id = 'extra-' + added;
+        graph.addNode({id, label: 'Tool ' + added, kind: 'generic', status: 'ok', ring: 2, sublabel: 'added'});
+        graph.addEdge({id: 'xe-' + added, source: 'a2', target: id, load: 0.4});
+    });
+</script>
+</body>
+</html>
