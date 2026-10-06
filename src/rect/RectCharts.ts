@@ -4,6 +4,8 @@ import {
     BarStripOptions,
     FeatureColumnOptions,
     HeatmapOptions,
+    NetworkOptions,
+    ScatterOptions,
     SparklineOptions,
     TimelineOptions
 } from './RectKitTypes';
@@ -183,6 +185,96 @@ export class Sparkline extends RectChart {
 
 }
 
+/** 2D point cloud — the "cursor x·y / output" look. */
+export class Scatter extends RectChart {
+
+    public constructor(private readonly options: ScatterOptions = {}) {
+        super();
+    }
+
+    public render(): SVGSVGElement {
+        const count = this.options.count ?? 26;
+        const width = this.options.width ?? 96;
+        const height = this.options.height ?? 54;
+        const dot = this.options.dot ?? 2;
+        const spread = Math.max(0, Math.min(1, this.options.spread ?? 0.35));
+        const accent = RectColor.resolve(this.options.accent, 'blue');
+        const rand = new RectRandom(this.options.seed ?? 19);
+
+        const svg = RectChart.svg(width, height);
+        const cx = width / 2;
+        const cy = height / 2;
+        const pad = dot + 1;
+
+        if (this.options.axes) {
+            svg.appendChild(RectChart.shape('line', {x1: 0, y1: cy, x2: width, y2: cy, stroke: 'rgba(255,255,255,0.12)', 'stroke-width': 1}));
+            svg.appendChild(RectChart.shape('line', {x1: cx, y1: 0, x2: cx, y2: height, stroke: 'rgba(255,255,255,0.12)', 'stroke-width': 1}));
+        }
+        if (this.options.target) {
+            for (const r of [Math.min(width, height) * 0.18, Math.min(width, height) * 0.34]) {
+                svg.appendChild(RectChart.shape('circle', {cx: cx, cy: cy, r: r, fill: 'none', stroke: 'rgba(255,255,255,0.16)', 'stroke-width': 1}));
+            }
+        }
+
+        for (let i = 0; i < count; i++) {
+            // pull points toward the center as `spread` rises
+            const fx = cx + (rand.next() - 0.5) * (width - 2 * pad) * (1 - spread);
+            const fy = cy + (rand.next() - 0.5) * (height - 2 * pad) * (1 - spread);
+            svg.appendChild(RectChart.shape('circle', {
+                cx: fx.toFixed(1), cy: fy.toFixed(1), r: dot,
+                fill: accent, 'fill-opacity': (0.45 + rand.next() * 0.5).toFixed(2)
+            }));
+        }
+
+        return svg;
+    }
+
+}
+
+/** A small layered node-link diagram — the "feed-forward network" look. */
+export class Network extends RectChart {
+
+    public constructor(private readonly options: NetworkOptions = {}) {
+        super();
+    }
+
+    public render(): SVGSVGElement {
+        const layers = this.options.layers ?? [3, 5, 2];
+        const width = this.options.width ?? 110;
+        const height = this.options.height ?? 64;
+        const node = this.options.node ?? 3.5;
+        const accent = RectColor.resolve(this.options.accent, 'blue');
+        const rand = new RectRandom(this.options.seed ?? 23);
+
+        const svg = RectChart.svg(width, height);
+        const pad = node + 3;
+        const cols = layers.length;
+        const xs = layers.map((_, i) => cols === 1 ? width / 2 : pad + ((width - 2 * pad) * i) / (cols - 1));
+        const ys = layers.map((n) => Array.from({length: n}, (_, j) =>
+            n === 1 ? height / 2 : pad + ((height - 2 * pad) * j) / (n - 1)));
+
+        // edges between consecutive layers (behind the nodes)
+        for (let l = 0; l < cols - 1; l++) {
+            for (const y1 of ys[l] as number[]) {
+                for (const y2 of ys[l + 1] as number[]) {
+                    svg.appendChild(RectChart.shape('line', {
+                        x1: xs[l] as number, y1: y1, x2: xs[l + 1] as number, y2: y2,
+                        stroke: accent, 'stroke-opacity': (0.1 + rand.next() * 0.3).toFixed(2), 'stroke-width': 0.8
+                    }));
+                }
+            }
+        }
+        for (let l = 0; l < cols; l++) {
+            for (const y of ys[l] as number[]) {
+                svg.appendChild(RectChart.shape('circle', {cx: xs[l] as number, cy: y, r: node, fill: RectColor.shade(accent, 0.75)}));
+            }
+        }
+
+        return svg;
+    }
+
+}
+
 /** Long horizontal strip of cells — the "lifetime / status timeline" look. */
 export class Timeline extends RectChart {
 
@@ -200,8 +292,10 @@ export class Timeline extends RectChart {
         const faultColor = this.options.faultColor ?? '#ff6a6a';
         const rand = new RectRandom(this.options.seed ?? 17);
 
+        const ticks = this.options.ticks ?? [];
+        const tickH = ticks.length > 0 ? 14 : 0;
         const width = count * (cell + gap) - gap;
-        const svg = RectChart.svg(width, height);
+        const svg = RectChart.svg(width, height + tickH);
 
         for (let i = 0; i < count; i++) {
             const v = rand.next();
@@ -210,6 +304,24 @@ export class Timeline extends RectChart {
                 x: i * (cell + gap), y: 0, width: cell, height: height, rx: 1.5, fill: fill
             }));
         }
+
+        if (this.options.cursor !== undefined) {
+            const cx = Math.max(0, Math.min(1, this.options.cursor)) * width;
+            svg.appendChild(RectChart.shape('line', {
+                x1: cx, y1: -2, x2: cx, y2: height + 2, stroke: '#e8eefc', 'stroke-width': 1.4
+            }));
+        }
+
+        ticks.forEach((label, i) => {
+            const tx = ticks.length === 1 ? width / 2 : (width * i) / (ticks.length - 1);
+            const text = RectChart.shape('text', {
+                x: tx.toFixed(1), y: height + 11,
+                'text-anchor': i === 0 ? 'start' : i === ticks.length - 1 ? 'end' : 'middle',
+                fill: '#8595b5', 'font-size': 9, 'font-family': 'system-ui, sans-serif'
+            });
+            text.textContent = label;
+            svg.appendChild(text);
+        });
 
         return svg;
     }

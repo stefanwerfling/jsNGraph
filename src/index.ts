@@ -7,19 +7,30 @@ export type { LayeredLayoutOptions } from './layout/LayeredLayout';
 export { Theme } from './render/Theme';
 export type { ThemeTokens } from './render/Theme';
 export { RectBox, RectArrow, RectPipeline } from './rect/RectBox';
-export { Heatmap, BarStrip, FeatureColumn, Sparkline, Timeline } from './rect/RectCharts';
+export { RectGroup } from './rect/RectGroup';
+export { RectHeader, RectChip, RectLegend } from './rect/RectLabels';
+export { Heatmap, BarStrip, FeatureColumn, Sparkline, Scatter, Network, Timeline } from './rect/RectCharts';
 export { RectColor } from './rect/RectColor';
 export { RectRandom } from './rect/RectRandom';
+export { RectAnim } from './rect/RectAnim';
 export type {
     RectAccent,
     RectBody,
+    RectDirection,
     RectBoxOptions,
     RectChartOptions,
     HeatmapOptions,
     BarStripOptions,
     FeatureColumnOptions,
     SparklineOptions,
+    ScatterOptions,
+    NetworkOptions,
     TimelineOptions,
     RectArrowOptions,
-    RectPipelineOptions
+    RectPipelineOptions,
+    RectGroupOptions,
+    RectHeaderOptions,
+    RectChipOptions,
+    RectLegendItem,
+    RectLegendOptions
 } from './rect/RectKitTypes';

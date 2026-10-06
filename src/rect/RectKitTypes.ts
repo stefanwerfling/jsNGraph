@@ -26,6 +26,8 @@ export interface RectBoxOptions {
     caption?: string;
     /** Override the default dark box background. */
     background?: string;
+    /** Pulse an accent-coloured glow ring (an 'active' marker). */
+    glow?: boolean;
 }
 
 export interface RectChartOptions {
@@ -62,6 +64,30 @@ export interface SparklineOptions extends RectChartOptions {
     height?: number;
 }
 
+export interface ScatterOptions extends RectChartOptions {
+    /** Number of points. */
+    count?: number;
+    width?: number;
+    height?: number;
+    /** Dot radius in px. */
+    dot?: number;
+    /** 0 = points fill the box, 1 = tightly clustered at the center. */
+    spread?: number;
+    /** Draw faint x/y axes through the center. */
+    axes?: boolean;
+    /** Draw a target ring at the center (calibration-target look). */
+    target?: boolean;
+}
+
+export interface NetworkOptions extends RectChartOptions {
+    /** Node count per layer, left to right, e.g. [3, 5, 2]. */
+    layers?: number[];
+    width?: number;
+    height?: number;
+    /** Node radius in px. */
+    node?: number;
+}
+
 export interface TimelineOptions extends RectChartOptions {
     count?: number;
     cell?: number;
@@ -70,18 +96,81 @@ export interface TimelineOptions extends RectChartOptions {
     /** Cells above this value are drawn in the fault colour. */
     faultThreshold?: number;
     faultColor?: string;
+    /** Vertical playhead line at this fraction of the width (0..1). */
+    cursor?: number;
+    /** Tick labels spread evenly under the strip (e.g. ['week 1', …]). */
+    ticks?: string[];
 }
+
+/** Direction an arrow points / a pipeline flows. */
+export type RectDirection = 'right' | 'left' | 'down' | 'up';
 
 export interface RectArrowOptions {
     width?: number;
     height?: number;
     color?: RectAccent;
     dashed?: boolean;
+    /** Which way the arrowhead points. Default 'right'. */
+    direction?: RectDirection;
+    /** Small caption drawn alongside the arrow (e.g. '+ spikes'). */
+    label?: string;
+    /** Animate a flowing dash along the connector (data-in-motion). */
+    animated?: boolean;
 }
 
 export interface RectPipelineOptions {
-    /** Horizontal space reserved for each arrow connector, in px. */
+    /** Space reserved for each arrow connector along the flow axis, in px. */
     gap?: number;
     arrowColor?: RectAccent;
     dashed?: boolean;
+    /** 'right' (default) lays stages left-to-right; 'down' stacks them top-to-bottom. */
+    direction?: RectDirection;
+    /** Animate flowing dashes along every connector. */
+    animated?: boolean;
+    /** Per-connector captions, in order (labels[i] sits on the i-th arrow). */
+    labels?: string[];
+}
+
+export interface RectHeaderOptions {
+    title: string;
+    subtitle?: string;
+    accent?: RectAccent;
+    /** Tiny label above the title (e.g. 'B1'). */
+    kicker?: string;
+}
+
+export interface RectChipOptions {
+    label: string;
+    color?: RectAccent;
+    /** Filled pill instead of a bordered swatch chip. */
+    filled?: boolean;
+    /** Pulse the chip (an 'active' marker). */
+    animated?: boolean;
+}
+
+export interface RectLegendItem {
+    label: string;
+    color?: RectAccent;
+}
+
+export interface RectLegendOptions {
+    items: RectLegendItem[];
+    /** Lay items in a row (default) or a column. */
+    layout?: 'row' | 'column';
+}
+
+export interface RectGroupOptions {
+    /** Uppercase frame title shown on the top border. */
+    title?: string;
+    /** Small pill next to the title. */
+    badge?: string;
+    accent?: RectAccent;
+    dashed?: boolean;
+    /** Lay the children in a row (default) or a column. */
+    layout?: 'row' | 'column';
+    /** Gap between children, in px. Default 14. */
+    gap?: number;
+    background?: string;
+    /** Child elements (boxes, pipelines, nested groups). */
+    children?: Array<SVGElement | HTMLElement>;
 }
