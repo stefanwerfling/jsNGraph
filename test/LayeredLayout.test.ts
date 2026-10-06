@@ -70,6 +70,73 @@ describe('LayeredLayout', () => {
         }
     });
 
+    it('back-and-forth sweeps reduce crossings a single forward pass leaves', () => {
+        // A 4-column DAG whose crossing-minimal arrangement needs structure
+        // from the right columns propagated leftward: one forward pass (the
+        // first column never gets reordered) settles at 6 crossings, the
+        // alternating sweeps bring it down to 3.
+        const ring: Record<string, number> = {};
+        for (let i = 0; i < 4; i++) ring['n' + i] = 0;
+        for (let i = 4; i < 8; i++) ring['n' + i] = 1;
+        for (let i = 8; i < 12; i++) ring['n' + i] = 2;
+        for (let i = 12; i < 15; i++) ring['n' + i] = 3;
+
+        const wiring: [string, string][] = [
+            ['n0', 'n5'], ['n1', 'n7'], ['n1', 'n6'], ['n2', 'n5'], ['n3', 'n4'],
+            ['n3', 'n7'], ['n4', 'n9'], ['n5', 'n10'], ['n5', 'n8'], ['n6', 'n9'],
+            ['n6', 'n11'], ['n7', 'n11'], ['n8', 'n12'], ['n9', 'n12'], ['n10', 'n13'],
+            ['n10', 'n14'], ['n11', 'n12'], ['n11', 'n13']
+        ];
+
+        const crossingsAfter = (sweeps: number): number => {
+            const byId = new Map<string, GraphNode>();
+
+            for (const id of Object.keys(ring)) {
+                byId.set(id, makeNode(id, ring[id] ?? 0));
+            }
+
+            const edges = wiring.map(([s, t], i) =>
+                makeEdge('e' + i, byId.get(s ?? '') as GraphNode, byId.get(t ?? '') as GraphNode));
+
+            settle(new LayeredLayout({sweeps: sweeps}), [...byId.values()], edges);
+
+            let count = 0;
+
+            for (let i = 0; i < edges.length; i++) {
+                for (let j = i + 1; j < edges.length; j++) {
+                    const a = edges[i] as GraphEdge;
+                    const b = edges[j] as GraphEdge;
+                    const aSpan = [Math.min(a.source.ring, a.target.ring), Math.max(a.source.ring, a.target.ring)];
+                    const bSpan = [Math.min(b.source.ring, b.target.ring), Math.max(b.source.ring, b.target.ring)];
+
+                    if (aSpan[0] !== bSpan[0] || aSpan[1] !== bSpan[1]) {
+                        continue;
+                    }
+
+                    const aLeft = a.source.ring < a.target.ring ? a.source : a.target;
+                    const aRight = a.source.ring < a.target.ring ? a.target : a.source;
+                    const bLeft = b.source.ring < b.target.ring ? b.source : b.target;
+                    const bRight = b.source.ring < b.target.ring ? b.target : b.source;
+
+                    if ((aLeft.y - bLeft.y) * (aRight.y - bRight.y) < 0) {
+                        count++;
+                    }
+                }
+            }
+
+            return count;
+        };
+
+        const single = crossingsAfter(1);
+        const standard = crossingsAfter(4);
+
+        expect(single).toBe(6);
+        expect(standard).toBe(3);
+        expect(standard).toBeLessThan(single);
+        // Converged: extra sweeps never make it worse.
+        expect(crossingsAfter(12)).toBe(standard);
+    });
+
     it('never moves fixed nodes', () => {
         const pinned = makeNode('p', 1);
 
