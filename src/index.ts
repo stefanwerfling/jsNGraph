@@ -8,8 +8,9 @@ export { Theme } from './render/Theme';
 export type { ThemeTokens } from './render/Theme';
 export { RectBox, RectArrow, RectPipeline } from './rect/RectBox';
 export { RectGroup } from './rect/RectGroup';
+export { RectElbow, RectBranch } from './rect/RectConnectors';
 export { RectHeader, RectChip, RectLegend } from './rect/RectLabels';
-export { Heatmap, BarStrip, FeatureColumn, Sparkline, Scatter, Network, Timeline } from './rect/RectCharts';
+export { Heatmap, BarStrip, FeatureColumn, Sparkline, Scatter, Network, Matrix, Timeline } from './rect/RectCharts';
 export { RectColor } from './rect/RectColor';
 export { RectRandom } from './rect/RectRandom';
 export { RectAnim } from './rect/RectAnim';
@@ -25,6 +26,7 @@ export type {
     SparklineOptions,
     ScatterOptions,
     NetworkOptions,
+    MatrixOptions,
     TimelineOptions,
     RectArrowOptions,
     RectPipelineOptions,
@@ -32,5 +34,8 @@ export type {
     RectHeaderOptions,
     RectChipOptions,
     RectLegendItem,
-    RectLegendOptions
+    RectLegendOptions,
+    RectSide,
+    RectElbowOptions,
+    RectBranchOptions
 } from './rect/RectKitTypes';

@@ -88,6 +88,17 @@ export interface NetworkOptions extends RectChartOptions {
     node?: number;
 }
 
+export interface MatrixOptions extends RectChartOptions {
+    rows?: number;
+    cols?: number;
+    cell?: number;
+    gap?: number;
+    /** Row labels, drawn down the left edge. */
+    rowLabels?: string[];
+    /** Column labels, drawn across the top edge. */
+    colLabels?: string[];
+}
+
 export interface TimelineOptions extends RectChartOptions {
     count?: number;
     cell?: number;
@@ -104,6 +115,35 @@ export interface TimelineOptions extends RectChartOptions {
 
 /** Direction an arrow points / a pipeline flows. */
 export type RectDirection = 'right' | 'left' | 'down' | 'up';
+
+/** An edge of a box, for routing elbow connectors. */
+export type RectSide = 'left' | 'right' | 'top' | 'bottom';
+
+export interface RectElbowOptions {
+    /** Edge the connector leaves from. Default 'left'. */
+    from?: RectSide;
+    /** Edge the connector arrives at (should be perpendicular to `from`). Default 'bottom'. */
+    to?: RectSide;
+    width?: number;
+    height?: number;
+    color?: RectAccent;
+    dashed?: boolean;
+    animated?: boolean;
+    /** Draw an arrowhead at the end. Default true. */
+    arrow?: boolean;
+}
+
+export interface RectBranchOptions {
+    /** Number of branches fanning out. */
+    count?: number;
+    width?: number;
+    height?: number;
+    color?: RectAccent;
+    dashed?: boolean;
+    animated?: boolean;
+    /** Fan-out direction. 'right' (default) / 'left' / 'down' / 'up'. */
+    direction?: RectDirection;
+}
 
 export interface RectArrowOptions {
     width?: number;

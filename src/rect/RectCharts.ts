@@ -4,6 +4,7 @@ import {
     BarStripOptions,
     FeatureColumnOptions,
     HeatmapOptions,
+    MatrixOptions,
     NetworkOptions,
     ScatterOptions,
     SparklineOptions,
@@ -224,6 +225,63 @@ export class Scatter extends RectChart {
                 cx: fx.toFixed(1), cy: fy.toFixed(1), r: dot,
                 fill: accent, 'fill-opacity': (0.45 + rand.next() * 0.5).toFixed(2)
             }));
+        }
+
+        return svg;
+    }
+
+}
+
+/** A heatmap grid with row (left) and column (top) axis labels. */
+export class Matrix extends RectChart {
+
+    public constructor(private readonly options: MatrixOptions = {}) {
+        super();
+    }
+
+    public render(): SVGSVGElement {
+        const rowLabels = this.options.rowLabels ?? [];
+        const colLabels = this.options.colLabels ?? [];
+        const rows = this.options.rows ?? Math.max(1, rowLabels.length || 4);
+        const cols = this.options.cols ?? Math.max(1, colLabels.length || 8);
+        const cell = this.options.cell ?? 11;
+        const gap = this.options.gap ?? 2;
+        const accent = this.options.accent ?? 'cyan';
+        const rand = new RectRandom(this.options.seed ?? 29);
+
+        const longestRow = rowLabels.reduce((m, s) => Math.max(m, s.length), 0);
+        const marginLeft = rowLabels.length > 0 ? longestRow * 5.4 + 6 : 0;
+        const marginTop = colLabels.length > 0 ? 13 : 0;
+        const gridW = cols * (cell + gap) - gap;
+        const gridH = rows * (cell + gap) - gap;
+        const svg = RectChart.svg(marginLeft + gridW, marginTop + gridH);
+
+        colLabels.forEach((label, c) => {
+            const text = RectChart.shape('text', {
+                x: (marginLeft + c * (cell + gap) + cell / 2).toFixed(1), y: marginTop - 4,
+                'text-anchor': 'middle', fill: '#8595b5', 'font-size': 8.5, 'font-family': 'system-ui, sans-serif'
+            });
+            text.textContent = label;
+            svg.appendChild(text);
+        });
+
+        rowLabels.forEach((label, r) => {
+            const text = RectChart.shape('text', {
+                x: marginLeft - 5, y: (marginTop + r * (cell + gap) + cell / 2 + 3).toFixed(1),
+                'text-anchor': 'end', fill: '#8595b5', 'font-size': 8.5, 'font-family': 'system-ui, sans-serif'
+            });
+            text.textContent = label;
+            svg.appendChild(text);
+        });
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const v = Math.pow(rand.next(), 1.3);
+                svg.appendChild(RectChart.shape('rect', {
+                    x: marginLeft + c * (cell + gap), y: marginTop + r * (cell + gap),
+                    width: cell, height: cell, rx: 1.5, fill: RectColor.shade(accent, 0.12 + v * 0.88)
+                }));
+            }
         }
 
         return svg;
