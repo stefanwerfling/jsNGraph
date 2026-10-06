@@ -145,7 +145,8 @@
 <script src="../dist/jsngraph.global.js"></script>
 <script>
     const NG = JSNGraph.NGraph;
-    const {RectBox, RectPipeline, Heatmap, BarStrip, FeatureColumn, Sparkline, Timeline} = JSNGraph;
+    const {RectBox, RectPipeline, RectGroup, RectHeader, RectChip, RectLegend,
+        Heatmap, BarStrip, FeatureColumn, Sparkline, Scatter, Network, Timeline} = JSNGraph;
     const board = document.getElementById('board');
     const viewport = document.getElementById('viewport');
 
@@ -165,8 +166,8 @@
          desc: 'Manual canvas hit-testing turns a pointer move/click into hover/selection, emitted to your on() listeners.'},
         {id: 'kinds',   x: 2640, y: 1020, w: 820,  h: 680, kicker: 'F · VISUALS', title: 'Node kinds & status',
          desc: 'Nine device/role glyphs and four health colours, drawn by hand on the canvas — no icon fonts or images.'},
-        {id: 'rect',    x: 80,   y: 1840, w: 1900, h: 520, kicker: 'G · DIAGRAM ELEMENTS', title: 'Rect-element kit',
-         desc: 'A reusable set of labeled rectangle blocks with inner mini-charts — heatmap matrix, bar strip, feature-vector column, sparkline and a status timeline — wired by arrow connectors. Exported from the library (RectBox / Heatmap / …); pure DOM + SVG, scales crisply with the board.'}
+        {id: 'rect',    x: 80,   y: 1840, w: 2040, h: 820, kicker: 'G · DIAGRAM ELEMENTS', title: 'Rect-element kit',
+         desc: 'A reusable set of rect elements — labeled boxes with inner mini-charts (heatmap, bars, feature column, sparkline, scatter + axes/target, network, timeline + cursor/ticks), legends, chips, section headers, directional + labeled + animated connectors, and nested group frames. Exported from the library; pure DOM + SVG, scales crisply with the board.'}
     ];
 
     const graphs = [];
@@ -418,8 +419,21 @@
         host.style.paddingTop = '8px';
 
         const col = document.createElement('div');
-        col.style.cssText = 'display:flex; flex-direction:column; gap:14px;';
+        col.style.cssText = 'display:flex; flex-direction:column; gap:16px; align-items:flex-start;';
 
+        // legend + token chips
+        const legendRow = document.createElement('div');
+        legendRow.style.cssText = 'display:flex; align-items:center; gap:18px;';
+        legendRow.appendChild(new RectLegend({items: [
+            {label: 'known', color: 'cyan'}, {label: 'inferred', color: 'violet'}, {label: 'drift', color: '#ff6a6a'}
+        ]}).render());
+        legendRow.appendChild(new RectChip({label: 'A', filled: true, color: 'green'}).render());
+        legendRow.appendChild(new RectChip({label: 'B', filled: true, color: 'amber'}).render());
+        legendRow.appendChild(new RectChip({label: 'token', color: 'slate'}).render());
+        col.appendChild(legendRow);
+
+        // Top row: the main pipeline. Connectors are labeled + animated (flowing
+        // dashes); the "Cursor" output uses a scatter with axes + target.
         col.appendChild(new RectPipeline([
             new RectBox({badge: 'IN', title: 'Signal', subtitle: 'per channel', dashed: true,
                 body: new Heatmap({rows: 6, cols: 12, accent: 'blue', seed: 3}).render()}),
@@ -429,17 +443,32 @@
                 body: new BarStrip({count: 14, accent: 'amber', seed: 21, height: 54}).render()}),
             new RectBox({title: 'Features', subtitle: 'vector', accent: 'cyan',
                 body: new FeatureColumn({rows: 11, accent: 'cyan', seed: 4}).render()}),
-            new RectBox({title: 'Decoder', subtitle: 'linear readout', accent: 'violet',
+            new RectBox({title: 'Decoder', subtitle: 'linear readout', accent: 'violet', glow: true,
                 body: new Sparkline({count: 26, accent: 'violet', seed: 14}).render()}),
             new RectBox({badge: 'OUT', title: 'Cursor', subtitle: 'x · y velocity',
-                body: new Sparkline({count: 26, accent: 'blue', seed: 31, width: 96}).render()})
-        ], {gap: 34}).render());
+                body: new Scatter({count: 40, accent: 'blue', seed: 31, width: 96, height: 56, spread: 0.5, axes: true, target: true}).render()})
+        ], {gap: 40, animated: true, labels: ['spikes', 'bin', 'encode', 'decode', 'move']}).render());
 
-        const strip = new RectBox({title: 'Decoder lifetime', subtitle: 'daily recalibration · red = drift',
-            body: new Timeline({count: 54, accent: 'green', seed: 42, height: 18}).render()}).render();
-        strip.style.alignSelf = 'flex-start';
-        col.appendChild(strip);
+        // Bottom row: nested group (vertical sub-pipeline) · a feed-forward
+        // network · the status timeline with a playhead and week ticks.
+        const bottom = document.createElement('div');
+        bottom.style.cssText = 'display:flex; align-items:flex-start; gap:24px;';
 
+        bottom.appendChild(new RectGroup({title: 'NEURAL ENCODER · PRETRAIN', accent: 'violet', layout: 'column', gap: 0,
+            children: [new RectPipeline([
+                new RectBox({title: 'Masked input', subtitle: '50k h', body: new Heatmap({rows: 3, cols: 9, cell: 7, accent: 'violet', seed: 2}).render()}),
+                new RectBox({title: 'Transformer', subtitle: '12 layers', accent: 'violet', body: new BarStrip({count: 10, accent: 'violet', seed: 6, height: 28}).render()}),
+                new RectBox({title: 'Embedding', subtitle: 'frozen', body: new FeatureColumn({rows: 6, cellHeight: 7, accent: 'cyan', seed: 9}).render()})
+            ], {direction: 'down', gap: 20, arrowColor: 'violet', animated: true}).render()]
+        }).render());
+
+        bottom.appendChild(new RectBox({title: 'Feed-forward net', subtitle: 'per feature', accent: 'blue',
+            body: new Network({layers: [3, 5, 5, 2], accent: 'blue', seed: 7, width: 120, height: 78}).render()}).render());
+
+        bottom.appendChild(new RectBox({title: 'Decoder lifetime', subtitle: 'daily recalibration · red = drift',
+            body: new Timeline({count: 48, accent: 'green', seed: 42, height: 18, cursor: 0.74, ticks: ['week 1', 'week 2', 'week 3']}).render()}).render());
+
+        col.appendChild(bottom);
         host.appendChild(col);
     }
 

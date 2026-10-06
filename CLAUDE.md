@@ -43,12 +43,17 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   bar) — both plain DOM+CSS overlays positioned over the canvas, not canvas-drawn (crisper text,
   no charting dependency needed for one bar).
 - `util/EventEmitter.ts` — tiny typed pub/sub backing `NGraph.on`/`off`.
-- `rect/` — a secondary, standalone export: a DOM+SVG "rect element" diagram kit
-  (`RectBox` labeled block + mini-chart classes `Heatmap`/`BarStrip`/`FeatureColumn`/
-  `Sparkline`/`Timeline`, plus `RectArrow`/`RectPipeline`). Wiring-diagram style, deterministic
-  (`RectRandom`), inline-styled like the other DOM overlays — no stylesheet, zero deps. Not
-  canvas/graph-related; shares the package because consumers compose it alongside NGraph (see
-  `examples/explainer.html`). All exported from `index.ts`.
+- `rect/` — a secondary, standalone export: a DOM+SVG "rect element" diagram kit for
+  wiring-diagram visuals. Blocks: `RectBox` (labeled block, optional `glow`), `RectGroup`
+  (nested container frame). Mini-charts (`RectCharts.ts`): `Heatmap`, `BarStrip`,
+  `FeatureColumn`, `Sparkline`, `Scatter` (opt. axes/target), `Network` (layered node-link),
+  `Timeline` (opt. cursor/ticks). Labels (`RectLabels.ts`): `RectHeader`, `RectChip`,
+  `RectLegend`. Connectors: `RectArrow`/`RectPipeline` — directional (`RectDirection`),
+  labeled, and optionally `animated` (flowing dashes). Opt-in animations inject one keyframe
+  `<style>` once via `RectAnim`. Deterministic (`RectRandom`), inline-styled like the other
+  DOM overlays — no stylesheet for static use, zero deps. Not canvas/graph-related; shares
+  the package because consumers compose it alongside NGraph (see `examples/explainer.html`).
+  All exported from `index.ts`.
 
 ## Commands
 
