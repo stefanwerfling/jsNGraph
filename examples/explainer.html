@@ -146,6 +146,7 @@
 <script>
     const NG = JSNGraph.NGraph;
     const {RectBox, RectPipeline, RectGroup, RectElbow, RectBranch, RectHeader, RectChip, RectLegend,
+        RectSymbols, RectGlossary,
         Heatmap, BarStrip, FeatureColumn, Sparkline, Scatter, Network, Matrix, Timeline} = JSNGraph;
     const board = document.getElementById('board');
     const viewport = document.getElementById('viewport');
@@ -169,7 +170,9 @@
         {id: 'rect',    x: 80,   y: 1840, w: 2040, h: 820, kicker: 'G · DIAGRAM ELEMENTS', title: 'Rect-element kit',
          desc: 'A reusable set of rect elements — labeled boxes with inner mini-charts (heatmap, bars, feature column, sparkline, scatter + axes/target, network, timeline + cursor/ticks), legends, chips, section headers, directional + labeled + animated connectors, and nested group frames. Exported from the library; pure DOM + SVG, scales crisply with the board.'},
         {id: 'conn',    x: 80,   y: 2740, w: 1560, h: 560, kicker: 'H · CONNECTORS & MATRIX', title: 'Elbow, branch & matrix',
-         desc: 'Orthogonal elbow (right-angle) routing, a 1→n branch fan-out, and an axis-labeled matrix — the remaining wiring-diagram primitives, all from the rect kit.'}
+         desc: 'Orthogonal elbow (right-angle) routing, a 1→n branch fan-out, and an axis-labeled matrix — the remaining wiring-diagram primitives, all from the rect kit.'},
+        {id: 'ref',     x: 80,   y: 3400, w: 1760, h: 560, kicker: 'I · REFERENCE', title: 'Symbols & vocabulary',
+         desc: 'Reference panels from the rect kit: a symbols key (glyph · name · type · note) and a vocabulary glossary (term · definition) — here applied to jsNGraph itself.'}
     ];
 
     const graphs = [];
@@ -411,7 +414,48 @@
         else if (b.id === 'kinds') graphs.push(buildKinds(host, b.w, b.h));
         else if (b.id === 'rect') buildRect(host);
         else if (b.id === 'conn') buildConnectors(host);
+        else if (b.id === 'ref') buildReference(host);
     });
+
+    function buildReference(host) {
+        host.style.pointerEvents = 'none';
+        host.style.display = 'flex';
+        host.style.alignItems = 'flex-start';
+
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex; align-items:flex-start; gap:40px; padding-top:8px;';
+
+        row.appendChild(new RectSymbols({
+            title: 'Symbols',
+            subtitle: 'The node/edge properties that drive what gets drawn.',
+            items: [
+                {symbol: 'k', color: 'blue', name: 'kind', type: 'router / server / agent / …', note: 'which glyph is drawn'},
+                {symbol: 's', color: 'green', name: 'status', type: 'ok / warning / critical / down', note: 'colours the ring'},
+                {symbol: 'l', color: 'amber', name: 'load', type: '0 … 1', note: 'edge colour + panel bar'},
+                {symbol: 'r', color: 'violet', name: 'ring', type: 'integer', note: 'radial ring / layered column'},
+                {symbol: '⬡', color: 'cyan', name: 'gateway', type: 'hub hexagon', note: 'hub-and-ring centre'},
+                {symbol: '▭', color: 'blue', name: 'card', type: 'rounded rect', note: 'label drawn inside the node'},
+                {symbol: '→', color: 'slate', name: 'edge', type: 'source → target', note: 'traffic animated by load'}
+            ]
+        }).render());
+
+        row.appendChild(new RectGlossary({
+            title: 'Vocabulary', accent: 'cyan', columns: 2,
+            subtitle: 'The terms used across this explainer.',
+            terms: [
+                {term: 'force layout', def: 'springy self-organizing placement (repulsion + edge springs).'},
+                {term: 'radial layout', def: 'deterministic hub-and-ring arrangement via node.ring.'},
+                {term: 'layered layout', def: 'Sugiyama-style columns; node.ring is the column index.'},
+                {term: 'barycenter sweep', def: 'crossing-reduction pass ordering a column by its neighbours.'},
+                {term: 'pulse', def: 'animated status-colour glow marking an active node.'},
+                {term: 'sublabel', def: 'a smaller second line under a node label.'},
+                {term: 'traffic dots', def: 'moving dots along an edge, paced by its load.'},
+                {term: 'detail panel', def: 'click-to-open overlay with node status and a load bar.'}
+            ]
+        }).render());
+
+        host.appendChild(row);
+    }
 
     // a small captioned wrapper so each figure in section H is labeled
     function figure(caption, node) {
