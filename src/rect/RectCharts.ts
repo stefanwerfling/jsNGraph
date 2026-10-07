@@ -42,6 +42,13 @@ abstract class RectChart {
         return node;
     }
 
+    /** A looping SMIL <animate> child — self-contained, no keyframes needed. */
+    protected static animate(attributeName: string, values: string, dur: string): SVGElement {
+        return RectChart.shape('animate', {
+            attributeName: attributeName, values: values, dur: dur, repeatCount: 'indefinite'
+        });
+    }
+
 }
 
 /**
@@ -74,6 +81,16 @@ export class Heatmap extends RectChart {
                     rx: 1.5, fill: RectColor.shade(accent, 0.1 + v * 0.9)
                 }));
             }
+        }
+
+        if (this.options.scan) {
+            const band = cell * 1.6;
+            const bar = RectChart.shape('rect', {
+                x: -band, y: 0, width: band, height: height, rx: 2,
+                fill: '#ffffff', 'fill-opacity': 0.14
+            });
+            bar.appendChild(RectChart.animate('x', `${-band};${width}`, '1.8s'));
+            svg.appendChild(bar);
         }
 
         return svg;
@@ -363,7 +380,12 @@ export class Timeline extends RectChart {
             }));
         }
 
-        if (this.options.cursor !== undefined) {
+        if (this.options.sweep) {
+            const line = RectChart.shape('line', {x1: 0, y1: -2, x2: 0, y2: height + 2, stroke: '#e8eefc', 'stroke-width': 1.4});
+            line.appendChild(RectChart.animate('x1', `0;${width}`, '2.6s'));
+            line.appendChild(RectChart.animate('x2', `0;${width}`, '2.6s'));
+            svg.appendChild(line);
+        } else if (this.options.cursor !== undefined) {
             const cx = Math.max(0, Math.min(1, this.options.cursor)) * width;
             svg.appendChild(RectChart.shape('line', {
                 x1: cx, y1: -2, x2: cx, y2: height + 2, stroke: '#e8eefc', 'stroke-width': 1.4

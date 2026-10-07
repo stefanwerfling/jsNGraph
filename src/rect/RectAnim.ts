@@ -9,6 +9,7 @@ export class RectAnim {
 
     public static readonly FLOW = 'rk-flow';
     public static readonly PULSE = 'rk-pulse';
+    public static readonly TRAVEL = 'rk-travel';
 
     /** Ensure the keyframes exist in the document; safe to call repeatedly. */
     public static ensure(): void {
@@ -20,7 +21,8 @@ export class RectAnim {
         style.setAttribute('data-rectkit', 'anim');
         style.textContent =
             '@keyframes rk-flow{to{stroke-dashoffset:-16}}' +
-            '@keyframes rk-pulse{0%,100%{opacity:.35}50%{opacity:1}}';
+            '@keyframes rk-pulse{0%,100%{opacity:.35}50%{opacity:1}}' +
+            '@keyframes rk-travel{from{offset-distance:0%}to{offset-distance:100%}}';
         document.head.appendChild(style);
         RectAnim.injected = true;
     }

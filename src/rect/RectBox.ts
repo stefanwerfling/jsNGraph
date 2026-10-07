@@ -152,6 +152,24 @@ export class RectArrow {
 
         svg.appendChild(lineEl);
         svg.appendChild(headEl);
+
+        if (this.options.dots) {
+            RectAnim.ensure();
+            const d = `path("M ${line[0]} ${line[1]} L ${line[2]} ${line[3]}")`;
+            for (let i = 0; i < 3; i++) {
+                const dot = document.createElementNS(RectArrow.NS, 'circle');
+                dot.setAttribute('r', '2');
+                dot.setAttribute('cx', '0');
+                dot.setAttribute('cy', '0');
+                dot.setAttribute('fill', stroke);
+                dot.style.offsetPath = d;
+                dot.style.offsetRotate = '0deg';
+                dot.style.animation = `${RectAnim.TRAVEL} 1.1s linear infinite`;
+                dot.style.animationDelay = `${(i * 0.37).toFixed(2)}s`;
+                svg.appendChild(dot);
+            }
+        }
+
         wrap.appendChild(svg);
 
         if (this.options.label !== undefined && vertical) {
@@ -218,6 +236,7 @@ export class RectPipeline {
                     color: this.options.arrowColor,
                     dashed: this.options.dashed,
                     animated: this.options.animated,
+                    dots: this.options.dots,
                     label: label
                 }).render());
             }

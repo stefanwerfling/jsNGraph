@@ -42,6 +42,8 @@ export interface HeatmapOptions extends RectChartOptions {
     /** Cell size in px. */
     cell?: number;
     gap?: number;
+    /** Sweep a highlight column left-to-right across the grid (scan line). */
+    scan?: boolean;
 }
 
 export interface BarStripOptions extends RectChartOptions {
@@ -111,6 +113,8 @@ export interface TimelineOptions extends RectChartOptions {
     cursor?: number;
     /** Tick labels spread evenly under the strip (e.g. ['week 1', …]). */
     ticks?: string[];
+    /** Animate the playhead sweeping across the strip. */
+    sweep?: boolean;
 }
 
 /** Direction an arrow points / a pipeline flows. */
@@ -156,6 +160,8 @@ export interface RectArrowOptions {
     label?: string;
     /** Animate a flowing dash along the connector (data-in-motion). */
     animated?: boolean;
+    /** Send little dots travelling along the connector (visible flow). */
+    dots?: boolean;
 }
 
 export interface RectPipelineOptions {
@@ -167,6 +173,8 @@ export interface RectPipelineOptions {
     direction?: RectDirection;
     /** Animate flowing dashes along every connector. */
     animated?: boolean;
+    /** Send travelling dots along every connector. */
+    dots?: boolean;
     /** Per-connector captions, in order (labels[i] sits on the i-th arrow). */
     labels?: string[];
 }
@@ -220,6 +228,18 @@ export interface RectSymbolsOptions {
 export interface RectGlossaryTerm {
     term: string;
     def: string;
+}
+
+export interface RectBoardOptions {
+    minScale?: number;
+    maxScale?: number;
+    /** Gap kept between framed content and the viewport edge, in px. */
+    padding?: number;
+}
+
+export interface RectStoryHandlers {
+    /** Called whenever the camera settles on a story step (-1 = whole board). */
+    onStep?: (index: number, id: string | null) => void;
 }
 
 export interface RectGlossaryOptions {
