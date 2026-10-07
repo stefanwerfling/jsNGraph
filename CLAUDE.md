@@ -56,7 +56,9 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   Charts also take motion: `Heatmap.scan`, `Timeline.sweep`, `RectBox.glow`. Opt-in CSS animations
   inject one keyframe `<style>` once via `RectAnim`; chart motion uses self-contained SMIL.
   `RectBoard` (`RectBoard.ts`) is the composition layer: `add(el, x, y, id)` places any element
-  on one pan/zoom camera, and `story([ids], {onStep})` turns wheel/arrow input into smooth
+  on one pan/zoom camera; `connect(fromId, toId, opts)` auto-routes a connector between two placed
+  boxes from their live geometry (curve/orthogonal/straight, arrowed, animated/dots, into a
+  behind-the-boxes SVG overlay); and `story([ids], {onStep})` turns wheel/arrow input into smooth
   camera fly-throughs — the scrollytelling the explainer runs on. Deterministic (`RectRandom`),
   inline-styled like the other DOM overlays — no stylesheet for static use, zero deps. Not
   canvas/graph-related; shares the package because consumers compose it alongside NGraph (see

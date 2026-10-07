@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — auto-routed connectors</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    html, body { height: 100%; overflow: hidden; }
+    #viewport {
+        position: absolute; inset: 48px 0 0 0;
+        background:
+            radial-gradient(circle at 20% 15%, rgba(122,162,255,0.06), transparent 42%),
+            radial-gradient(circle at 80% 85%, rgba(55,199,212,0.05), transparent 42%),
+            var(--bg);
+    }
+    .hud { position: absolute; z-index: 40; }
+    #caption {
+        top: 58px; left: 14px; max-width: 360px;
+        background: rgba(17,23,38,0.88); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px;
+    }
+    #caption h1 { margin: 0 0 4px; font-size: 16px; color: #fff; }
+    #caption p { margin: 0; font-size: 12.5px; color: var(--text-dim); line-height: 1.45; }
+    #caption code { color: var(--accent); }
+    #hint { top: 58px; left: 50%; transform: translateX(-50%); font-size: 12px; color: var(--text-dim);
+        background: rgba(15,20,32,0.7); padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border); }
+    #zoombar { top: 58px; right: 14px; display: flex; gap: 6px; }
+    #zoombar button { background: var(--bg-soft); color: var(--text); border: 1px solid var(--border);
+        border-radius: 6px; width: 30px; height: 28px; font-size: 15px; cursor: pointer; }
+    #zoombar button:hover { border-color: var(--accent); }
+    #zoombar button#zoom-fit { width: auto; padding: 0 10px; font-size: 12px; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="monitoring.html">Monitoring</a>
+    <a href="layered.html">Layered flow</a>
+    <a href="radial.html">Radial</a>
+    <a href="kinds.html">Node gallery</a>
+    <a href="api.html">API playground</a>
+    <a href="explainer.html">Explainer</a>
+    <a href="rect-explainer.html">Rect explainer</a>
+    <a href="rect-autoroute.html" class="active">Auto-route</a>
+</nav>
+
+<div id="caption" class="hud">
+    <h1>Auto-routed connectors</h1>
+    <p>Boxes are <code>add()</code>-ed at positions, then <code>board.connect(a, b)</code> computes
+       the anchors and route from the live geometry — curve, orthogonal or straight, including the
+       dashed <em>retry</em> feedback edge. Drag to pan · scroll to zoom.</p>
+</div>
+<div id="hint" class="hud">drag to pan · scroll to zoom</div>
+<div id="zoombar" class="hud">
+    <button id="zoom-in">+</button>
+    <button id="zoom-out">−</button>
+    <button id="zoom-fit">fit</button>
+</div>
+
+<div id="viewport"></div>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+    const {RectBoard, RectBox} = JSNGraph;
+    const rboard = new RectBoard(document.getElementById('viewport'), {minScale: 0.1, maxScale: 2.4});
+
+    // place boxes at world coordinates — the board measures them for routing
+    const nodes = [
+        {id: 'in',    x: 80,   y: 320, box: {badge: 'IN', title: 'Webhook', subtitle: '/ingest', accent: 'blue', body: Heatmap({rows: 3, cols: 8, accent: 'blue', seed: 3, scan: true})}},
+        {id: 'parse', x: 470,  y: 150, box: {title: 'Parse', subtitle: 'json', body: BarStrip({count: 10, accent: 'cyan', seed: 5, height: 40})}},
+        {id: 'valid', x: 470,  y: 470, box: {title: 'Validate', subtitle: '2 rules', accent: 'green', body: FeatureColumn({rows: 6, cellHeight: 7, accent: 'green', seed: 7})}},
+        {id: 'route', x: 880,  y: 320, box: {title: 'Router', subtitle: 'classify', accent: 'violet', glow: true, body: Sparkline({count: 24, accent: 'violet', seed: 9})}},
+        {id: 'store', x: 1280, y: 150, box: {title: 'Postgres', subtitle: 'events', body: BarStrip({count: 12, accent: 'cyan', seed: 11, height: 40})}},
+        {id: 'alert', x: 1280, y: 470, box: {badge: 'OUT', title: 'Alert', subtitle: 'pagerduty', accent: 'amber', body: Scatter({count: 26, accent: 'amber', seed: 13, width: 84, height: 48})}}
+    ];
+    function Heatmap(o) { return new JSNGraph.Heatmap(o).render(); }
+    function BarStrip(o) { return new JSNGraph.BarStrip(o).render(); }
+    function Sparkline(o) { return new JSNGraph.Sparkline(o).render(); }
+    function FeatureColumn(o) { return new JSNGraph.FeatureColumn(o).render(); }
+    function Scatter(o) { return new JSNGraph.Scatter(o).render(); }
+
+    nodes.forEach((n) => rboard.add(new RectBox(n.box).render(), n.x, n.y, n.id));
+
+    // now wire them — the routes are computed from where the boxes landed
+    rboard.connect('in', 'parse', {style: 'curve', dots: true, label: 'json'});
+    rboard.connect('in', 'valid', {style: 'curve', dots: true});
+    rboard.connect('parse', 'route', {style: 'curve', animated: true});
+    rboard.connect('valid', 'route', {style: 'curve', animated: true});
+    rboard.connect('route', 'store', {style: 'orthogonal', color: 'cyan', dots: true, label: 'ok'});
+    rboard.connect('route', 'alert', {style: 'orthogonal', color: 'amber', dots: true, label: 'fault'});
+    rboard.connect('alert', 'in', {style: 'curve', color: '#ff6a6a', dashed: true, animated: true, dots: true, label: 'retry ↺'});
+
+    document.getElementById('zoom-in').addEventListener('click', () => rboard.zoomBy(1.25));
+    document.getElementById('zoom-out').addEventListener('click', () => rboard.zoomBy(1 / 1.25));
+    document.getElementById('zoom-fit').addEventListener('click', () => rboard.fitAll(true));
+
+    rboard.fitAll(false);
+</script>
+</body>
+</html>
