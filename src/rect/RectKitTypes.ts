@@ -260,6 +260,23 @@ export interface RectStoryHandlers {
     onStep?: (index: number, id: string | null) => void;
 }
 
+export interface RectRouteOptions {
+    /** 'curve' (default) · 'orthogonal' (right-angle) · 'straight'. */
+    style?: 'curve' | 'orthogonal' | 'straight';
+    /** Pin the exit edge of the source box; auto-chosen from geometry if omitted. */
+    fromSide?: RectSide;
+    /** Pin the entry edge of the target box; auto-chosen if omitted. */
+    toSide?: RectSide;
+    color?: RectAccent;
+    dashed?: boolean;
+    animated?: boolean;
+    dots?: boolean;
+    /** Draw an arrowhead at the target. Default true. */
+    arrow?: boolean;
+    /** Caption near the midpoint. */
+    label?: string;
+}
+
 export interface RectGlossaryOptions {
     title?: string;
     subtitle?: string;

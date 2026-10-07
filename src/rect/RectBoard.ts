@@ -1,9 +1,26 @@
-import { RectBoardOptions, RectStoryHandlers } from './RectKitTypes';
+import { RectAnim } from './RectAnim';
+import { RectColor } from './RectColor';
+import { RectBoardOptions, RectRouteOptions, RectSide, RectStoryHandlers } from './RectKitTypes';
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
 
 interface Item {
     el: HTMLElement;
     x: number;
     y: number;
+}
+
+interface Edge {
+    from: string;
+    to: string;
+    options: RectRouteOptions;
+}
+
+interface Rect {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
 }
 
 /**
@@ -23,6 +40,8 @@ export class RectBoard {
     private readonly board: HTMLDivElement;
     private readonly items = new Map<string, Item>();
     private readonly anon: Item[] = [];
+    private readonly edges: Edge[] = [];
+    private overlay: SVGSVGElement | null = null;
     private readonly minScale: number;
     private readonly maxScale: number;
     private readonly padding: number;
@@ -93,6 +112,19 @@ export class RectBoard {
         } else {
             this.anon.push(item);
         }
+
+        return this;
+    }
+
+    /**
+     * Auto-route a connector between two added items (by id). Anchor points on
+     * the box edges and the path are computed from the live geometry — move or
+     * resize the boxes and re-`connect()` and it re-routes. Styles: 'curve'
+     * (default), 'orthogonal' (right angles) or 'straight'.
+     */
+    public connect(fromId: string, toId: string, options: RectRouteOptions = {}): this {
+        this.edges.push({from: fromId, to: toId, options: options});
+        this.drawEdges();
 
         return this;
     }
@@ -189,6 +221,189 @@ export class RectBoard {
 
     private allItems(): Item[] {
         return [...this.items.values(), ...this.anon];
+    }
+
+    private rectOf(id: string): Rect | null {
+        const item = this.items.get(id);
+
+        if (item === undefined) {
+            return null;
+        }
+
+        return {x: item.x, y: item.y, w: item.el.offsetWidth, h: item.el.offsetHeight};
+    }
+
+    private ensureOverlay(): SVGSVGElement {
+        if (this.overlay === null) {
+            const svg = document.createElementNS(SVG_NS, 'svg') as SVGSVGElement;
+            svg.style.cssText = 'position:absolute; left:0; top:0; overflow:visible; pointer-events:none;';
+            this.board.insertBefore(svg, this.board.firstChild); // behind the boxes
+            this.overlay = svg;
+        }
+
+        return this.overlay;
+    }
+
+    /** (Re)draw every auto-routed edge from current box geometry. */
+    private drawEdges(): void {
+        const svg = this.ensureOverlay();
+
+        while (svg.firstChild !== null) {
+            svg.removeChild(svg.firstChild);
+        }
+
+        let maxX = 1;
+        let maxY = 1;
+        for (const item of this.allItems()) {
+            maxX = Math.max(maxX, item.x + item.el.offsetWidth);
+            maxY = Math.max(maxY, item.y + item.el.offsetHeight);
+        }
+        svg.setAttribute('width', String(maxX));
+        svg.setAttribute('height', String(maxY));
+        svg.setAttribute('viewBox', `0 0 ${maxX} ${maxY}`);
+
+        for (const edge of this.edges) {
+            const from = this.rectOf(edge.from);
+            const to = this.rectOf(edge.to);
+
+            if (from !== null && to !== null) {
+                RectBoard.drawEdge(svg, from, to, edge.options);
+            }
+        }
+    }
+
+    private static center(r: Rect): [number, number] {
+        return [r.x + r.w / 2, r.y + r.h / 2];
+    }
+
+    private static anchor(r: Rect, side: RectSide): [number, number] {
+        switch (side) {
+            case 'left': return [r.x, r.y + r.h / 2];
+            case 'right': return [r.x + r.w, r.y + r.h / 2];
+            case 'top': return [r.x + r.w / 2, r.y];
+            default: return [r.x + r.w / 2, r.y + r.h];
+        }
+    }
+
+    /** Outward unit normal of a side. */
+    private static normal(side: RectSide): [number, number] {
+        switch (side) {
+            case 'left': return [-1, 0];
+            case 'right': return [1, 0];
+            case 'top': return [0, -1];
+            default: return [0, 1];
+        }
+    }
+
+    /** Pick facing sides from the boxes' relative position. */
+    private static autoSides(from: Rect, to: Rect): [RectSide, RectSide] {
+        const [fx, fy] = RectBoard.center(from);
+        const [tx, ty] = RectBoard.center(to);
+        const dx = tx - fx;
+        const dy = ty - fy;
+
+        if (Math.abs(dx) >= Math.abs(dy)) {
+            return dx >= 0 ? ['right', 'left'] : ['left', 'right'];
+        }
+
+        return dy >= 0 ? ['bottom', 'top'] : ['top', 'bottom'];
+    }
+
+    private static drawEdge(svg: SVGSVGElement, from: Rect, to: Rect, o: RectRouteOptions): void {
+        const [fromSide, toSide] = (o.fromSide !== undefined && o.toSide !== undefined)
+            ? [o.fromSide, o.toSide]
+            : RectBoard.autoSides(from, to);
+        const [sx, sy] = RectBoard.anchor(from, fromSide);
+        const [ex, ey] = RectBoard.anchor(to, toSide);
+        const stroke = RectColor.resolve(o.color, 'slate');
+        const style = o.style ?? 'curve';
+
+        let d: string;
+        if (style === 'straight') {
+            d = `M ${sx} ${sy} L ${ex} ${ey}`;
+        } else if (style === 'orthogonal') {
+            d = RectBoard.orthogonalPath(sx, sy, fromSide, ex, ey, toSide);
+        } else {
+            const [fnx, fny] = RectBoard.normal(fromSide);
+            const [tnx, tny] = RectBoard.normal(toSide);
+            const k = Math.max(40, Math.hypot(ex - sx, ey - sy) * 0.4);
+            d = `M ${sx} ${sy} C ${sx + fnx * k} ${sy + fny * k} ${ex + tnx * k} ${ey + tny * k} ${ex} ${ey}`;
+        }
+
+        const path = RectBoard.svgEl('path', {d: d, fill: 'none', stroke: stroke, 'stroke-width': 1.6});
+        if (o.animated) {
+            RectAnim.ensure();
+            path.setAttribute('stroke-dasharray', '5 4');
+            (path as unknown as HTMLElement).style.animation = `${RectAnim.FLOW} 0.7s linear infinite`;
+        } else if (o.dashed) {
+            path.setAttribute('stroke-dasharray', '3 3');
+        }
+        svg.appendChild(path);
+
+        if (o.arrow !== false) {
+            svg.appendChild(RectBoard.arrowHead(ex, ey, toSide, stroke));
+        }
+
+        if (o.dots) {
+            RectAnim.ensure();
+            for (let i = 0; i < 3; i++) {
+                const dot = RectBoard.svgEl('circle', {r: 2, cx: 0, cy: 0, fill: stroke});
+                const s = (dot as unknown as HTMLElement).style;
+                s.offsetPath = `path("${d}")`;
+                s.offsetRotate = '0deg';
+                s.animation = `${RectAnim.TRAVEL} 1.2s linear infinite`;
+                s.animationDelay = `${(i * 0.4).toFixed(2)}s`;
+                svg.appendChild(dot);
+            }
+        }
+
+        if (o.label !== undefined) {
+            const text = RectBoard.svgEl('text', {
+                x: (sx + ex) / 2, y: (sy + ey) / 2 - 5, 'text-anchor': 'middle',
+                fill: '#8595b5', 'font-size': 10, 'font-family': 'system-ui, sans-serif'
+            });
+            text.textContent = o.label;
+            svg.appendChild(text);
+        }
+    }
+
+    /** Right-angle path between two anchors, bending at the side midpoints. */
+    private static orthogonalPath(sx: number, sy: number, fromSide: RectSide, ex: number, ey: number, toSide: RectSide): string {
+        const fromH = fromSide === 'left' || fromSide === 'right';
+        const toH = toSide === 'left' || toSide === 'right';
+
+        if (fromH && toH) {
+            const mx = (sx + ex) / 2;
+            return `M ${sx} ${sy} L ${mx} ${sy} L ${mx} ${ey} L ${ex} ${ey}`;
+        }
+        if (!fromH && !toH) {
+            const my = (sy + ey) / 2;
+            return `M ${sx} ${sy} L ${sx} ${my} L ${ex} ${my} L ${ex} ${ey}`;
+        }
+        // one horizontal, one vertical: single corner
+        const cx = fromH ? ex : sx;
+        const cy = fromH ? sy : ey;
+        return `M ${sx} ${sy} L ${cx} ${cy} L ${ex} ${ey}`;
+    }
+
+    private static arrowHead(x: number, y: number, toSide: RectSide, fill: string): SVGElement {
+        const s = 4.5;
+        let points: string; // tip at the anchor, base outside — arrow points INTO the box
+        switch (toSide) {
+            case 'left': points = `${x - 7},${y - s} ${x - 7},${y + s} ${x},${y}`; break;
+            case 'right': points = `${x + 7},${y - s} ${x + 7},${y + s} ${x},${y}`; break;
+            case 'top': points = `${x - s},${y - 7} ${x + s},${y - 7} ${x},${y}`; break;
+            default: points = `${x - s},${y + 7} ${x + s},${y + 7} ${x},${y}`; break;
+        }
+        return RectBoard.svgEl('polygon', {points: points, fill: fill});
+    }
+
+    private static svgEl(name: string, attrs: Record<string, string | number>): SVGElement {
+        const node = document.createElementNS(SVG_NS, name);
+        for (const key of Object.keys(attrs)) {
+            node.setAttribute(key, String(attrs[key]));
+        }
+        return node;
     }
 
     private clampScale(s: number): number {

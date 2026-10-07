@@ -46,5 +46,6 @@ export type {
     RectBranchOptions,
     RectLoopOptions,
     RectBoardOptions,
-    RectStoryHandlers
+    RectStoryHandlers,
+    RectRouteOptions
 } from './rect/RectKitTypes';
