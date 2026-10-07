@@ -51,7 +51,8 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   `RectHeader`, `RectChip`, `RectLegend`. Reference panels (`RectReference.ts`): `RectSymbols`
   (glyph·name·type·note key) and `RectGlossary` (term·definition). Connectors: `RectArrow`/`RectPipeline` — directional
   (`RectDirection`), labeled, optionally `animated` (flowing dashes) or `dots` (travelling dots);
-  plus `RectConnectors.ts` `RectElbow` (right-angle L-route) and `RectBranch` (1→n fan-out).
+  plus `RectConnectors.ts` `RectElbow` (right-angle L-route), `RectBranch` (1→n fan-out) and
+  `RectLoop` (curved feedback / self-loop — recurrence you can watch dots travel around).
   Charts also take motion: `Heatmap.scan`, `Timeline.sweep`, `RectBox.glow`. Opt-in CSS animations
   inject one keyframe `<style>` once via `RectAnim`; chart motion uses self-contained SMIL.
   `RectBoard` (`RectBoard.ts`) is the composition layer: `add(el, x, y, id)` places any element

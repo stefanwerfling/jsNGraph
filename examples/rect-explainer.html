@@ -101,7 +101,7 @@
     // This whole page is built ONLY from RectBoard + rect elements — no canvas,
     // no NGraph graphs. Every section is a cluster of rect objects add()-ed to
     // one board, and the board drives the scroll-story camera.
-    const {RectBoard, RectBox, RectGroup, RectPipeline, RectElbow, RectBranch,
+    const {RectBoard, RectBox, RectGroup, RectPipeline, RectElbow, RectBranch, RectLoop,
         RectHeader, RectChip, RectLegend, RectSymbols, RectGlossary,
         Heatmap, BarStrip, FeatureColumn, Sparkline, Scatter, Network, Matrix, Timeline} = JSNGraph;
 
@@ -178,12 +178,22 @@
             ], {direction: 'down', gap: 22, arrowColor: 'violet', animated: true, dots: true}).render()
         ]}).render();
 
-        const note = new RectBox({title: 'Pretraining', subtitle: '50k h · masked', dashed: true,
-            body: new BarStrip({count: 16, accent: 'violet', seed: 4, height: 40}).render()}).render();
+        // the masked-pretraining LOOP: predict the masked input, resample the
+        // mask, repeat — a feedback arc you can watch dots travel around.
+        const loopArc = new RectLoop({width: 452, height: 44, color: 'violet', animated: true, dots: true, label: 'resample mask ↺'}).render();
+        const pretrainPipe = new RectPipeline([
+            new RectBox({title: 'Masked', subtitle: 'spans hidden', body: new Heatmap({rows: 3, cols: 9, cell: 7, accent: 'violet', seed: 2, scan: true}).render()}),
+            new RectBox({title: 'Encoder', accent: 'violet', body: new Network({layers: [3, 5, 3], accent: 'violet', seed: 7, width: 90, height: 54}).render()}),
+            new RectBox({title: 'Predict', subtitle: 'reconstruct', dashed: true, body: new BarStrip({count: 12, accent: 'violet', seed: 4, height: 44}).render()})
+        ], {gap: 40, animated: true, dots: true, labels: ['encode', 'head']}).render();
+        const recurrent = colGap(1, 'center', loopArc, pretrainPipe);
 
-        const body = rowGap(28, group, colGap(14, 'flex-start',
-            new RectChip({label: 'self-supervised', color: 'violet', filled: true}).render(), note));
-        return panel('S3 · ENCODE', 'A frozen pretrained encoder', 'Masked pretraining over 50k hours yields stable embeddings; at decode time the encoder is frozen and only small heads learn.', 760, body);
+        const body = colGap(24, 'flex-start',
+            recurrent,
+            rowGap(28, group, colGap(14, 'flex-start',
+                new RectChip({label: 'self-supervised', color: 'violet', filled: true}).render(),
+                new RectBox({title: 'Latents', subtitle: 'frozen · reused', body: new FeatureColumn({rows: 6, cellHeight: 7, accent: 'cyan', seed: 3}).render()}).render())));
+        return panel('S3 · ENCODE', 'Masked pretraining & a frozen encoder', 'Pretraining masks spans and predicts them, resampling the mask each step — the feedback loop above. The resulting encoder is then frozen and reused (internals, left).', 760, body);
     }
 
     // ---- S4 · decode: latents → decoder → cursor output ----
@@ -207,8 +217,15 @@
         const matrix = new RectBox({title: 'Confusion', subtitle: 'intent × decoded', accent: 'cyan',
             body: new Matrix({rows: 4, cols: 4, cell: 13, rowLabels: ['up', 'down', 'left', 'right'], colLabels: ['up', 'dn', 'lf', 'rt'], accent: 'cyan', seed: 5}).render()}).render();
 
-        const body = rowGap(30, colGap(12, 'flex-start', timeline, new RectChip({label: 'recalibrate', color: 'green', animated: true}).render()), matrix);
-        return panel('S5 · MONITOR', 'Drift & recalibration', 'Decoders drift as signals change; a daily recalibration keeps accuracy up. The confusion matrix tracks which intents are confused.', 820, body);
+        // a recurrent state that feeds itself t → t+1 (a self-loop)
+        const recurrentState = colGap(1, 'center',
+            new RectLoop({self: true, color: 'cyan', animated: true, dots: true, height: 24}).render(),
+            new RectBox({title: 'state hₜ', subtitle: 't → t+1'}).render());
+
+        const body = rowGap(30,
+            colGap(12, 'flex-start', timeline, new RectChip({label: 'recalibrate', color: 'green', animated: true}).render()),
+            matrix, recurrentState);
+        return panel('S5 · MONITOR', 'Drift, recurrence & recalibration', 'Decoders drift as signals change; a daily recalibration keeps accuracy up. The confusion matrix tracks confused intents; the recurrent state (right) feeds itself each step.', 960, body);
     }
 
     // ---- S6 · reference: symbols + vocabulary panels ----
