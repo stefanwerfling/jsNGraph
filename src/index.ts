@@ -8,7 +8,7 @@ export { Theme } from './render/Theme';
 export type { ThemeTokens } from './render/Theme';
 export { RectBox, RectArrow, RectPipeline } from './rect/RectBox';
 export { RectGroup } from './rect/RectGroup';
-export { RectElbow, RectBranch } from './rect/RectConnectors';
+export { RectElbow, RectBranch, RectLoop } from './rect/RectConnectors';
 export { RectHeader, RectChip, RectLegend } from './rect/RectLabels';
 export { RectSymbols, RectGlossary } from './rect/RectReference';
 export { RectBoard } from './rect/RectBoard';
@@ -44,6 +44,7 @@ export type {
     RectSide,
     RectElbowOptions,
     RectBranchOptions,
+    RectLoopOptions,
     RectBoardOptions,
     RectStoryHandlers
 } from './rect/RectKitTypes';

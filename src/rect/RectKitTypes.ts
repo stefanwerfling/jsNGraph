@@ -149,6 +149,24 @@ export interface RectBranchOptions {
     direction?: RectDirection;
 }
 
+export interface RectLoopOptions {
+    /** Horizontal span the arc covers, in px. */
+    width?: number;
+    /** How tall the arc bows, in px. */
+    height?: number;
+    color?: RectAccent;
+    dashed?: boolean;
+    animated?: boolean;
+    /** Send travelling dots around the loop (visible recurrence). */
+    dots?: boolean;
+    /** A small self-loop (node → itself) instead of a wide feedback arc. */
+    self?: boolean;
+    /** Bow the arc below instead of above. */
+    below?: boolean;
+    /** Caption centred on the arc. */
+    label?: string;
+}
+
 export interface RectArrowOptions {
     width?: number;
     height?: number;

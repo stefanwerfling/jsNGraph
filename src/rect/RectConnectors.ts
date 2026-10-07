@@ -1,6 +1,6 @@
 import { RectAnim } from './RectAnim';
 import { RectColor } from './RectColor';
-import { RectBranchOptions, RectDirection, RectElbowOptions, RectSide } from './RectKitTypes';
+import { RectBranchOptions, RectDirection, RectElbowOptions, RectLoopOptions, RectSide } from './RectKitTypes';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -110,6 +110,89 @@ export class RectElbow {
 
         if (o.arrow !== false) {
             svg.appendChild(head(ex, ey, sideToDir(to), stroke));
+        }
+
+        wrap.appendChild(svg);
+
+        return wrap;
+    }
+
+}
+
+/** Send travelling dots along an arbitrary SVG path (visible flow/recurrence). */
+function travelDots(svg: SVGSVGElement, d: string, fill: string, count = 3): void {
+    RectAnim.ensure();
+
+    for (let i = 0; i < count; i++) {
+        const dot = document.createElementNS(NS, 'circle');
+        dot.setAttribute('r', '2');
+        dot.setAttribute('cx', '0');
+        dot.setAttribute('cy', '0');
+        dot.setAttribute('fill', fill);
+        dot.style.offsetPath = `path("${d}")`;
+        dot.style.offsetRotate = '0deg';
+        dot.style.animation = `${RectAnim.TRAVEL} 1.3s linear infinite`;
+        dot.style.animationDelay = `${(i * 0.43).toFixed(2)}s`;
+        svg.appendChild(dot);
+    }
+}
+
+/**
+ * A curved feedback / loop connector: an arc that bows over (or under) a flow
+ * and points back — the recurrence of a wiring diagram (e.g. "mask resampling"
+ * feeding the input again, or a recurrent state feeding itself).
+ */
+export class RectLoop {
+
+    public constructor(private readonly options: RectLoopOptions = {}) {}
+
+    public render(): HTMLDivElement {
+        const o = this.options;
+        const self = o.self === true;
+        const below = o.below === true;
+        const w = o.width ?? (self ? 46 : 150);
+        const h = o.height ?? (self ? 26 : 42);
+        const stroke = RectColor.resolve(o.color, 'slate');
+
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'flex:0 0 auto; display:flex;';
+        const svg = svgRoot(w, h);
+
+        const baseY = below ? 1 : h - 1;
+        const topY = below ? h - 1 : 1;
+
+        let startX: number;
+        let endX: number;
+        let d: string;
+
+        if (self) {
+            const cx = w / 2;
+            startX = cx + 7;
+            endX = cx - 7;
+            d = `M ${startX} ${baseY} C ${cx + 16} ${topY} ${cx - 16} ${topY} ${endX} ${baseY}`;
+        } else {
+            const inset = 8;
+            startX = w - inset;
+            endX = inset;
+            d = `M ${startX} ${baseY} C ${startX} ${topY} ${endX} ${topY} ${endX} ${baseY}`;
+        }
+
+        const path = svgEl('path', {d: d, fill: 'none', stroke: stroke, 'stroke-width': 1.6});
+        applyDash(path, o.dashed, o.animated);
+        svg.appendChild(path);
+        svg.appendChild(head(endX, baseY, below ? 'up' : 'down', stroke));
+
+        if (o.dots) {
+            travelDots(svg, d, stroke);
+        }
+
+        if (o.label !== undefined) {
+            const text = svgEl('text', {
+                x: w / 2, y: below ? h - 3 : 9, 'text-anchor': 'middle',
+                fill: '#8595b5', 'font-size': 9.5, 'font-family': 'system-ui, sans-serif'
+            });
+            text.textContent = o.label;
+            svg.appendChild(text);
         }
 
         wrap.appendChild(svg);
