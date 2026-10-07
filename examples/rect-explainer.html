@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — rect explainer</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    html, body { height: 100%; overflow: hidden; }
+
+    #viewport {
+        position: absolute;
+        inset: 48px 0 0 0;
+        background:
+            radial-gradient(circle at 18% 12%, rgba(122,162,255,0.06), transparent 42%),
+            radial-gradient(circle at 82% 85%, rgba(55,199,212,0.05), transparent 42%),
+            var(--bg);
+    }
+
+    /* a composed section: a titled panel the rect elements live in */
+    .panel {
+        box-sizing: border-box;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: rgba(20, 27, 44, 0.55);
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+        padding: 16px 18px 20px;
+    }
+    .panel .kicker { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; color: var(--accent); }
+    .panel h2 { margin: 3px 0 3px; font-size: 21px; color: #fff; }
+    .panel p.desc { margin: 0 0 14px; font-size: 13px; color: var(--text-dim); line-height: 1.45; max-width: 58ch; }
+    .panel .body { }
+
+    .hud { position: absolute; z-index: 40; }
+    #hint {
+        top: 58px; left: 50%; transform: translateX(-50%);
+        font-size: 12px; color: var(--text-dim);
+        background: rgba(15,20,32,0.7); padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border);
+    }
+    #zoombar { top: 58px; right: 14px; display: flex; gap: 6px; }
+    #zoombar button {
+        background: var(--bg-soft); color: var(--text); border: 1px solid var(--border);
+        border-radius: 6px; width: 30px; height: 28px; font-size: 15px; cursor: pointer;
+    }
+    #zoombar button:hover { border-color: var(--accent); }
+    #zoombar button#zoom-fit { width: auto; padding: 0 10px; font-size: 12px; }
+
+    #tour {
+        left: 50%; bottom: 18px; transform: translateX(-50%);
+        max-width: min(900px, 94vw);
+        background: rgba(17, 23, 38, 0.92); backdrop-filter: blur(8px);
+        border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px;
+    }
+    #tour .head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+    #tour .head .label { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; color: var(--text-dim); }
+    #tour .head .title { font-size: 17px; color: #fff; font-weight: 600; }
+    #tour .head .count { margin-left: auto; font-size: 12px; color: var(--text-dim); }
+    #tour .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    #tour .chips button {
+        background: var(--bg-soft); color: var(--text); border: 1px solid var(--border);
+        border-radius: 8px; padding: 6px 11px; font: 12px system-ui, sans-serif; cursor: pointer;
+    }
+    #tour .chips button:hover { border-color: var(--accent); }
+    #tour .chips button.active { border-color: var(--accent); color: var(--accent); background: rgba(122,162,255,0.12); }
+    #tour .chips button .k { display: inline-block; min-width: 18px; text-align: center; margin-right: 6px; font-weight: 700; color: var(--accent); }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="monitoring.html">Monitoring</a>
+    <a href="layered.html">Layered flow</a>
+    <a href="radial.html">Radial</a>
+    <a href="kinds.html">Node gallery</a>
+    <a href="api.html">API playground</a>
+    <a href="explainer.html">Explainer</a>
+    <a href="rect-explainer.html" class="active">Rect explainer</a>
+</nav>
+
+<div id="hint" class="hud">Scroll or ↑ ↓ to step · drag to pan · ⌘/ctrl-scroll to zoom</div>
+<div id="zoombar" class="hud">
+    <button id="zoom-in" title="Zoom in">+</button>
+    <button id="zoom-out" title="Zoom out">−</button>
+    <button id="zoom-fit" title="Fit all">fit</button>
+</div>
+
+<div id="viewport"></div>
+
+<div id="tour" class="hud">
+    <div class="head">
+        <span class="label">RECT EXPLAINER</span>
+        <span class="title" id="tour-title">A signal → cursor pipeline</span>
+        <span class="count" id="tour-count"></span>
+    </div>
+    <div class="chips" id="tour-chips"></div>
+</div>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+    // This whole page is built ONLY from RectBoard + rect elements — no canvas,
+    // no NGraph graphs. Every section is a cluster of rect objects add()-ed to
+    // one board, and the board drives the scroll-story camera.
+    const {RectBoard, RectBox, RectGroup, RectPipeline, RectElbow, RectBranch,
+        RectHeader, RectChip, RectLegend, RectSymbols, RectGlossary,
+        Heatmap, BarStrip, FeatureColumn, Sparkline, Scatter, Network, Matrix, Timeline} = JSNGraph;
+
+    const viewport = document.getElementById('viewport');
+    const rboard = new RectBoard(viewport, {minScale: 0.08, maxScale: 2.4});
+
+    // a titled panel wrapper to hold each section's rect composition
+    function panel(kicker, title, desc, width, body) {
+        const el = document.createElement('div');
+        el.className = 'panel';
+        el.style.width = width + 'px';
+        el.innerHTML = '<div class="kicker">' + kicker + '</div><h2>' + title + '</h2><p class="desc">' + desc + '</p>';
+        const b = document.createElement('div');
+        b.className = 'body';
+        b.appendChild(body);
+        el.appendChild(b);
+        return el;
+    }
+    const rowGap = (gap, ...nodes) => {
+        const d = document.createElement('div');
+        d.style.cssText = 'display:flex; align-items:center; gap:' + gap + 'px;';
+        nodes.forEach((n) => d.appendChild(n));
+        return d;
+    };
+    const colGap = (gap, align, ...nodes) => {
+        const d = document.createElement('div');
+        d.style.cssText = 'display:flex; flex-direction:column; align-items:' + align + '; gap:' + gap + 'px;';
+        nodes.forEach((n) => d.appendChild(n));
+        return d;
+    };
+
+    // ---- S1 · overview: header, legend, an end-to-end preview pipeline ----
+    function overview() {
+        const legend = new RectLegend({items: [
+            {label: 'raw', color: 'blue'}, {label: 'features', color: 'cyan'},
+            {label: 'latent', color: 'violet'}, {label: 'fault', color: '#ff6a6a'}
+        ]}).render();
+        const preview = new RectPipeline([
+            new RectBox({badge: 'IN', title: 'Signal', body: new Heatmap({rows: 4, cols: 10, accent: 'blue', seed: 3, scan: true}).render()}),
+            new RectBox({title: 'Encode', accent: 'violet', body: new Network({layers: [3, 5, 3], accent: 'violet', seed: 6, width: 90, height: 56}).render()}),
+            new RectBox({badge: 'OUT', title: 'Cursor', body: new Scatter({count: 34, accent: 'cyan', seed: 9, width: 86, height: 56, axes: true, target: true}).render()})
+        ], {gap: 44, animated: true, dots: true, labels: ['spikes', 'latent']}).render();
+
+        const body = colGap(18, 'flex-start',
+            rowGap(16, new RectHeader({kicker: 'OVERVIEW', title: 'Signal → Cursor', subtitle: 'a neural decoding pipeline, told in rect elements', accent: 'cyan'}).render()),
+            legend, preview);
+        return panel('S1 · OVERVIEW', 'The whole picture', 'Raw neural signal becomes an intent — decoded to a cursor. The next stops zoom into each stage. Scroll to begin.', 760, body);
+    }
+
+    // ---- S2 · ingest: fan-out to channels, filter, window ----
+    function ingest() {
+        const band = (label, seed) => new RectBox({title: label, body: new Heatmap({rows: 2, cols: 10, cell: 7, accent: 'blue', seed: seed}).render()}).render();
+        const branch = rowGap(0,
+            new RectBox({title: 'Array', subtitle: '1024 ch', accent: 'blue'}).render(),
+            new RectBranch({count: 3, direction: 'right', color: 'blue', animated: true, dots: true, width: 72, height: 150}).render(),
+            colGap(18, 'flex-start', band('band α', 1), band('band β', 2), band('band γ', 3)));
+
+        const flow = new RectPipeline([
+            new RectBox({title: 'Threshold', subtitle: 'crossings', accent: 'green', body: new Heatmap({rows: 4, cols: 10, accent: 'green', seed: 8}).render()}),
+            new RectBox({title: 'Bin', subtitle: '20 ms', dashed: true, accent: 'amber', body: new BarStrip({count: 12, accent: 'amber', seed: 21, height: 46}).render()})
+        ], {gap: 40, animated: true, dots: true, labels: ['rectify']}).render();
+
+        const body = colGap(22, 'flex-start', branch, flow);
+        return panel('S2 · INGEST', 'From electrodes to bins', 'The electrode array fans out into frequency bands; threshold crossings are rectified and binned into feature counts.', 720, body);
+    }
+
+    // ---- S3 · encode: a grouped encoder with a vertical sub-pipeline ----
+    function encode() {
+        const group = new RectGroup({title: 'NEURAL ENCODER · FROZEN', accent: 'violet', layout: 'column', gap: 0, children: [
+            new RectPipeline([
+                new RectBox({title: 'Embed', subtitle: 'per channel', body: new Heatmap({rows: 3, cols: 9, cell: 7, accent: 'violet', seed: 2}).render()}),
+                new RectBox({title: 'Transformer', subtitle: '12 layers', accent: 'violet', glow: true, body: new Network({layers: [4, 6, 6, 4], accent: 'violet', seed: 7, width: 120, height: 70}).render()}),
+                new RectBox({title: 'Latents', subtitle: 'd = 256', accent: 'cyan', body: new FeatureColumn({rows: 7, cellHeight: 7, accent: 'cyan', seed: 9}).render()})
+            ], {direction: 'down', gap: 22, arrowColor: 'violet', animated: true, dots: true}).render()
+        ]}).render();
+
+        const note = new RectBox({title: 'Pretraining', subtitle: '50k h · masked', dashed: true,
+            body: new BarStrip({count: 16, accent: 'violet', seed: 4, height: 40}).render()}).render();
+
+        const body = rowGap(28, group, colGap(14, 'flex-start',
+            new RectChip({label: 'self-supervised', color: 'violet', filled: true}).render(), note));
+        return panel('S3 · ENCODE', 'A frozen pretrained encoder', 'Masked pretraining over 50k hours yields stable embeddings; at decode time the encoder is frozen and only small heads learn.', 760, body);
+    }
+
+    // ---- S4 · decode: latents → decoder → cursor output ----
+    function decode() {
+        const flow = new RectPipeline([
+            new RectBox({title: 'Latents', accent: 'cyan', body: new FeatureColumn({rows: 7, cellHeight: 7, accent: 'cyan', seed: 9}).render()}),
+            new RectBox({title: 'Decoder', subtitle: 'linear head', accent: 'green', glow: true, body: new Sparkline({count: 26, accent: 'green', seed: 14}).render()}),
+            new RectBox({badge: 'OUT', title: 'Cursor', subtitle: 'x · y velocity', body: new Scatter({count: 40, accent: 'cyan', seed: 31, width: 96, height: 60, spread: 0.5, axes: true, target: true}).render()})
+        ], {gap: 46, animated: true, dots: true, labels: ['read', 'move']}).render();
+
+        const body = colGap(16, 'flex-start', flow,
+            rowGap(10, new RectChip({label: 'click head', color: 'amber'}).render(), new RectChip({label: 'cursor head', color: 'cyan'}).render()));
+        return panel('S4 · DECODE', 'Small heads, real-time', 'Frozen latents feed lightweight heads that read out a 2D cursor and click probabilities — online, every bin.', 760, body);
+    }
+
+    // ---- S5 · monitor: drift timeline + confusion matrix, elbow-wired ----
+    function monitor() {
+        const timeline = new RectBox({title: 'Decoder lifetime', subtitle: 'daily recalibration · red = drift',
+            body: new Timeline({count: 46, accent: 'green', seed: 42, height: 18, sweep: true, ticks: ['week 1', 'week 2', 'week 3']}).render()}).render();
+
+        const matrix = new RectBox({title: 'Confusion', subtitle: 'intent × decoded', accent: 'cyan',
+            body: new Matrix({rows: 4, cols: 4, cell: 13, rowLabels: ['up', 'down', 'left', 'right'], colLabels: ['up', 'dn', 'lf', 'rt'], accent: 'cyan', seed: 5}).render()}).render();
+
+        const body = rowGap(30, colGap(12, 'flex-start', timeline, new RectChip({label: 'recalibrate', color: 'green', animated: true}).render()), matrix);
+        return panel('S5 · MONITOR', 'Drift & recalibration', 'Decoders drift as signals change; a daily recalibration keeps accuracy up. The confusion matrix tracks which intents are confused.', 820, body);
+    }
+
+    // ---- S6 · reference: symbols + vocabulary panels ----
+    function reference() {
+        const symbols = new RectSymbols({
+            title: 'Symbols',
+            subtitle: 'The quantities moving through the pipeline.',
+            items: [
+                {symbol: 'z', color: 'blue', name: 'binned spikes', type: 'n counts / bin', note: 'encoder input'},
+                {symbol: 'e', color: 'violet', name: 'embedding', type: 'vector, d', note: 'encoder output'},
+                {symbol: 'x', color: 'cyan', name: 'kinematics', type: '2D cursor', note: 'decoder output'},
+                {symbol: 'ρ', color: 'amber', name: 'click prob', type: 'per click type', note: 'click head'},
+                {symbol: 'k', color: 'green', name: 'latents', type: 'integer', note: 'Perceiver width'}
+            ]
+        }).render();
+        const vocab = new RectGlossary({
+            title: 'Vocabulary', accent: 'cyan', columns: 1,
+            subtitle: 'Terms used across this story.',
+            terms: [
+                {term: 'pretraining', def: 'self-supervised learning on unlabeled signal.'},
+                {term: 'frozen encoder', def: 'weights fixed at decode time; only heads learn.'},
+                {term: 'drift', def: 'signal statistics shifting day to day.'},
+                {term: 'recalibration', def: 'a short re-fit that restores accuracy.'}
+            ]
+        }).render();
+        return panel('S6 · REFERENCE', 'Symbols & vocabulary', 'A key to the glyphs and the words — built from the same rect kit as every diagram above.', 900, rowGap(30, symbols, vocab));
+    }
+
+    // ---- compose: add each section as an object; the board assembles it ----
+    const SECTIONS = [
+        {id: 's1', build: overview, x: 80,   y: 80},
+        {id: 's2', build: ingest,   x: 1000, y: 80},
+        {id: 's3', build: encode,   x: 1860, y: 80},
+        {id: 's4', build: decode,   x: 80,   y: 780},
+        {id: 's5', build: monitor,  x: 960,  y: 780},
+        {id: 's6', build: reference, x: 1920, y: 780}
+    ];
+    const META = [
+        {t: 'The whole picture'}, {t: 'From electrodes to bins'}, {t: 'A frozen pretrained encoder'},
+        {t: 'Small heads, real-time'}, {t: 'Drift & recalibration'}, {t: 'Symbols & vocabulary'}
+    ];
+
+    const steps = SECTIONS;
+    steps.forEach((s) => rboard.add(s.build(), s.x, s.y, s.id));
+
+    // ---- tour wiring (camera + story owned by RectBoard) ----
+    const chipsEl = document.getElementById('tour-chips');
+    const titleEl = document.getElementById('tour-title');
+    const countEl = document.getElementById('tour-count');
+
+    const chips = steps.map((s, i) => {
+        const btn = document.createElement('button');
+        btn.innerHTML = '<span class="k">' + (i + 1) + '</span>' + META[i].t;
+        btn.addEventListener('click', () => rboard.goto(i));
+        chipsEl.appendChild(btn);
+        return btn;
+    });
+    const allBtn = document.createElement('button');
+    allBtn.innerHTML = '<span class="k">⤢</span>Whole canvas';
+    allBtn.addEventListener('click', () => rboard.goto(-1));
+    chipsEl.appendChild(allBtn);
+
+    function updateTour(index) {
+        chips.forEach((c, i) => c.classList.toggle('active', i === index));
+        allBtn.classList.toggle('active', index < 0);
+        if (index < 0) { titleEl.textContent = 'A signal → cursor pipeline'; countEl.textContent = steps.length + ' stops'; }
+        else { titleEl.textContent = META[index].t; countEl.textContent = (index + 1) + ' / ' + steps.length; }
+    }
+
+    document.getElementById('zoom-in').addEventListener('click', () => rboard.zoomBy(1.25));
+    document.getElementById('zoom-out').addEventListener('click', () => rboard.zoomBy(1 / 1.25));
+    document.getElementById('zoom-fit').addEventListener('click', () => rboard.goto(-1));
+
+    rboard.story(steps.map((s) => s.id), {onStep: updateTour});
+    updateTour(-1);
+    rboard.fitAll(false);
+</script>
+</body>
+</html>

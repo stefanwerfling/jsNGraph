@@ -75,7 +75,9 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   node kind × shape × status × pulse as a static grid), `api.html` (exercises every public
   method: add/update/remove node+edge, get/setPositions, setTheme, setShowLabels) and
   `explainer.html` (a pan/zoom board documenting the library — each section a jsNGraph diagram,
-  plus a section built from the `rect/` kit).
+  plus a section built from the `rect/` kit; composed with `RectBoard` and a scroll-story) and
+  `rect-explainer.html` (a second scrollytelling built *only* from `RectBoard` + rect elements,
+  no canvas — the kit standing on its own).
 
 ## Conventions
 
