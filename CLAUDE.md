@@ -50,12 +50,16 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   `Matrix` (axis-labeled grid), `Timeline` (opt. cursor/ticks). Labels (`RectLabels.ts`):
   `RectHeader`, `RectChip`, `RectLegend`. Reference panels (`RectReference.ts`): `RectSymbols`
   (glyph·name·type·note key) and `RectGlossary` (term·definition). Connectors: `RectArrow`/`RectPipeline` — directional
-  (`RectDirection`), labeled, optionally `animated` (flowing dashes); plus `RectConnectors.ts`
-  `RectElbow` (right-angle L-route) and `RectBranch` (1→n fan-out). Opt-in animations inject one keyframe
-  `<style>` once via `RectAnim`. Deterministic (`RectRandom`), inline-styled like the other
-  DOM overlays — no stylesheet for static use, zero deps. Not canvas/graph-related; shares
-  the package because consumers compose it alongside NGraph (see `examples/explainer.html`).
-  All exported from `index.ts`.
+  (`RectDirection`), labeled, optionally `animated` (flowing dashes) or `dots` (travelling dots);
+  plus `RectConnectors.ts` `RectElbow` (right-angle L-route) and `RectBranch` (1→n fan-out).
+  Charts also take motion: `Heatmap.scan`, `Timeline.sweep`, `RectBox.glow`. Opt-in CSS animations
+  inject one keyframe `<style>` once via `RectAnim`; chart motion uses self-contained SMIL.
+  `RectBoard` (`RectBoard.ts`) is the composition layer: `add(el, x, y, id)` places any element
+  on one pan/zoom camera, and `story([ids], {onStep})` turns wheel/arrow input into smooth
+  camera fly-throughs — the scrollytelling the explainer runs on. Deterministic (`RectRandom`),
+  inline-styled like the other DOM overlays — no stylesheet for static use, zero deps. Not
+  canvas/graph-related; shares the package because consumers compose it alongside NGraph (see
+  `examples/explainer.html`). All exported from `index.ts`.
 
 ## Commands
 
