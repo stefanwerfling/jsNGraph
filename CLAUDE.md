@@ -63,6 +63,28 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   inline-styled like the other DOM overlays — no stylesheet for static use, zero deps. Not
   canvas/graph-related; shares the package because consumers compose it alongside NGraph (see
   `examples/explainer.html`). All exported from `index.ts`.
+- `modelview/` — a third, standalone export: `ModelView`, an interactive pan/zoom
+  model-architecture viewer on its own canvas (hfviewer.com in spirit). A *pure renderer* — it
+  never fetches or parses a model; the consumer hands it `{modules, flows}` (`ModelGraphData`)
+  built from whatever source it has. `ModelModuleData` = labeled block with a `kind`
+  (`ModuleKind`: input/embedding/attention/mlp/norm/head/output/block/op/generic → accent color +
+  monogram glyph), optional `sublabel`, `repeat` (collapsed "×N" stacked card), and `detail`
+  key/values (shape/dtype/params → click panel). `ModelFlowData` edges have a `kind` (`FlowKind`:
+  `flow` = vertical bezier with arrowhead; `residual`/`skip` = dashed side-route bowed out right)
+  and optional `animated` dots. **Granularity**: modules may form a containment forest via
+  `parent` + `level` (the level a module is revealed at); `setLevel(n)`/`getMaxLevel()` walk
+  between granularities (hfviewer's 4 detail levels). Author flows between the finest *leaf*
+  modules only — `Granularity.ts` (pure, `test/Granularity.test.ts`) derives each coarser level by
+  collapsing hidden endpoints onto their nearest visible ancestor, dropping now-internal edges and
+  merging duplicates, so one `×32` block expands into layer internals → attn/MLP projections →
+  SDPA ops. Pieces: `FlowLayout.ts` (deterministic top-down longest-path rank
+  layout — a residual edge spanning ranks never pulls its target up; capped relaxation so a
+  feedback cycle terminates; see `test/FlowLayout.test.ts`), `Camera.ts` (world↔screen pan/zoom +
+  fit-to-content), `ModelInteraction.ts` (drag-pan, wheel-zoom-at-cursor, world-space hit-test —
+  its own, since NGraph's `InteractionController` has no camera), `ModelRenderer.ts` (blocks +
+  edges + screen-space grid), `ModelPanel.ts` (click detail panel). Reuses `render/Theme.ts` and
+  `ui/Tooltip.ts` from NGraph; `ModelView.ts` auto-fits on every resize until the user pans/zooms.
+  See `examples/modelview.html`.
 
 ## Commands
 
@@ -74,7 +96,10 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   `index.html` is a gallery hub linking to: `monitoring.html` (force layout, the network-
   monitoring demo with theme/label toggles, simulated-failure/recover, a jittered load loop),
   `layered.html` (layered + curved edges with a live barycenter-`sweeps` slider and crossing
-  counter), `radial.html` (hub-and-ring, agent/gateway, pulse/sublabel), `kinds.html` (every
+  counter), `radial.html` (hub-and-ring, agent/gateway, pulse/sublabel), `modelview.html`
+  (the `ModelView` architecture viewer: a granularity slider walks blocks → layer internals →
+  attn/MLP projections → SDPA ops, with residual side-routes, animated flow, pan/zoom/fit and a
+  click detail panel), `kinds.html` (every
   node kind × shape × status × pulse as a static grid), `api.html` (exercises every public
   method: add/update/remove node+edge, get/setPositions, setTheme, setShowLabels) and
   `explainer.html` (a pan/zoom board documenting the library — each section a jsNGraph diagram,

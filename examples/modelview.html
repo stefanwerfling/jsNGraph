@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — model view</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="monitoring.html">Monitoring</a>
+    <a href="layered.html">Layered flow</a>
+    <a href="radial.html">Radial</a>
+    <a href="modelview.html" class="active">Model view</a>
+    <a href="kinds.html">Node gallery</a>
+    <a href="api.html">API playground</a>
+    <a href="explainer.html">Explainer</a>
+    <a href="rect-explainer.html">Rect explainer</a>
+    <a href="rect-autoroute.html">Auto-route</a>
+</nav>
+
+<div class="toolbar tl">
+    <button id="toggle-theme">Toggle theme</button>
+    <label>Granularity
+        <input id="level" type="range" min="0" max="3" step="1" value="0">
+        <span id="level-name" style="min-width:110px; display:inline-block;">Blocks</span>
+    </label>
+    <button id="toggle-anim">Pause flow</button>
+    <button id="fit">Fit</button>
+    <button id="zoom-in">Zoom +</button>
+    <button id="zoom-out">Zoom −</button>
+</div>
+
+<div id="graph" class="graph-stage"></div>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+    // A model-architecture graph described as a containment forest. ModelView
+    // is a pure renderer: a consumer would build this from a parsed config or a
+    // traced module tree. Each module declares the `level` it appears at and
+    // its `parent`; flows are authored between the finest leaves, and ModelView
+    // derives every coarser granularity by collapsing onto ancestors.
+    //
+    //   level 0  Blocks            input_ids → Embedding → Decoder Layer ×32 → …
+    //   level 1  Layer internals   norms / attention / MLP / residual adds
+    //   level 2  Attention + MLP   Q/K/V/O projections, gate/up/down, SiLU, …
+    //   level 3  Operations        QKᵀ · scale · softmax · ·V inside SDPA
+
+    const model = {
+        modules: [
+            // --- level 0: the block spine --------------------------------
+            {id: 'ids', kind: 'input', label: 'input_ids', detail: {shape: '[B, T]', dtype: 'int64'}},
+            {id: 'emb', kind: 'embedding', label: 'Token Embedding', sublabel: 'Embedding',
+             detail: {shape: '[151936, 2560]', params: '388.9 M', dtype: 'BF16'}},
+            {id: 'layer', kind: 'block', label: 'Decoder Layer', sublabel: 'Qwen3DecoderLayer', repeat: 32,
+             detail: {attention: 'GQA 20 q / 4 kv', mlp: 'SwiGLU · 9728', norm: 'RMSNorm', params: '3.1 B'}},
+            {id: 'lnf', kind: 'norm', label: 'Final RMSNorm', sublabel: 'RMSNorm'},
+            {id: 'head', kind: 'head', label: 'LM Head', sublabel: 'Linear',
+             detail: {shape: '[2560, 151936]', params: '388.9 M', bias: 'false'}},
+            {id: 'logits', kind: 'output', label: 'logits', detail: {shape: '[B, T, 151936]'}},
+
+            // --- level 1: inside one decoder layer -----------------------
+            {id: 'ln1', kind: 'norm', label: 'Input RMSNorm', sublabel: 'RMSNorm', level: 1, parent: 'layer'},
+            {id: 'attn', kind: 'attention', label: 'Self-Attention', sublabel: 'Qwen3Attention · GQA', level: 1, parent: 'layer',
+             detail: {q_heads: 20, kv_heads: 4, head_dim: 128, rope: 'θ=1e6'}},
+            {id: 'add1', kind: 'op', label: 'Add', sublabel: 'residual +', level: 1, parent: 'layer'},
+            {id: 'ln2', kind: 'norm', label: 'Post-Attn RMSNorm', sublabel: 'RMSNorm', level: 1, parent: 'layer'},
+            {id: 'mlp', kind: 'mlp', label: 'MLP', sublabel: 'SwiGLU', level: 1, parent: 'layer',
+             detail: {intermediate: 9728, gate: 'SiLU'}},
+            {id: 'add2', kind: 'op', label: 'Add', sublabel: 'residual +', level: 1, parent: 'layer'},
+
+            // --- level 2: attention + MLP internals -----------------------
+            {id: 'q', kind: 'attention', label: 'Q Projection', sublabel: 'Linear 2560→2560', level: 2, parent: 'attn'},
+            {id: 'k', kind: 'attention', label: 'K Projection', sublabel: 'Linear 2560→512', level: 2, parent: 'attn'},
+            {id: 'v', kind: 'attention', label: 'V Projection', sublabel: 'Linear 2560→512', level: 2, parent: 'attn'},
+            {id: 'sdpa', kind: 'attention', label: 'Scaled Dot-Product', sublabel: 'SDPA', level: 2, parent: 'attn',
+             detail: {heads: 20, kv_groups: 4}},
+            {id: 'o', kind: 'attention', label: 'O Projection', sublabel: 'Linear 2560→2560', level: 2, parent: 'attn'},
+
+            {id: 'gate', kind: 'mlp', label: 'Gate Projection', sublabel: 'Linear 2560→9728', level: 2, parent: 'mlp'},
+            {id: 'up', kind: 'mlp', label: 'Up Projection', sublabel: 'Linear 2560→9728', level: 2, parent: 'mlp'},
+            {id: 'act', kind: 'op', label: 'SiLU', sublabel: 'activation', level: 2, parent: 'mlp'},
+            {id: 'mul', kind: 'op', label: 'Multiply', sublabel: 'gate ⊙ up', level: 2, parent: 'mlp'},
+            {id: 'down', kind: 'mlp', label: 'Down Projection', sublabel: 'Linear 9728→2560', level: 2, parent: 'mlp'},
+
+            // --- level 3: operations inside SDPA --------------------------
+            {id: 'qk', kind: 'op', label: 'Q · Kᵀ', sublabel: 'MatMul', level: 3, parent: 'sdpa'},
+            {id: 'scale', kind: 'op', label: 'Scale', sublabel: '÷ √dₖ', level: 3, parent: 'sdpa'},
+            {id: 'softmax', kind: 'op', label: 'Softmax', sublabel: 'attn weights', level: 3, parent: 'sdpa'},
+            {id: 'av', kind: 'op', label: 'weights · V', sublabel: 'MatMul', level: 3, parent: 'sdpa'}
+        ],
+        // Flows authored between the finest leaves (+ two residual add-backs).
+        flows: [
+            {source: 'ids', target: 'emb', animated: true},
+            {source: 'emb', target: 'ln1', animated: true},
+            {source: 'ln1', target: 'q', animated: true},
+            {source: 'ln1', target: 'k', animated: true},
+            {source: 'ln1', target: 'v', animated: true},
+            {source: 'q', target: 'qk', animated: true},
+            {source: 'k', target: 'qk', animated: true},
+            {source: 'qk', target: 'scale', animated: true},
+            {source: 'scale', target: 'softmax', animated: true},
+            {source: 'softmax', target: 'av', animated: true},
+            {source: 'v', target: 'av', animated: true},
+            {source: 'av', target: 'o', animated: true},
+            {source: 'o', target: 'add1', animated: true},
+            {source: 'emb', target: 'add1', kind: 'residual', label: 'residual'},
+            {source: 'add1', target: 'ln2', animated: true},
+            {source: 'ln2', target: 'gate', animated: true},
+            {source: 'ln2', target: 'up', animated: true},
+            {source: 'gate', target: 'act', animated: true},
+            {source: 'act', target: 'mul', animated: true},
+            {source: 'up', target: 'mul', animated: true},
+            {source: 'mul', target: 'down', animated: true},
+            {source: 'down', target: 'add2', animated: true},
+            {source: 'add1', target: 'add2', kind: 'residual', label: 'residual'},
+            {source: 'add2', target: 'lnf', animated: true},
+            {source: 'lnf', target: 'head', animated: true},
+            {source: 'head', target: 'logits', animated: true}
+        ]
+    };
+
+    const LEVEL_NAMES = ['Blocks', 'Layer internals', 'Attention + MLP', 'Operations'];
+
+    let dark = true;
+    let animate = true;
+
+    const view = new JSNGraph.ModelView(document.getElementById('graph'), {theme: 'dark'});
+    view.setData(model);
+
+    const levelInput = document.getElementById('level');
+    const levelName = document.getElementById('level-name');
+    levelInput.max = String(view.getMaxLevel());
+
+    levelInput.addEventListener('input', () => {
+        const level = Number(levelInput.value);
+        view.setLevel(level);
+        levelName.textContent = LEVEL_NAMES[level] || ('Level ' + level);
+    });
+
+    document.getElementById('toggle-theme').addEventListener('click', () => {
+        dark = !dark;
+        view.setTheme(dark ? 'dark' : 'light');
+        document.body.style.background = dark ? '#0f1420' : '#f4f6fb';
+    });
+
+    document.getElementById('toggle-anim').addEventListener('click', (e) => {
+        animate = !animate;
+        view.setAnimate(animate);
+        e.target.textContent = animate ? 'Pause flow' : 'Resume flow';
+    });
+
+    document.getElementById('fit').addEventListener('click', () => view.fit());
+    document.getElementById('zoom-in').addEventListener('click', () => view.zoomIn());
+    document.getElementById('zoom-out').addEventListener('click', () => view.zoomOut());
+</script>
+</body>
+</html>

@@ -6,6 +6,16 @@ export type { RadialLayoutOptions } from './layout/RadialLayout';
 export type { LayeredLayoutOptions } from './layout/LayeredLayout';
 export { Theme } from './render/Theme';
 export type { ThemeTokens } from './render/Theme';
+export { ModelView } from './modelview/ModelView';
+export type { ModelViewOptions } from './modelview/ModelView';
+export type { FlowLayoutOptions } from './modelview/FlowLayout';
+export type {
+    ModelGraphData,
+    ModelModuleData,
+    ModelFlowData,
+    ModuleKind,
+    FlowKind
+} from './modelview/ModelTypes';
 export { RectBox, RectArrow, RectPipeline } from './rect/RectBox';
 export { RectGroup } from './rect/RectGroup';
 export { RectElbow, RectBranch, RectLoop } from './rect/RectConnectors';
