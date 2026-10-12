@@ -67,11 +67,14 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   model-architecture viewer on its own canvas (hfviewer.com in spirit). A *pure renderer* — it
   never fetches or parses a model; the consumer hands it `{modules, flows}` (`ModelGraphData`)
   built from whatever source it has. `ModelModuleData` = labeled block with a `kind`
-  (`ModuleKind`: input/embedding/attention/mlp/norm/head/output/block/op/generic → accent color +
-  monogram glyph), optional `sublabel`, `repeat` (collapsed "×N" stacked card), and `detail`
-  key/values (shape/dtype/params → click panel). `ModelFlowData` edges have a `kind` (`FlowKind`:
-  `flow` = vertical bezier with arrowhead; `residual`/`skip` = dashed side-route bowed out right)
-  and optional `animated` dots. **Granularity**: modules may form a containment forest via
+  (`ModuleKind`: input/embedding/attention/mlp/norm/head/output/block/op/generic → the chip's accent
+  border/label color), optional `sublabel`, `repeat` (stacked card + big "×N"), and
+  `detail` key/values (shape/dtype/params → click panel). Styled after the real hfviewer viewer:
+  compact OUTLINED pill chips (accent border, dark tinted fill, light-tinted accent label) on a dark
+  background (no grid), thin ORTHOGONAL right-angle edges with rounded corners tinted by their source
+  block, and labeled group-container frames around expanded parents. `ModelFlowData` edges have a
+  `kind` (`FlowKind`: `flow` = orthogonal top-down route; `residual`/`skip` = dashed detour out the
+  right) and optional `animated` dots travelling the route. **Granularity**: modules may form a containment forest via
   `parent` + `level` (the level a module is revealed at); `setLevel(n)`/`getMaxLevel()` walk
   between granularities (hfviewer's 4 detail levels). Author flows between the finest *leaf*
   modules only — `Granularity.ts` (pure, `test/Granularity.test.ts`) derives each coarser level by
@@ -81,9 +84,11 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   layout — a residual edge spanning ranks never pulls its target up; capped relaxation so a
   feedback cycle terminates; see `test/FlowLayout.test.ts`), `Camera.ts` (world↔screen pan/zoom +
   fit-to-content), `ModelInteraction.ts` (drag-pan, wheel-zoom-at-cursor, world-space hit-test —
-  its own, since NGraph's `InteractionController` has no camera), `ModelRenderer.ts` (blocks +
-  edges + screen-space grid), `ModelPanel.ts` (click detail panel). Reuses `render/Theme.ts` and
-  `ui/Tooltip.ts` from NGraph; `ModelView.ts` auto-fits on every resize until the user pans/zooms.
+  its own, since NGraph's `InteractionController` has no camera), `ModelRenderer.ts` (outlined chips +
+  orthogonal edges + nested `GroupFrame` container boxes), `ModelPanel.ts` (click detail panel).
+  `ModelView.computeGroups` builds a `GroupFrame` (padded bbox + label tab + ×N) per expanded
+  parent, padded more for outer groups so nested frames sit cleanly inside. Reuses `render/Theme.ts`
+  and `ui/Tooltip.ts` from NGraph; `ModelView.ts` auto-fits on every resize until the user pans/zooms.
   See `examples/modelview.html`.
 
 ## Commands

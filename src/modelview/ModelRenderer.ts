@@ -9,42 +9,46 @@ export interface ModelRenderOptions {
     animate: boolean;
 }
 
+/**
+ * A container frame drawn behind an EXPANDED parent module's children — the
+ * labeled "DecoderLayer ×N" box in hfviewer. Geometry is the tight bounding
+ * box of the visible descendants; `pad` insets it (larger for outer groups so
+ * nested frames sit cleanly inside).
+ */
+export interface GroupFrame {
+    node: ModelNode;
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+    pad: number;
+}
+
 type Point = {x: number; y: number};
-type Cubic = [Point, Point, Point, Point];
 
-/** Accent color per module kind — mid-saturation so it reads on dark + light. */
+/**
+ * Accent color per module kind — the OUTLINE/text color of a chip (hfviewer
+ * draws outlined pills, not solid blocks), bright enough to read as a border
+ * and a light-tinted label on a dark background, grouped by subsystem.
+ */
 const KIND_ACCENT: Record<ModuleKind, string> = {
-    input: '#64748b',
-    embedding: '#8b5cf6',
-    attention: '#3b82f6',
-    mlp: '#10b981',
-    norm: '#f59e0b',
-    head: '#ec4899',
-    output: '#64748b',
-    block: '#6366f1',
+    input: '#22d3ee',
+    embedding: '#a78bfa',
+    attention: '#818cf8',
+    mlp: '#34d399',
+    norm: '#38bdf8',
+    head: '#fb7185',
+    output: '#f472b6',
+    block: '#fbbf24',
     op: '#94a3b8',
-    generic: '#7a8699'
-};
-
-/** One-glyph monogram per kind drawn in the accent chip. */
-const KIND_GLYPH: Record<ModuleKind, string> = {
-    input: 'I',
-    embedding: 'E',
-    attention: 'A',
-    mlp: 'M',
-    norm: 'N',
-    head: 'H',
-    output: 'O',
-    block: 'B',
-    op: '·',
-    generic: '□'
+    generic: '#9ca3af'
 };
 
 /**
- * Draws the model flow graph: a fixed screen-space dotted grid, then the flow
- * edges and module blocks in world space through the Camera. Blocks are
- * rounded cards with an accent chip, a label/sublabel, a "×N" badge for
- * collapsed repeats, and hover/selection strokes.
+ * Draws the model flow graph hfviewer-style: a dark background, compact
+ * OUTLINED pill chips (accent border, dark tinted fill, light-tinted accent
+ * label), thin orthogonal right-angle edges with rounded corners, and a
+ * stacked "×N" for collapsed repeats. All world-space through the Camera.
  */
 export class ModelRenderer {
 
@@ -70,8 +74,8 @@ export class ModelRenderer {
         return node.accent ?? KIND_ACCENT[node.kind];
     }
 
-    public draw(nodes: ModelNode[], edges: ModelEdge[], camera: Camera, hoveredId: string | null,
-        selectedId: string | null, timeMs: number, options: ModelRenderOptions): void {
+    public draw(nodes: ModelNode[], edges: ModelEdge[], groups: GroupFrame[], camera: Camera,
+        hoveredId: string | null, selectedId: string | null, timeMs: number, options: ModelRenderOptions): void {
         const {ctx, canvas, theme} = this;
         const dpr = window.devicePixelRatio || 1;
         const width = canvas.width / dpr;
@@ -81,10 +85,13 @@ export class ModelRenderer {
         ctx.scale(dpr, dpr);
         ctx.fillStyle = theme.background;
         ctx.fillRect(0, 0, width, height);
-        this.drawGrid(width, height);
 
         ctx.save();
         camera.apply(ctx);
+
+        for (const group of groups) {
+            this.drawGroup(group);
+        }
 
         for (const edge of edges) {
             this.drawEdge(edge, timeMs, options.animate);
@@ -98,50 +105,71 @@ export class ModelRenderer {
         ctx.restore();
     }
 
-    private drawGrid(width: number, height: number): void {
+    private drawGroup(group: GroupFrame): void {
         const {ctx, theme} = this;
-        const step = 28;
+        const accent = this.accentFor(group.node);
+        const x = group.minX - group.pad;
+        const y = group.minY - group.pad;
+        const w = (group.maxX - group.minX) + group.pad * 2;
+        const h = (group.maxY - group.minY) + group.pad * 2;
 
-        ctx.fillStyle = theme.gridDot;
+        ctx.save();
 
-        for (let x = step / 2; x < width; x += step) {
-            for (let y = step / 2; y < height; y += step) {
-                ctx.fillRect(x, y, 1, 1);
-            }
-        }
+        // Faint tinted frame.
+        ModelRenderer.roundRectPath(ctx, x, y, w, h, 12);
+        ctx.fillStyle = ModelRenderer.mix(accent, theme.background, 0.93);
+        ctx.fill();
+        ctx.strokeStyle = accent;
+        ctx.globalAlpha = 0.6;
+        ctx.lineWidth = 1.3;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+
+        // Label tab at the top-left, sitting on the frame's top edge.
+        const label = group.node.repeat > 1 ? `${group.node.label}  ×${group.node.repeat}` : group.node.label;
+
+        ctx.font = '600 11px Inter, system-ui, sans-serif';
+        const tabW = ctx.measureText(label).width + 16;
+        const tabH = 18;
+
+        ModelRenderer.roundRectPath(ctx, x + 10, y - tabH / 2, tabW, tabH, 5);
+        ctx.fillStyle = accent;
+        ctx.fill();
+        ctx.fillStyle = ModelRenderer.isDark(theme.background) ? '#0b1020' : '#ffffff';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, x + 18, y - tabH / 2 + tabH / 2 + 0.5);
+
+        ctx.restore();
     }
 
     private drawEdge(edge: ModelEdge, timeMs: number, animate: boolean): void {
         const {ctx, theme} = this;
         const sideRoute = edge.kind !== 'flow';
-        const color = sideRoute ? theme.nodeStroke : theme.panelBar;
-        const curve = sideRoute ? ModelRenderer.sideCurve(edge) : ModelRenderer.flowCurve(edge);
+        const accent = this.accentFor(edge.source);
+        const color = sideRoute ? theme.nodeStroke : accent;
+        const points = sideRoute ? ModelRenderer.sideRoute(edge) : ModelRenderer.flowRoute(edge);
 
         ctx.save();
         ctx.strokeStyle = color;
-        ctx.lineWidth = sideRoute ? 1.4 : 1.8;
-        ctx.globalAlpha = sideRoute ? 0.55 : 0.85;
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = sideRoute ? 0.5 : 0.6;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
 
         if (sideRoute) {
-            ctx.setLineDash([5, 4]);
+            ctx.setLineDash([5, 5]);
         }
 
-        ctx.beginPath();
-        ctx.moveTo(curve[0].x, curve[0].y);
-        ctx.bezierCurveTo(curve[1].x, curve[1].y, curve[2].x, curve[2].y, curve[3].x, curve[3].y);
-        ctx.stroke();
+        ModelRenderer.strokeRoundedPolyline(ctx, points, 7);
         ctx.restore();
 
-        if (!sideRoute) {
-            ModelRenderer.drawArrowhead(ctx, curve[3], curve[2], color);
-        }
-
         if (edge.label !== null) {
-            const mid = ModelRenderer.cubicPoint(curve, 0.5);
+            const mid = ModelRenderer.pointAlong(points, 0.5);
 
             ctx.save();
             ctx.fillStyle = theme.panelSubtext;
-            ctx.font = '10px system-ui, sans-serif';
+            ctx.font = '10px Inter, system-ui, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(edge.label, mid.x + (sideRoute ? 10 : 0), mid.y);
@@ -149,63 +177,90 @@ export class ModelRenderer {
         }
 
         if (animate && edge.animated) {
-            this.drawFlowDots(curve, color, edge.phase, timeMs);
+            this.drawFlowDots(points, color, edge.phase, timeMs);
         }
     }
 
-    /** Forward edge: source bottom-center down to target top-center, vertical S. */
-    private static flowCurve(edge: ModelEdge): Cubic {
+    /** Forward edge, orthogonal: down out of source, across at mid height, down into target. */
+    private static flowRoute(edge: ModelEdge): Point[] {
         const s = edge.source;
         const t = edge.target;
-        const p0 = {x: s.x, y: s.y + s.h / 2};
-        const p3 = {x: t.x, y: t.y - t.h / 2};
-        const midY = (p0.y + p3.y) / 2;
+        const y0 = s.y + s.h / 2;
+        const y1 = t.y - t.h / 2;
+        const midY = (y0 + y1) / 2;
 
-        return [p0, {x: p0.x, y: midY}, {x: p3.x, y: midY}, p3];
+        if (Math.abs(s.x - t.x) < 0.5) {
+            return [{x: s.x, y: y0}, {x: t.x, y: y1}];
+        }
+
+        return [{x: s.x, y: y0}, {x: s.x, y: midY}, {x: t.x, y: midY}, {x: t.x, y: y1}];
     }
 
-    /** Residual/skip edge: bowed out to the right of both blocks' right edges. */
-    private static sideCurve(edge: ModelEdge): Cubic {
+    /** Residual/skip edge: orthogonal detour out the right side of both blocks. */
+    private static sideRoute(edge: ModelEdge): Point[] {
         const s = edge.source;
         const t = edge.target;
-        const p0 = {x: s.x + s.w / 2, y: s.y};
-        const p3 = {x: t.x + t.w / 2, y: t.y};
-        const bow = Math.max(60, Math.abs(p3.y - p0.y) * 0.4);
+        const x0 = s.x + s.w / 2;
+        const x1 = t.x + t.w / 2;
+        const bendX = Math.max(x0, x1) + 34;
 
-        return [p0, {x: p0.x + bow, y: p0.y}, {x: p3.x + bow, y: p3.y}, p3];
+        return [{x: x0, y: s.y}, {x: bendX, y: s.y}, {x: bendX, y: t.y}, {x: x1, y: t.y}];
     }
 
-    private static cubicPoint(c: Cubic, u: number): Point {
-        const v = 1 - u;
-        const a = v * v * v;
-        const b = 3 * v * v * u;
-        const d = 3 * v * u * u;
-        const e = u * u * u;
+    /** Stroke a polyline with rounded corners of radius r at each interior vertex. */
+    private static strokeRoundedPolyline(ctx: CanvasRenderingContext2D, pts: Point[], r: number): void {
+        if (pts.length < 2) {
+            return;
+        }
 
-        return {
-            x: a * c[0].x + b * c[1].x + d * c[2].x + e * c[3].x,
-            y: a * c[0].y + b * c[1].y + d * c[2].y + e * c[3].y
-        };
-    }
-
-    private static drawArrowhead(ctx: CanvasRenderingContext2D, tip: Point, from: Point, color: string): void {
-        const angle = Math.atan2(tip.y - from.y, tip.x - from.x);
-        const size = 7;
-
-        ctx.save();
-        ctx.fillStyle = color;
-        ctx.translate(tip.x, tip.y);
-        ctx.rotate(angle);
         ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(-size, -size * 0.5);
-        ctx.lineTo(-size, size * 0.5);
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
+        ctx.moveTo(pts[0]!.x, pts[0]!.y);
+
+        for (let i = 1; i < pts.length - 1; i++) {
+            ctx.arcTo(pts[i]!.x, pts[i]!.y, pts[i + 1]!.x, pts[i + 1]!.y, r);
+        }
+
+        const last = pts[pts.length - 1]!;
+
+        ctx.lineTo(last.x, last.y);
+        ctx.stroke();
     }
 
-    private drawFlowDots(curve: Cubic, color: string, phase: number, timeMs: number): void {
+    /** Point at fraction u (0..1) along a polyline, by cumulative segment length. */
+    private static pointAlong(pts: Point[], u: number): Point {
+        if (pts.length === 1) {
+            return pts[0]!;
+        }
+
+        const lengths: number[] = [];
+        let total = 0;
+
+        for (let i = 0; i < pts.length - 1; i++) {
+            const d = Math.hypot(pts[i + 1]!.x - pts[i]!.x, pts[i + 1]!.y - pts[i]!.y);
+
+            lengths.push(d);
+            total += d;
+        }
+
+        let target = u * total;
+
+        for (let i = 0; i < lengths.length; i++) {
+            if (target <= lengths[i]! || i === lengths.length - 1) {
+                const f = lengths[i]! === 0 ? 0 : target / lengths[i]!;
+
+                return {
+                    x: pts[i]!.x + (pts[i + 1]!.x - pts[i]!.x) * f,
+                    y: pts[i]!.y + (pts[i + 1]!.y - pts[i]!.y) * f
+                };
+            }
+
+            target -= lengths[i]!;
+        }
+
+        return pts[pts.length - 1]!;
+    }
+
+    private drawFlowDots(points: Point[], color: string, phase: number, timeMs: number): void {
         const {ctx} = this;
         const count = 2;
         const speed = 0.00022;
@@ -215,10 +270,10 @@ export class ModelRenderer {
 
         for (let i = 0; i < count; i++) {
             const u = (phase + i / count + timeMs * speed) % 1;
-            const point = ModelRenderer.cubicPoint(curve, u);
+            const point = ModelRenderer.pointAlong(points, u);
 
             ctx.beginPath();
-            ctx.arc(point.x, point.y, 2.4, 0, Math.PI * 2);
+            ctx.arc(point.x, point.y, 2.2, 0, Math.PI * 2);
             ctx.fill();
         }
 
@@ -228,104 +283,65 @@ export class ModelRenderer {
     private drawNode(node: ModelNode, hovered: boolean, selected: boolean, showLabel: boolean): void {
         const {ctx, theme} = this;
         const accent = this.accentFor(node);
+        const dark = ModelRenderer.isDark(theme.background);
+        const fill = ModelRenderer.mix(accent, theme.background, 0.84);
+        const textColor = dark ? ModelRenderer.mix(accent, '#ffffff', 0.55) : ModelRenderer.mix(accent, '#000000', 0.35);
         const x = node.x - node.w / 2;
         const y = node.y - node.h / 2;
 
         ctx.save();
 
-        // Stacked-card shadows behind the block for a collapsed "×N" repeat.
+        // Stacked outlined cards behind a collapsed "×N" repeat.
         if (node.repeat > 1) {
             for (let i = Math.min(2, node.repeat - 1); i >= 1; i--) {
-                const off = i * 4;
+                const off = i * 5;
 
-                ModelRenderer.roundRectPath(ctx, x + off, y - off, node.w, node.h, 9);
-                ctx.fillStyle = theme.nodeFill;
+                ModelRenderer.roundRectPath(ctx, x + off, y - off, node.w, node.h, 7);
+                ctx.fillStyle = theme.background;
                 ctx.fill();
-                ctx.lineWidth = 1;
-                ctx.strokeStyle = theme.nodeStroke;
+                ctx.strokeStyle = ModelRenderer.mix(accent, theme.background, 0.5);
+                ctx.lineWidth = 1.2;
                 ctx.stroke();
             }
         }
 
-        // Body
-        ModelRenderer.roundRectPath(ctx, x, y, node.w, node.h, 9);
-        ctx.fillStyle = theme.nodeFill;
+        // Chip body: dark tinted fill + accent outline.
+        ModelRenderer.roundRectPath(ctx, x, y, node.w, node.h, 7);
+        ctx.fillStyle = fill;
         ctx.fill();
-        ctx.lineWidth = selected ? 2.5 : hovered ? 2 : 1.4;
-        ctx.strokeStyle = selected
-            ? theme.nodeSelectedStroke
-            : hovered
-                ? theme.nodeHoverStroke
-                : theme.nodeStroke;
+        ctx.strokeStyle = selected ? theme.nodeSelectedStroke : hovered ? theme.nodeHoverStroke : accent;
+        ctx.lineWidth = selected ? 2.2 : hovered ? 2 : 1.5;
         ctx.stroke();
 
-        // Accent stripe down the left edge (clipped to the rounded body).
-        ctx.save();
-        ModelRenderer.roundRectPath(ctx, x, y, node.w, node.h, 9);
-        ctx.clip();
-        ctx.fillStyle = accent;
-        ctx.fillRect(x, y, 4, node.h);
-        ctx.restore();
-
-        // Accent chip with the kind monogram.
-        const chip = node.h - 20;
-        const chipX = x + 14;
-        const chipY = node.y - chip / 2;
-
-        ModelRenderer.roundRectPath(ctx, chipX, chipY, chip, chip, 6);
-        ctx.fillStyle = accent;
-        ctx.fill();
-        ctx.fillStyle = '#ffffff';
-        ctx.font = `600 ${Math.round(chip * 0.5)}px system-ui, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(KIND_GLYPH[node.kind], chipX + chip / 2, chipY + chip / 2 + 0.5);
-
-        // Texts
+        // Label (+ sublabel), centered, in the accent tint.
         if (showLabel) {
-            const textX = chipX + chip + 10;
-            const maxTextW = node.w - (textX - x) - 14;
+            const maxTextW = node.w - 18;
 
-            ctx.textAlign = 'left';
-            ctx.fillStyle = theme.panelText;
-            ctx.font = '600 12.5px system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = textColor;
+            ctx.font = '600 12px Inter, system-ui, sans-serif';
             ctx.textBaseline = 'middle';
-            ctx.fillText(node.label, textX, node.sublabel !== null ? node.y - 8 : node.y, maxTextW);
+            ctx.fillText(node.label, node.x, node.sublabel !== null ? node.y - 7 : node.y, maxTextW);
 
             if (node.sublabel !== null) {
                 ctx.fillStyle = theme.panelSubtext;
-                ctx.font = '10.5px system-ui, sans-serif';
-                ctx.fillText(node.sublabel, textX, node.y + 9, maxTextW);
+                ctx.font = '10px Inter, system-ui, sans-serif';
+                ctx.fillText(node.sublabel, node.x, node.y + 9, maxTextW);
             }
         }
 
-        // Repeat badge
+        ctx.restore();
+
+        // Big "×N" to the right of a collapsed repeat block.
         if (node.repeat > 1) {
-            ModelRenderer.drawRepeatBadge(ctx, `×${node.repeat}`, x + node.w, y, accent);
+            ctx.save();
+            ctx.fillStyle = accent;
+            ctx.font = '600 18px Inter, system-ui, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`×${node.repeat}`, x + node.w + 14, node.y);
+            ctx.restore();
         }
-
-        ctx.restore();
-    }
-
-    private static drawRepeatBadge(ctx: CanvasRenderingContext2D, text: string, rightX: number,
-        topY: number, accent: string): void {
-        ctx.save();
-        ctx.font = '600 10px system-ui, sans-serif';
-        ctx.textBaseline = 'middle';
-
-        const padX = 6;
-        const w = ctx.measureText(text).width + padX * 2;
-        const h = 16;
-        const bx = rightX - w - 6;
-        const by = topY + 6;
-
-        ModelRenderer.roundRectPath(ctx, bx, by, w, h, 8);
-        ctx.fillStyle = accent;
-        ctx.fill();
-        ctx.fillStyle = '#ffffff';
-        ctx.textAlign = 'center';
-        ctx.fillText(text, bx + w / 2, by + h / 2 + 0.5);
-        ctx.restore();
     }
 
     private static roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number,
@@ -337,6 +353,38 @@ export class ModelRenderer {
         ctx.arcTo(x, y + h, x, y, r);
         ctx.arcTo(x, y, x + w, y, r);
         ctx.closePath();
+    }
+
+    /** Linear blend from colour `a` to colour `b` by t (0 = a, 1 = b). */
+    private static mix(a: string, b: string, t: number): string {
+        const ca = ModelRenderer.toRgb(a);
+        const cb = ModelRenderer.toRgb(b);
+        const m = (x: number, y: number): number => Math.round(x + (y - x) * t);
+
+        return `rgb(${m(ca.r, cb.r)}, ${m(ca.g, cb.g)}, ${m(ca.b, cb.b)})`;
+    }
+
+    private static isDark(color: string): boolean {
+        const {r, g, b} = ModelRenderer.toRgb(color);
+
+        return (r * 0.299 + g * 0.587 + b * 0.114) < 140;
+    }
+
+    /** Parse #rgb / #rrggbb / rgb(...) into channels. */
+    private static toRgb(color: string): {r: number; g: number; b: number} {
+        const rgb = color.match(/rgba?\(([^)]+)\)/);
+
+        if (rgb !== null) {
+            const [r, g, b] = rgb[1]!.split(',').map((n) => parseFloat(n));
+
+            return {r: r!, g: g!, b: b!};
+        }
+
+        const clean = color.replace('#', '');
+        const full = clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean;
+        const num = parseInt(full, 16);
+
+        return {r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255};
     }
 
 }

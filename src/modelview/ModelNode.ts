@@ -57,10 +57,10 @@ export class ModelNode {
      * measuring pass against the (not-yet-available) 2d context.
      */
     public static measure(label: string, sublabel: string | null): {w: number; h: number} {
-        const labelW = 7.4 * label.length;
-        const subW = sublabel !== null ? 6 * sublabel.length : 0;
-        const w = Math.max(150, Math.min(300, 44 + Math.max(labelW, subW)));
-        const h = sublabel !== null ? 60 : 48;
+        const labelW = 6.9 * label.length;
+        const subW = sublabel !== null ? 5.7 * sublabel.length : 0;
+        const w = Math.max(110, Math.min(300, 24 + Math.max(labelW, subW)));
+        const h = sublabel !== null ? 46 : 32;
 
         return {w: w, h: h};
     }

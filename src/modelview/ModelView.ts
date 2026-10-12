@@ -5,7 +5,7 @@ import { ModelEdge } from './ModelEdge';
 import { ModelInteraction } from './ModelInteraction';
 import { ModelNode } from './ModelNode';
 import { ModelPanel } from './ModelPanel';
-import { ModelRenderer } from './ModelRenderer';
+import { GroupFrame, ModelRenderer } from './ModelRenderer';
 import { ModelFlowData, ModelGraphData } from './ModelTypes';
 import { Theme, ThemeTokens } from '../render/Theme';
 import { Tooltip } from '../ui/Tooltip';
@@ -62,6 +62,8 @@ export class ModelView {
     /** The subset shown at the current granularity level, laid out. */
     private visibleNodes: ModelNode[] = [];
     private edges: ModelEdge[] = [];
+    /** Container frames for expanded parent modules at the current level. */
+    private groups: GroupFrame[] = [];
     private level = 0;
     private maxLevel = 0;
 
@@ -256,6 +258,7 @@ export class ModelView {
         ));
 
         this.layout.apply(this.visibleNodes, resolved);
+        this.groups = this.computeGroups(visible);
 
         // A selected/hovered module may have been collapsed away.
         if (this.selectedId !== null && !visible.has(this.selectedId)) {
@@ -285,7 +288,97 @@ export class ModelView {
             bounds.maxY = Math.max(bounds.maxY, node.y + node.h / 2);
         }
 
+        // Group frames (and their top label tabs) extend beyond the nodes.
+        for (const group of this.groups) {
+            bounds.minX = Math.min(bounds.minX, group.minX - group.pad);
+            bounds.minY = Math.min(bounds.minY, group.minY - group.pad - 9);
+            bounds.maxX = Math.max(bounds.maxX, group.maxX + group.pad);
+            bounds.maxY = Math.max(bounds.maxY, group.maxY + group.pad);
+        }
+
         return bounds;
+    }
+
+    /**
+     * One container frame per EXPANDED parent (a module hidden at this level
+     * but with visible descendants): the bounding box of those descendants,
+     * padded more for outer groups so nested frames sit cleanly inside.
+     */
+    private computeGroups(visible: Set<string>): GroupFrame[] {
+        const boxes = new Map<string, {minX: number; minY: number; maxX: number; maxY: number}>();
+
+        for (const node of this.visibleNodes) {
+            let parentId = node.parent;
+
+            while (parentId !== null) {
+                const parent = this.allNodes.get(parentId);
+
+                if (parent === undefined) {
+                    break;
+                }
+
+                if (!visible.has(parentId)) {
+                    let box = boxes.get(parentId);
+
+                    if (box === undefined) {
+                        box = {minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity};
+                        boxes.set(parentId, box);
+                    }
+
+                    box.minX = Math.min(box.minX, node.x - node.w / 2);
+                    box.minY = Math.min(box.minY, node.y - node.h / 2);
+                    box.maxX = Math.max(box.maxX, node.x + node.w / 2);
+                    box.maxY = Math.max(box.maxY, node.y + node.h / 2);
+                }
+
+                parentId = parent.parent;
+            }
+        }
+
+        // depth = how many open-group ancestors a group has (deeper = inner).
+        const depth = new Map<string, number>();
+
+        for (const groupId of boxes.keys()) {
+            let d = 0;
+            let parentId = this.allNodes.get(groupId)!.parent;
+
+            while (parentId !== null) {
+                const parent = this.allNodes.get(parentId);
+
+                if (parent === undefined) {
+                    break;
+                }
+
+                if (boxes.has(parentId)) {
+                    d++;
+                }
+
+                parentId = parent.parent;
+            }
+
+            depth.set(groupId, d);
+        }
+
+        const maxDepth = Math.max(0, ...depth.values());
+        const frames: GroupFrame[] = [];
+
+        for (const [groupId, box] of boxes) {
+            const node = this.allNodes.get(groupId)!;
+
+            frames.push({
+                node: node,
+                minX: box.minX,
+                minY: box.minY,
+                maxX: box.maxX,
+                maxY: box.maxY,
+                pad: 14 + 10 * (maxDepth - (depth.get(groupId) ?? 0))
+            });
+        }
+
+        // Outer frames first so inner frames paint on top.
+        frames.sort((a, b) => (depth.get(a.node.id) ?? 0) - (depth.get(b.node.id) ?? 0));
+
+        return frames;
     }
 
     private handleHover(node: ModelNode | null): void {
@@ -339,6 +432,7 @@ export class ModelView {
         this.renderer.draw(
             this.visibleNodes,
             this.edges,
+            this.groups,
             this.camera,
             this.hoveredId,
             this.selectedId,
