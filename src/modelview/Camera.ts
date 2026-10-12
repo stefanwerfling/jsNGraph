@@ -51,12 +51,16 @@ export class Camera {
         this.offsetY = screenY - before.y * this.scale;
     }
 
-    /** Frame the given world bounds inside a viewW×viewH viewport, with padding px. */
-    public fit(bounds: Bounds, viewW: number, viewH: number, padding = 48): void {
+    /**
+     * Frame the given world bounds inside a viewW×viewH viewport. `padding` is
+     * the inset on the left/right/bottom; `padTop` (defaults to `padding`) is
+     * the top inset — raise it to keep content clear of a floating toolbar.
+     */
+    public fit(bounds: Bounds, viewW: number, viewH: number, padding = 48, padTop = padding): void {
         const contentW = Math.max(1, bounds.maxX - bounds.minX);
         const contentH = Math.max(1, bounds.maxY - bounds.minY);
         const scaleX = (viewW - padding * 2) / contentW;
-        const scaleY = (viewH - padding * 2) / contentH;
+        const scaleY = (viewH - padding - padTop) / contentH;
 
         this.scale = Math.min(this.maxScale, Math.max(this.minScale, Math.min(scaleX, scaleY)));
 
@@ -64,7 +68,8 @@ export class Camera {
         const centerY = (bounds.minY + bounds.maxY) / 2;
 
         this.offsetX = viewW / 2 - centerX * this.scale;
-        this.offsetY = viewH / 2 - centerY * this.scale;
+        // Vertically centre within the asymmetric band [padTop, viewH - padding].
+        this.offsetY = (padTop + (viewH - padding)) / 2 - centerY * this.scale;
     }
 
 }

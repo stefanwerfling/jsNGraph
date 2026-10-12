@@ -168,14 +168,16 @@ export class FlowLayout {
 
         items.sort((a, b) => a.desired - b.desired);
 
-        // Place centres left to right, pushing right only on overlap.
+        // Place centres left to right, pushing right only on overlap. Different
+        // clusters get a wider gap so a side column's frame clears the backbone.
+        const clusterGap = this.laneGap + 48;
         let prevRight = -Infinity;
 
         for (const item of items) {
             let center = item.desired;
 
-            if (center - item.width / 2 < prevRight + this.laneGap) {
-                center = prevRight + this.laneGap + item.width / 2;
+            if (center - item.width / 2 < prevRight + clusterGap) {
+                center = prevRight + clusterGap + item.width / 2;
             }
 
             item.center = center;

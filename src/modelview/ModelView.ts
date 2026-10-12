@@ -208,7 +208,7 @@ export class ModelView {
             return;
         }
 
-        this.camera.fit(this.bounds(), this.width, this.height);
+        this.camera.fit(this.bounds(), this.width, this.height, 48, 88);
         this.userAdjusted = false;
         this.panel.hide();
     }
@@ -312,7 +312,7 @@ export class ModelView {
         this.userAdjusted = false;
 
         if (this.width > 0 && this.height > 0 && this.visibleNodes.length > 0) {
-            this.camera.fit(this.bounds(), this.width, this.height);
+            this.camera.fit(this.bounds(), this.width, this.height, 48, 88);
         }
     }
 
@@ -462,7 +462,7 @@ export class ModelView {
         // this also corrects the initial fit, whose dimensions may have been
         // stale when setData ran before the canvas was laid out.
         if (!this.userAdjusted && this.visibleNodes.length > 0 && width > 0 && height > 0) {
-            this.camera.fit(this.bounds(), width, height);
+            this.camera.fit(this.bounds(), width, height, 48, 88);
         }
     }
 

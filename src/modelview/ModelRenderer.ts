@@ -86,6 +86,19 @@ export class ModelRenderer {
         ctx.fillStyle = theme.background;
         ctx.fillRect(0, 0, width, height);
 
+        // Subtle upper-left glow, hfviewer-style (dark theme only).
+        if (ModelRenderer.isDark(theme.background)) {
+            const glow = ctx.createRadialGradient(
+                width * 0.32, height * 0.08, 0,
+                width * 0.32, height * 0.08, Math.max(width, height) * 0.75
+            );
+
+            glow.addColorStop(0, 'rgba(56, 128, 128, 0.10)');
+            glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = glow;
+            ctx.fillRect(0, 0, width, height);
+        }
+
         ctx.save();
         camera.apply(ctx);
 

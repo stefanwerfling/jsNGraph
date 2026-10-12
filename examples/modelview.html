@@ -80,6 +80,15 @@
             {id: 'full', kind: 'block', accent: '#4ade80', label: 'Qwen3_5DecoderLayer',
              sublabel: 'layer_type: full_attention', repeat: 8, level: 1, parent: 'layers'},
 
+            // --- level 2: inside one linear-attention decoder layer -------
+            {id: 'lnA', kind: 'norm', label: 'Input RMSNorm', sublabel: 'RMSNorm', level: 2, parent: 'lin'},
+            {id: 'la', kind: 'attention', accent: '#f0abfc', label: 'Linear Attention', sublabel: 'GatedDeltaNet', level: 2, parent: 'lin',
+             detail: {heads: 20, mode: 'chunked'}},
+            {id: 'addA', kind: 'op', label: 'Add', sublabel: 'residual', level: 2, parent: 'lin'},
+            {id: 'lnB', kind: 'norm', label: 'Post-Attn RMSNorm', sublabel: 'RMSNorm', level: 2, parent: 'lin'},
+            {id: 'mlpA', kind: 'mlp', label: 'MLP', sublabel: 'SwiGLU', level: 2, parent: 'lin'},
+            {id: 'addB', kind: 'op', label: 'Add', sublabel: 'residual', level: 2, parent: 'lin'},
+
             // --- level 2: inside one full-attention decoder layer ---------
             {id: 'ln1', kind: 'norm', label: 'Input RMSNorm', sublabel: 'RMSNorm', level: 2, parent: 'full'},
             {id: 'attn', kind: 'attention', label: 'Self-Attention', sublabel: 'Qwen3Attention', level: 2, parent: 'full',
@@ -106,14 +115,22 @@
             {source: 'vit_block', target: 'vit_merge', animated: true},
             {source: 'vit_merge', target: 'scatter', animated: true},
             {source: 'emb', target: 'scatter', animated: true},
-            {source: 'scatter', target: 'lin', animated: true},
+            {source: 'scatter', target: 'lnA', animated: true},
             // side inputs feeding the decoder stack (rope / masking)
-            {source: 'pos_cos', target: 'lin'},
-            {source: 'pos_sin', target: 'lin'},
-            {source: 'max_seq', target: 'lin'},
-            {source: 'cu_seq', target: 'lin'},
+            {source: 'pos_cos', target: 'lnA'},
+            {source: 'pos_sin', target: 'lnA'},
+            {source: 'max_seq', target: 'lnA'},
+            {source: 'cu_seq', target: 'lnA'},
+            // inside one linear-attention layer
+            {source: 'lnA', target: 'la', animated: true},
+            {source: 'la', target: 'addA', animated: true},
+            {source: 'lnA', target: 'addA', kind: 'residual', label: 'residual'},
+            {source: 'addA', target: 'lnB', animated: true},
+            {source: 'lnB', target: 'mlpA', animated: true},
+            {source: 'mlpA', target: 'addB', animated: true},
+            {source: 'addA', target: 'addB', kind: 'residual', label: 'residual'},
             // linear layers -> full layers -> norm -> head
-            {source: 'lin', target: 'ln1', animated: true},
+            {source: 'addB', target: 'ln1', animated: true},
             {source: 'ln1', target: 'q', animated: true},
             {source: 'ln1', target: 'k', animated: true},
             {source: 'ln1', target: 'v', animated: true},
@@ -122,7 +139,7 @@
             {source: 'v', target: 'sdpa', animated: true},
             {source: 'sdpa', target: 'o', animated: true},
             {source: 'o', target: 'add1', animated: true},
-            {source: 'lin', target: 'add1', kind: 'residual', label: 'residual'},
+            {source: 'addB', target: 'add1', kind: 'residual', label: 'residual'},
             {source: 'add1', target: 'ln2', animated: true},
             {source: 'ln2', target: 'mlp', animated: true},
             {source: 'mlp', target: 'add2', animated: true},
