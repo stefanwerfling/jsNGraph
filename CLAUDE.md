@@ -102,9 +102,10 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   monitoring demo with theme/label toggles, simulated-failure/recover, a jittered load loop),
   `layered.html` (layered + curved edges with a live barycenter-`sweeps` slider and crossing
   counter), `radial.html` (hub-and-ring, agent/gateway, pulse/sublabel), `modelview.html`
-  (the `ModelView` architecture viewer: a granularity slider walks blocks → layer internals →
-  attn/MLP projections → SDPA ops, with residual side-routes, animated flow, pan/zoom/fit and a
-  click detail panel), `kinds.html` (every
+  (the `ModelView` architecture viewer, a multimodal Qwen3.5-style graph: a granularity slider
+  walks blocks → vision tower + hybrid 24-linear/8-full decoder schedule → layer internals → SDPA
+  ops, with nested labelled group frames, "×N" repeats, residual side-routes, animated flow,
+  pan/zoom/fit and a click detail panel), `kinds.html` (every
   node kind × shape × status × pulse as a static grid), `api.html` (exercises every public
   method: add/update/remove node+edge, get/setPositions, setTheme, setShowLabels) and
   `explainer.html` (a pan/zoom board documenting the library — each section a jsNGraph diagram,

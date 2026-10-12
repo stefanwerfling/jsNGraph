@@ -313,21 +313,39 @@ export class ModelRenderer {
         ctx.lineWidth = selected ? 2.2 : hovered ? 2 : 1.5;
         ctx.stroke();
 
-        // Label (+ sublabel), centered, in the accent tint.
+        // Label (+ sublabel), in the accent tint. When the chip is expandable a
+        // "+" sits at the right, so the text shifts left to make room.
         if (showLabel) {
-            const maxTextW = node.w - 18;
+            const centerX = node.expandable ? node.x - 8 : node.x;
+            const maxTextW = node.w - (node.expandable ? 36 : 18);
 
             ctx.textAlign = 'center';
             ctx.fillStyle = textColor;
             ctx.font = '600 12px Inter, system-ui, sans-serif';
             ctx.textBaseline = 'middle';
-            ctx.fillText(node.label, node.x, node.sublabel !== null ? node.y - 7 : node.y, maxTextW);
+            ctx.fillText(node.label, centerX, node.sublabel !== null ? node.y - 7 : node.y, maxTextW);
 
             if (node.sublabel !== null) {
                 ctx.fillStyle = theme.panelSubtext;
                 ctx.font = '10px Inter, system-ui, sans-serif';
-                ctx.fillText(node.sublabel, node.x, node.y + 9, maxTextW);
+                ctx.fillText(node.sublabel, centerX, node.y + 9, maxTextW);
             }
+        }
+
+        // Expand "+" affordance on the right of a collapsible chip.
+        if (node.expandable) {
+            const cx = x + node.w - 13;
+
+            ctx.strokeStyle = accent;
+            ctx.lineWidth = 1.3;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.arc(cx, node.y, 6.5, 0, Math.PI * 2);
+            ctx.moveTo(cx - 3, node.y);
+            ctx.lineTo(cx + 3, node.y);
+            ctx.moveTo(cx, node.y - 3);
+            ctx.lineTo(cx, node.y + 3);
+            ctx.stroke();
         }
 
         ctx.restore();

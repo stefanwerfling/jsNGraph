@@ -25,7 +25,7 @@
     <button id="toggle-theme">Toggle theme</button>
     <label>Granularity
         <input id="level" type="range" min="0" max="3" step="1" value="0">
-        <span id="level-name" style="min-width:110px; display:inline-block;">Blocks</span>
+        <span id="level-name" style="min-width:120px; display:inline-block;">Blocks</span>
     </label>
     <button id="toggle-anim">Pause flow</button>
     <button id="fit">Fit</button>
@@ -37,92 +37,103 @@
 
 <script src="../dist/jsngraph.global.js"></script>
 <script>
-    // A model-architecture graph described as a containment forest. ModelView
-    // is a pure renderer: a consumer would build this from a parsed config or a
-    // traced module tree. Each module declares the `level` it appears at and
-    // its `parent`; flows are authored between the finest leaves, and ModelView
-    // derives every coarser granularity by collapsing onto ancestors.
+    // A multimodal LLM architecture (Qwen3.5-style) described as a containment
+    // forest. ModelView is a pure renderer: a consumer would build this from a
+    // parsed config or a traced module tree. Each module declares the `level`
+    // it appears at and its `parent`; flows are authored between the finest
+    // leaves, and ModelView derives every coarser granularity by collapsing
+    // onto ancestors (and wraps expanded parents in labelled group frames).
     //
-    //   level 0  Blocks            input_ids → Embedding → Decoder Layer ×32 → …
-    //   level 1  Layer internals   norms / attention / MLP / residual adds
-    //   level 2  Attention + MLP   Q/K/V/O projections, gate/up/down, SiLU, …
-    //   level 3  Operations        QKᵀ · scale · softmax · ·V inside SDPA
+    //   level 0  Blocks             input -> (text / vision) -> fuse -> decoder -> head
+    //   level 1  Branches & layers  vision tower + hybrid 24 linear / 8 full layers
+    //   level 2  Layer internals    norms / attention / MLP / residual adds
+    //   level 3  Attention ops      Q/K/V/O projections + scaled dot-product
 
     const model = {
         modules: [
-            // --- level 0: the block spine --------------------------------
-            {id: 'ids', kind: 'input', label: 'input_ids', detail: {shape: '[B, T]', dtype: 'int64'}},
-            {id: 'emb', kind: 'embedding', label: 'Token Embedding', sublabel: 'Embedding',
-             detail: {shape: '[151936, 2560]', params: '388.9 M', dtype: 'BF16'}},
-            {id: 'layer', kind: 'block', label: 'Decoder Layer', sublabel: 'Qwen3DecoderLayer', repeat: 32,
-             detail: {attention: 'GQA 20 q / 4 kv', mlp: 'SwiGLU · 9728', norm: 'RMSNorm', params: '3.1 B'}},
-            {id: 'lnf', kind: 'norm', label: 'Final RMSNorm', sublabel: 'RMSNorm'},
-            {id: 'head', kind: 'head', label: 'LM Head', sublabel: 'Linear',
-             detail: {shape: '[2560, 151936]', params: '388.9 M', bias: 'false'}},
-            {id: 'logits', kind: 'output', label: 'logits', detail: {shape: '[B, T, 151936]'}},
+            // --- level 0: the top-level blocks (a branching multimodal graph) ---
+            {id: 'input', kind: 'input', label: 'input_ids', detail: {shape: '[B, T]', dtype: 'int64'}},
+            {id: 'pos_cos', kind: 'op', accent: '#60a5fa', label: 'PositionEmbeddings.cos'},
+            {id: 'pos_sin', kind: 'op', accent: '#60a5fa', label: 'PositionEmbeddings.sin'},
+            {id: 'max_seq', kind: 'op', accent: '#f472b6', label: 'MaxSequenceLength'},
+            {id: 'cu_seq', kind: 'op', accent: '#34d399', label: 'CuSeqLens'},
+            {id: 'vision', kind: 'block', accent: '#b8a44e', label: 'VisionModel',
+             detail: {type: 'Qwen3VisionTransformer', patch: '14x14'}},
+            {id: 'emb', kind: 'embedding', label: 'Text embeddings', sublabel: 'Embedding',
+             detail: {shape: '[248320, 2560]', params: '635 M', dtype: 'BF16'}},
+            {id: 'scatter', kind: 'op', accent: '#2dd4bf', label: 'masked_scatter'},
+            {id: 'layers', kind: 'block', label: 'Decoder Layer', repeat: 32,
+             detail: {schedule: '24 linear + 8 full', hidden: 2560, params: '3.1 B'}},
+            {id: 'lnf', kind: 'norm', label: 'RMSNorm', sublabel: 'final norm'},
+            {id: 'lin_out', kind: 'mlp', label: 'Linear', sublabel: 'lm_head',
+             detail: {shape: '[2560, 248320]', bias: 'false'}},
+            {id: 'output', kind: 'output', label: 'output', sublabel: 'B x T x 248320'},
 
-            // --- level 1: inside one decoder layer -----------------------
-            {id: 'ln1', kind: 'norm', label: 'Input RMSNorm', sublabel: 'RMSNorm', level: 1, parent: 'layer'},
-            {id: 'attn', kind: 'attention', label: 'Self-Attention', sublabel: 'Qwen3Attention · GQA', level: 1, parent: 'layer',
-             detail: {q_heads: 20, kv_heads: 4, head_dim: 128, rope: 'θ=1e6'}},
-            {id: 'add1', kind: 'op', label: 'Add', sublabel: 'residual +', level: 1, parent: 'layer'},
-            {id: 'ln2', kind: 'norm', label: 'Post-Attn RMSNorm', sublabel: 'RMSNorm', level: 1, parent: 'layer'},
-            {id: 'mlp', kind: 'mlp', label: 'MLP', sublabel: 'SwiGLU', level: 1, parent: 'layer',
+            // --- level 1a: inside the vision tower ------------------------
+            {id: 'vit_patch', kind: 'op', label: 'PatchEmbed', level: 1, parent: 'vision'},
+            {id: 'vit_block', kind: 'block', accent: '#b8a44e', label: 'ViT Block', repeat: 32, level: 1, parent: 'vision'},
+            {id: 'vit_merge', kind: 'op', label: 'PatchMerger', level: 1, parent: 'vision'},
+
+            // --- level 1b: the hybrid attention schedule ------------------
+            {id: 'lin', kind: 'block', accent: '#4ade80', label: 'Qwen3_5DecoderLayer',
+             sublabel: 'layer_type: linear_attention', repeat: 24, level: 1, parent: 'layers'},
+            {id: 'full', kind: 'block', accent: '#4ade80', label: 'Qwen3_5DecoderLayer',
+             sublabel: 'layer_type: full_attention', repeat: 8, level: 1, parent: 'layers'},
+
+            // --- level 2: inside one full-attention decoder layer ---------
+            {id: 'ln1', kind: 'norm', label: 'Input RMSNorm', sublabel: 'RMSNorm', level: 2, parent: 'full'},
+            {id: 'attn', kind: 'attention', label: 'Self-Attention', sublabel: 'Qwen3Attention', level: 2, parent: 'full',
+             detail: {q_heads: 20, kv_heads: 4, head_dim: 128, rope: 'theta=1e6'}},
+            {id: 'add1', kind: 'op', label: 'Add', sublabel: 'residual', level: 2, parent: 'full'},
+            {id: 'ln2', kind: 'norm', label: 'Post-Attn RMSNorm', sublabel: 'RMSNorm', level: 2, parent: 'full'},
+            {id: 'mlp', kind: 'mlp', label: 'MLP', sublabel: 'SwiGLU', level: 2, parent: 'full',
              detail: {intermediate: 9728, gate: 'SiLU'}},
-            {id: 'add2', kind: 'op', label: 'Add', sublabel: 'residual +', level: 1, parent: 'layer'},
+            {id: 'add2', kind: 'op', label: 'Add', sublabel: 'residual', level: 2, parent: 'full'},
 
-            // --- level 2: attention + MLP internals -----------------------
-            {id: 'q', kind: 'attention', label: 'Q Projection', sublabel: 'Linear 2560→2560', level: 2, parent: 'attn'},
-            {id: 'k', kind: 'attention', label: 'K Projection', sublabel: 'Linear 2560→512', level: 2, parent: 'attn'},
-            {id: 'v', kind: 'attention', label: 'V Projection', sublabel: 'Linear 2560→512', level: 2, parent: 'attn'},
-            {id: 'sdpa', kind: 'attention', label: 'Scaled Dot-Product', sublabel: 'SDPA', level: 2, parent: 'attn',
-             detail: {heads: 20, kv_groups: 4}},
-            {id: 'o', kind: 'attention', label: 'O Projection', sublabel: 'Linear 2560→2560', level: 2, parent: 'attn'},
-
-            {id: 'gate', kind: 'mlp', label: 'Gate Projection', sublabel: 'Linear 2560→9728', level: 2, parent: 'mlp'},
-            {id: 'up', kind: 'mlp', label: 'Up Projection', sublabel: 'Linear 2560→9728', level: 2, parent: 'mlp'},
-            {id: 'act', kind: 'op', label: 'SiLU', sublabel: 'activation', level: 2, parent: 'mlp'},
-            {id: 'mul', kind: 'op', label: 'Multiply', sublabel: 'gate ⊙ up', level: 2, parent: 'mlp'},
-            {id: 'down', kind: 'mlp', label: 'Down Projection', sublabel: 'Linear 9728→2560', level: 2, parent: 'mlp'},
-
-            // --- level 3: operations inside SDPA --------------------------
-            {id: 'qk', kind: 'op', label: 'Q · Kᵀ', sublabel: 'MatMul', level: 3, parent: 'sdpa'},
-            {id: 'scale', kind: 'op', label: 'Scale', sublabel: '÷ √dₖ', level: 3, parent: 'sdpa'},
-            {id: 'softmax', kind: 'op', label: 'Softmax', sublabel: 'attn weights', level: 3, parent: 'sdpa'},
-            {id: 'av', kind: 'op', label: 'weights · V', sublabel: 'MatMul', level: 3, parent: 'sdpa'}
+            // --- level 3: attention projections + SDPA --------------------
+            {id: 'q', kind: 'attention', label: 'Q Projection', sublabel: 'Linear 2560-2560', level: 3, parent: 'attn'},
+            {id: 'k', kind: 'attention', label: 'K Projection', sublabel: 'Linear 2560-512', level: 3, parent: 'attn'},
+            {id: 'v', kind: 'attention', label: 'V Projection', sublabel: 'Linear 2560-512', level: 3, parent: 'attn'},
+            {id: 'sdpa', kind: 'attention', label: 'Scaled Dot-Product', sublabel: 'SDPA', level: 3, parent: 'attn'},
+            {id: 'o', kind: 'attention', label: 'O Projection', sublabel: 'Linear 2560-2560', level: 3, parent: 'attn'}
         ],
-        // Flows authored between the finest leaves (+ two residual add-backs).
+        // Flows authored between the finest leaves; coarser levels are derived.
         flows: [
-            {source: 'ids', target: 'emb', animated: true},
-            {source: 'emb', target: 'ln1', animated: true},
+            // multimodal front end
+            {source: 'input', target: 'emb', animated: true},
+            {source: 'input', target: 'vit_patch', animated: true},
+            {source: 'vit_patch', target: 'vit_block', animated: true},
+            {source: 'vit_block', target: 'vit_merge', animated: true},
+            {source: 'vit_merge', target: 'scatter', animated: true},
+            {source: 'emb', target: 'scatter', animated: true},
+            {source: 'scatter', target: 'lin', animated: true},
+            // side inputs feeding the decoder stack (rope / masking)
+            {source: 'pos_cos', target: 'lin'},
+            {source: 'pos_sin', target: 'lin'},
+            {source: 'max_seq', target: 'lin'},
+            {source: 'cu_seq', target: 'lin'},
+            // linear layers -> full layers -> norm -> head
+            {source: 'lin', target: 'ln1', animated: true},
             {source: 'ln1', target: 'q', animated: true},
             {source: 'ln1', target: 'k', animated: true},
             {source: 'ln1', target: 'v', animated: true},
-            {source: 'q', target: 'qk', animated: true},
-            {source: 'k', target: 'qk', animated: true},
-            {source: 'qk', target: 'scale', animated: true},
-            {source: 'scale', target: 'softmax', animated: true},
-            {source: 'softmax', target: 'av', animated: true},
-            {source: 'v', target: 'av', animated: true},
-            {source: 'av', target: 'o', animated: true},
+            {source: 'q', target: 'sdpa', animated: true},
+            {source: 'k', target: 'sdpa', animated: true},
+            {source: 'v', target: 'sdpa', animated: true},
+            {source: 'sdpa', target: 'o', animated: true},
             {source: 'o', target: 'add1', animated: true},
-            {source: 'emb', target: 'add1', kind: 'residual', label: 'residual'},
+            {source: 'lin', target: 'add1', kind: 'residual', label: 'residual'},
             {source: 'add1', target: 'ln2', animated: true},
-            {source: 'ln2', target: 'gate', animated: true},
-            {source: 'ln2', target: 'up', animated: true},
-            {source: 'gate', target: 'act', animated: true},
-            {source: 'act', target: 'mul', animated: true},
-            {source: 'up', target: 'mul', animated: true},
-            {source: 'mul', target: 'down', animated: true},
-            {source: 'down', target: 'add2', animated: true},
+            {source: 'ln2', target: 'mlp', animated: true},
+            {source: 'mlp', target: 'add2', animated: true},
             {source: 'add1', target: 'add2', kind: 'residual', label: 'residual'},
             {source: 'add2', target: 'lnf', animated: true},
-            {source: 'lnf', target: 'head', animated: true},
-            {source: 'head', target: 'logits', animated: true}
+            {source: 'lnf', target: 'lin_out', animated: true},
+            {source: 'lin_out', target: 'output', animated: true}
         ]
     };
 
-    const LEVEL_NAMES = ['Blocks', 'Layer internals', 'Attention + MLP', 'Operations'];
+    const LEVEL_NAMES = ['Blocks', 'Branches & layers', 'Layer internals', 'Attention ops'];
 
     // Default to dark, matching the hfviewer reference look.
     let dark = true;

@@ -30,6 +30,8 @@ export class ModelNode {
     public lane = 0;
     /** True when x/y came from the caller and must not be moved by the layout. */
     public readonly pinned: boolean;
+    /** True when this module is some other module's parent (has detail to expand). */
+    public expandable = false;
 
     public constructor(data: ModelModuleData) {
         this.id = data.id;

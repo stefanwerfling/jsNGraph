@@ -140,6 +140,19 @@ export class ModelView {
             this.allNodes.set(moduleData.id, new ModelNode(moduleData));
         }
 
+        // A module that is some other module's parent can be expanded for detail.
+        const parentIds = new Set<string>();
+
+        for (const moduleData of data.modules) {
+            if (moduleData.parent !== undefined) {
+                parentIds.add(moduleData.parent);
+            }
+        }
+
+        for (const node of this.allNodes.values()) {
+            node.expandable = parentIds.has(node.id);
+        }
+
         for (const flowData of data.flows) {
             if (!this.allNodes.has(flowData.source) || !this.allNodes.has(flowData.target)) {
                 throw new Error(`ModelView: flow '${flowData.source}->${flowData.target}' references an unknown module`);
