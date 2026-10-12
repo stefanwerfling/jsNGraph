@@ -74,6 +74,14 @@ export class ModelRenderer {
         return node.accent ?? KIND_ACCENT[node.kind];
     }
 
+    /** The canvas backdrop: a dark theme is pushed toward near-black (hfviewer's
+     *  deep navy) so chips and their tinted fills read with more contrast. */
+    private bgColor(): string {
+        return ModelRenderer.isDark(this.theme.background)
+            ? ModelRenderer.mix(this.theme.background, '#000000', 0.45)
+            : this.theme.background;
+    }
+
     public draw(nodes: ModelNode[], edges: ModelEdge[], groups: GroupFrame[], camera: Camera,
         hoveredId: string | null, selectedId: string | null, timeMs: number, options: ModelRenderOptions): void {
         const {ctx, canvas, theme} = this;
@@ -81,9 +89,11 @@ export class ModelRenderer {
         const width = canvas.width / dpr;
         const height = canvas.height / dpr;
 
+        const bg = this.bgColor();
+
         ctx.save();
         ctx.scale(dpr, dpr);
-        ctx.fillStyle = theme.background;
+        ctx.fillStyle = bg;
         ctx.fillRect(0, 0, width, height);
 
         // Subtle upper-left glow, hfviewer-style (dark theme only).
@@ -130,7 +140,7 @@ export class ModelRenderer {
 
         // Faint tinted frame.
         ModelRenderer.roundRectPath(ctx, x, y, w, h, 12);
-        ctx.fillStyle = ModelRenderer.mix(accent, theme.background, 0.93);
+        ctx.fillStyle = ModelRenderer.mix(accent, this.bgColor(), 0.93);
         ctx.fill();
         ctx.strokeStyle = accent;
         ctx.globalAlpha = 0.6;
@@ -297,8 +307,9 @@ export class ModelRenderer {
         const {ctx, theme} = this;
         const accent = this.accentFor(node);
         const dark = ModelRenderer.isDark(theme.background);
-        const fill = ModelRenderer.mix(accent, theme.background, 0.84);
-        const textColor = dark ? ModelRenderer.mix(accent, '#ffffff', 0.55) : ModelRenderer.mix(accent, '#000000', 0.35);
+        const bg = this.bgColor();
+        const fill = ModelRenderer.mix(accent, bg, 0.84);
+        const textColor = dark ? ModelRenderer.mix(accent, '#ffffff', 0.72) : ModelRenderer.mix(accent, '#000000', 0.35);
         const x = node.x - node.w / 2;
         const y = node.y - node.h / 2;
 
@@ -310,9 +321,9 @@ export class ModelRenderer {
                 const off = i * 5;
 
                 ModelRenderer.roundRectPath(ctx, x + off, y - off, node.w, node.h, 7);
-                ctx.fillStyle = theme.background;
+                ctx.fillStyle = bg;
                 ctx.fill();
-                ctx.strokeStyle = ModelRenderer.mix(accent, theme.background, 0.5);
+                ctx.strokeStyle = ModelRenderer.mix(accent, bg, 0.5);
                 ctx.lineWidth = 1.2;
                 ctx.stroke();
             }
@@ -326,22 +337,27 @@ export class ModelRenderer {
         ctx.lineWidth = selected ? 2.2 : hovered ? 2 : 1.5;
         ctx.stroke();
 
-        // Label (+ sublabel), in the accent tint. When the chip is expandable a
-        // "+" sits at the right, so the text shifts left to make room.
+        // Label: single-line chips are centred; multi-line chips (with a
+        // sublabel) are left-aligned, hfviewer-style, with room kept for a "+".
         if (showLabel) {
-            const centerX = node.expandable ? node.x - 8 : node.x;
-            const maxTextW = node.w - (node.expandable ? 36 : 18);
+            const rightPad = node.expandable ? 30 : 12;
 
-            ctx.textAlign = 'center';
             ctx.fillStyle = textColor;
             ctx.font = '600 12px Inter, system-ui, sans-serif';
             ctx.textBaseline = 'middle';
-            ctx.fillText(node.label, centerX, node.sublabel !== null ? node.y - 7 : node.y, maxTextW);
 
             if (node.sublabel !== null) {
+                const textX = x + 12;
+                const maxTextW = node.w - 12 - rightPad;
+
+                ctx.textAlign = 'left';
+                ctx.fillText(node.label, textX, node.y - 7, maxTextW);
                 ctx.fillStyle = theme.panelSubtext;
                 ctx.font = '10px Inter, system-ui, sans-serif';
-                ctx.fillText(node.sublabel, centerX, node.y + 9, maxTextW);
+                ctx.fillText(node.sublabel, textX, node.y + 9, maxTextW);
+            } else {
+                ctx.textAlign = 'center';
+                ctx.fillText(node.label, node.expandable ? node.x - 8 : node.x, node.y, node.w - (node.expandable ? 36 : 18));
             }
         }
 
