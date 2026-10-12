@@ -270,7 +270,32 @@ export class ModelView {
             (index * 0.37) % 1
         ));
 
-        this.layout.apply(this.visibleNodes, resolved);
+        // Each visible node's outermost open-group ancestor (or '' for the
+        // backbone) — lets the layout keep branch groups in their own column.
+        const clusterOf = new Map<string, string>();
+
+        for (const node of this.visibleNodes) {
+            let outer = '';
+            let parentId = node.parent;
+
+            while (parentId !== null) {
+                const parent = this.allNodes.get(parentId);
+
+                if (parent === undefined) {
+                    break;
+                }
+
+                if (!visible.has(parentId)) {
+                    outer = parentId;
+                }
+
+                parentId = parent.parent;
+            }
+
+            clusterOf.set(node.id, outer);
+        }
+
+        this.layout.apply(this.visibleNodes, resolved, (node) => clusterOf.get(node.id) ?? '');
         this.groups = this.computeGroups(visible);
 
         // A selected/hovered module may have been collapsed away.
