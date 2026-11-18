@@ -1,6 +1,6 @@
 {
   "name": "jsngraph",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Interactive network topology graph rendering — TypeScript, Canvas, force-directed layout, zero runtime dependencies.",
   "type": "module",
   "license": "Apache-2.0",
