@@ -1,4 +1,4 @@
-import { Camera } from './Camera';
+import { Camera } from '../view/Camera';
 import { ModelNode } from './ModelNode';
 
 export interface ModelInteractionCallbacks {

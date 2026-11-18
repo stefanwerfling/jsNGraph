@@ -1,4 +1,4 @@
-import { Camera, Bounds } from './Camera';
+import { Camera, Bounds } from '../view/Camera';
 import { FlowLayout, FlowLayoutOptions } from './FlowLayout';
 import { Granularity, GranModule } from './Granularity';
 import { ModelEdge } from './ModelEdge';

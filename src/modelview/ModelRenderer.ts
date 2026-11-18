@@ -1,4 +1,4 @@
-import { Camera } from './Camera';
+import { Camera } from '../view/Camera';
 import { ModelEdge } from './ModelEdge';
 import { ModelNode } from './ModelNode';
 import { ModuleKind } from './ModelTypes';
