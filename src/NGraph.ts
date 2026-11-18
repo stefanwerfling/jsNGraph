@@ -5,8 +5,9 @@ import { StaticLayout } from './layout/StaticLayout';
 import { GraphEdge } from './model/GraphEdge';
 import { GraphNode } from './model/GraphNode';
 import { GraphQuery, NeighborDirection } from './model/GraphQuery';
-import { EdgeKindStyle, NGraphEdgeData, NGraphHull, NGraphNodeData } from './model/NGraphTypes';
-import { CanvasRenderer, RenderHull } from './render/CanvasRenderer';
+import { EdgeKindStyle, NGraphCluster, NGraphClusterEdge, NGraphEdgeData, NGraphHull, NGraphNodeData } from './model/NGraphTypes';
+import { CanvasRenderer, RenderCluster, RenderClusters, RenderHull } from './render/CanvasRenderer';
+import { ClusterResolver } from './render/ClusterResolver';
 import { Effects, NGraphOverlay, OverlayContext, PulseOptions, RippleOptions, TrailOptions } from './render/Effects';
 import { EdgeStyler, NodeStyler, StyleResolver } from './render/StyleResolver';
 import { Theme, ThemeTokens } from './render/Theme';
@@ -53,6 +54,11 @@ export interface NGraphOptions {
     lasso?: boolean;
     /** Below this zoom, node and edge labels are hidden (hovered/selected dots keep theirs). Default 0.45. */
     labelMinZoom?: number;
+    /** Below this zoom, edges are neither drawn nor hit-tested (too dense to read). Default 0 = always. */
+    edgeMinZoom?: number;
+    /** With clusters set (setClusters), below this zoom the clusters are drawn
+     *  instead of the nodes and edges (J4 aggregation). Default 0.3. */
+    clusterZoom?: number;
     /** Hide node labels that would overlap a more important one (hovered,
      *  selected, highlighted, bigger). Default true. */
     labelCollision?: boolean;
@@ -89,6 +95,8 @@ export interface NGraphEvents {
     selectionChange: string[];
     /** Camera moved (pan, zoom, fit, flight frame). */
     viewportChange: CameraState;
+    /** Click on a cluster disc while zoomed out (see setClusters); payload is its id. */
+    clusterClick: string;
     /** A node drag ended — persist positions here. */
     nodeDragEnd: GraphNode;
     /** The layout stopped moving (after setData, a drag, a resize, …). */
@@ -114,6 +122,13 @@ export interface FocusOptions {
     animate?: boolean | number;
 }
 
+export interface ClusterFocusOptions {
+    /** Screen padding in CSS px. Default 40. */
+    padding?: number;
+    /** Animate the move: true (400 ms) or a duration in ms. Default true. */
+    animate?: boolean | number;
+}
+
 export interface HighlightOptions {
     /** Fade everything that is not highlighted. Default true. */
     dimOthers?: boolean;
@@ -121,6 +136,12 @@ export interface HighlightOptions {
 
 /** Below this per-frame movement (world px) the layout counts as settled. */
 const SETTLE_EPSILON = 0.05;
+
+/** From this many visible nodes on, a frame only visits the nodes in view (quadtree). */
+const CULL_MIN_NODES = 2000;
+
+/** focusCluster zooms in at least this far past clusterZoom, so the members show. */
+const CLUSTER_FOCUS_MARGIN = 1.15;
 
 /**
  * Public entry point: an interactive graph rendered on a canvas inside
@@ -149,6 +170,8 @@ export class NGraph {
     private readonly camera: Camera;
     private readonly tooltipText: ((node: GraphNode) => string | null) | null;
     private readonly labelMinZoom: number;
+    private readonly edgeMinZoom: number;
+    private readonly clusterZoom: number;
     private readonly labelCollision: boolean;
     private readonly grid: boolean;
     private readonly pauseWhenHidden: boolean;
@@ -183,12 +206,18 @@ export class NGraph {
     /** Hull polygons for the current positions; null = recompute on next use. */
     private hullCache: Array<{hull: NGraphHull; render: RenderHull}> | null = null;
     private layoutActive = true;
+    private clusters: NGraphCluster[] = [];
+    private clusterEdges: NGraphClusterEdge[] = [];
+    /** Resolved cluster discs for the current positions; null = recompute on next use. */
+    private clusterCache: RenderClusters | null = null;
 
     public constructor(container: HTMLElement, options: NGraphOptions = {}) {
         this.theme = NGraph.resolveTheme(options.theme ?? 'dark');
         this.showLabels = options.showLabels ?? true;
         this.detailPanelEnabled = options.detailPanel ?? true;
         this.labelMinZoom = options.labelMinZoom ?? 0.45;
+        this.edgeMinZoom = options.edgeMinZoom ?? 0;
+        this.clusterZoom = options.clusterZoom ?? 0.3;
         this.labelCollision = options.labelCollision ?? true;
         this.grid = options.grid ?? true;
         this.pauseWhenHidden = options.pauseWhenHidden ?? true;
@@ -446,6 +475,83 @@ export class NGraph {
             .reverse();
     }
 
+    // ---- clusters (J4 aggregation) -----------------------------------------------
+
+    /**
+     * Super-nodes for the zoomed-out view: below `clusterZoom` each cluster
+     * is one disc (size by member count) and `edges` connect them; nodes and
+     * edges come back when zooming in. An empty list turns aggregation off.
+     */
+    public setClusters(clusters: ReadonlyArray<NGraphCluster>, edges: ReadonlyArray<NGraphClusterEdge> = []): void {
+        this.clusters = [...clusters];
+        this.clusterEdges = [...edges];
+        this.clusterCache = null;
+        this.loop.request();
+    }
+
+    /** True while the clusters are drawn instead of the nodes. */
+    public isClustered(): boolean {
+        return this.clusters.length > 0 && this.camera.scale < this.clusterZoom;
+    }
+
+    /** Id of the cluster disc under a point in container coordinates (only while clustered). */
+    public clusterAt(x: number, y: number): string | null {
+        if (!this.isClustered()) {
+            return null;
+        }
+
+        const discs = this.clusterScene().discs;
+
+        for (let i = discs.length - 1; i >= 0; i--) {
+            const c = discs[i] as RenderCluster;
+            const at = this.camera.toScreen(c.x, c.y);
+            const r = CanvasRenderer.clusterRadiusPx(c, this.camera.scale);
+
+            if ((at.x - x) ** 2 + (at.y - y) ** 2 <= r * r) {
+                return c.id;
+            }
+        }
+
+        return null;
+    }
+
+    /** Zoom into a cluster: frame its members, at least far enough that they show. */
+    public focusCluster(id: string, options: ClusterFocusOptions = {}): void {
+        const cluster = this.clusters.find((c) => c.id === id);
+
+        if (cluster === undefined || this.width === 0 || this.height === 0) {
+            return;
+        }
+
+        const members: GraphNode[] = [];
+
+        for (const nodeId of cluster.nodeIds ?? []) {
+            const node = this.visibleNode(nodeId);
+
+            if (node !== null) {
+                members.push(node);
+            }
+        }
+
+        const minScale = this.clusterZoom * CLUSTER_FOCUS_MARGIN;
+        const fitted = this.fitTarget(members, options.padding ?? 40, Infinity);
+        const bounds = Geometry.boundsOfPoints(members);
+        const disc = this.clusterScene().discs.find((c) => c.id === id);
+        const centre = bounds !== null
+            ? {x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2}
+            : disc !== undefined ? {x: disc.x, y: disc.y} : null;
+
+        if (centre === null) {
+            return;
+        }
+
+        const target = fitted !== null && fitted.scale >= minScale
+            ? fitted
+            : this.camera.centerState(centre.x, centre.y, this.width, this.height, Math.max(minScale, fitted?.scale ?? 0));
+
+        this.moveCamera(target, options.animate ?? true);
+    }
+
     // ---- overlays and effects (J8) ---------------------------------------------
 
     /** Add a drawing hook; returns a function that removes it again. */
@@ -532,19 +638,11 @@ export class NGraph {
     public fit(options: FitOptions = {}): void {
         const ids = options.ids !== undefined ? new Set(options.ids) : null;
         const nodes = this.currentVisibleNodes().filter((n) => ids === null || ids.has(n.id));
-        const bounds = Geometry.boundsOfPoints(nodes);
+        const target = this.fitTarget(nodes, options.padding ?? 40, options.maxScale ?? 1.5);
 
-        if (bounds === null || this.width === 0 || this.height === 0) {
-            return;
+        if (target !== null) {
+            this.moveCamera(target, options.animate ?? false);
         }
-
-        const margin = nodes.reduce((m, n) => Math.max(m, n.shape === 'card' ? CanvasRenderer.cardSize(n).w / 2 : n.radius + 16), 0);
-        const target = this.camera.fitState(Geometry.expand(bounds, margin), this.width, this.height, options.padding ?? 40);
-        const maxScale = options.maxScale ?? 1.5;
-
-        this.moveCamera(target.scale > maxScale
-            ? this.camera.centerState((bounds.minX + bounds.maxX) / 2, (bounds.minY + bounds.maxY) / 2, this.width, this.height, maxScale)
-            : target, options.animate ?? false);
     }
 
     /** Centre the camera on a node (animated by default). No-op for unknown ids. */
@@ -645,6 +743,11 @@ export class NGraph {
         }
     }
 
+    /** Draw again without touching positions (e.g. a styleNode input changed). */
+    public repaint(): void {
+        this.loop.request();
+    }
+
     /** Force one redraw (e.g. after mutating a node object directly). */
     public redraw(): void {
         this.invalidatePositions(0);
@@ -675,6 +778,59 @@ export class NGraph {
         this.loop.request();
     }
 
+    /** Camera state that frames these nodes, or null when there is nothing to frame. */
+    private fitTarget(nodes: ReadonlyArray<GraphNode>, padding: number, maxScale: number): CameraState | null {
+        const bounds = Geometry.boundsOfPoints(nodes);
+
+        if (bounds === null || this.width === 0 || this.height === 0) {
+            return null;
+        }
+
+        const margin = nodes.reduce((m, n) => Math.max(m, n.shape === 'card' ? CanvasRenderer.cardSize(n).w / 2 : n.radius + 16), 0);
+        const target = this.camera.fitState(Geometry.expand(bounds, margin), this.width, this.height, padding);
+
+        return target.scale > maxScale
+            ? this.camera.centerState((bounds.minX + bounds.maxX) / 2, (bounds.minY + bounds.maxY) / 2, this.width, this.height, maxScale)
+            : target;
+    }
+
+    /** Resolved cluster discs and edges (centroids from the current positions). */
+    private clusterScene(): RenderClusters {
+        if (this.clusterCache !== null) {
+            return this.clusterCache;
+        }
+
+        const palette = this.theme.palette ?? Theme.palette;
+
+        this.clusterCache = ClusterResolver.resolve(this.clusters, this.clusterEdges, (id) => this.visibleNode(id),
+            (id) => Color.fromPalette(id, palette) ?? this.theme.nodeStroke);
+        return this.clusterCache;
+    }
+
+    /**
+     * Nodes to draw this frame. Large graphs only visit what is in view (the
+     * quadtree query); the draw order stays the data order. While the layout
+     * moves the index would be rebuilt every frame, so then all are drawn.
+     */
+    private nodesInView(): GraphNode[] {
+        if (this.visibleNodes.length < CULL_MIN_NODES || this.layoutActive) {
+            return this.visibleNodes;
+        }
+
+        const index = this.spatialIndex();
+        const scale = this.camera.scale;
+        // Same margin the renderer culls with (label room + 60 px).
+        const view = Geometry.expand(this.camera.viewBounds(this.width, this.height), this.spatialExtent + 30 + 60 / scale);
+        const hits = index.queryRect(view);
+
+        if (hits.length === this.visibleNodes.length) {
+            return this.visibleNodes;
+        }
+
+        hits.sort((a, b) => a.payload.order - b.payload.order);
+        return hits.map((hit) => hit.payload.node);
+    }
+
     private invalidateStructure(): void {
         this.structureDirty = true;
         this.invalidatePositions(1);
@@ -684,6 +840,7 @@ export class NGraph {
     private invalidatePositions(heat = 0.3): void {
         this.spatial = null;
         this.hullCache = null;
+        this.clusterCache = null;
         this.layoutActive = true;
 
         if (heat > 0) {
@@ -716,6 +873,7 @@ export class NGraph {
 
         this.structureDirty = false;
         this.spatial = null;
+        this.clusterCache = null;
     }
 
     private spatialIndex(): Quadtree<{node: GraphNode; order: number}> {
@@ -738,6 +896,10 @@ export class NGraph {
 
     /** Topmost node under a screen point. Tiny dots get a minimum 6 px target. */
     private hitNode(screenX: number, screenY: number): GraphNode | null {
+        if (this.isClustered()) {
+            return null;
+        }
+
         const index = this.spatialIndex();
         const world = this.camera.toWorld(screenX, screenY);
         const minTarget = 6 / this.camera.scale;
@@ -768,6 +930,10 @@ export class NGraph {
 
     /** Nearest edge within ~6 screen px of the point. */
     private hitEdge(screenX: number, screenY: number): GraphEdge | null {
+        if (this.isClustered() || this.camera.scale < this.edgeMinZoom) {
+            return null;
+        }
+
         this.refreshVisible();
         const p = this.camera.toWorld(screenX, screenY);
         let best: GraphEdge | null = null;
@@ -877,6 +1043,16 @@ export class NGraph {
 
     private handleClick(node: GraphNode | null, edge: GraphEdge | null, clientX: number, clientY: number,
         modifiers: ClickModifiers): void {
+        if (node === null && this.isClustered()) {
+            const rect = this.canvas.getBoundingClientRect();
+            const cluster = this.clusterAt(clientX - rect.left, clientY - rect.top);
+
+            if (cluster !== null) {
+                this.events.emit('clusterClick', cluster);
+                return;
+            }
+        }
+
         if (node === null && edge !== null) {
             this.events.emit('edgeClick', edge);
             return;
@@ -990,6 +1166,7 @@ export class NGraph {
             if (moved > 0) {
                 this.spatial = null;
                 this.hullCache = null;
+                this.clusterCache = null;
             }
 
             layoutMoving = moved > SETTLE_EPSILON;
@@ -1003,9 +1180,10 @@ export class NGraph {
         this.overlayContext.timeMs = timeMs;
         this.overlayContext.scale = this.camera.scale;
 
+        const clustered = this.isClustered();
         const animating = this.renderer.draw({
-            nodes: this.visibleNodes,
-            edges: this.visibleEdges,
+            nodes: clustered ? [] : this.nodesInView(),
+            edges: clustered || this.camera.scale < this.edgeMinZoom ? [] : this.visibleEdges,
             camera: this.camera,
             width: this.width,
             height: this.height,
@@ -1023,7 +1201,8 @@ export class NGraph {
             styles: this.styles,
             hulls: this.hullPolygons().map((entry) => entry.render),
             overlays: this.overlays,
-            overlayContext: this.overlayContext
+            overlayContext: this.overlayContext,
+            clusters: clustered ? this.clusterScene() : null
         });
 
         if (this.hoveredId !== null && (layoutMoving || flying)) {

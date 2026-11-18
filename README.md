@@ -121,6 +121,40 @@ const remove = graph.addOverlay({layer: 'over', draw: (ctx, info) => { /* world 
 - `examples/vault.html`: 1 000–6 000 notes with folder hulls, heat rings and effects. A frame
   of 3 000 notes takes ≈ 6 ms in the overview and ≈ 3 ms zoomed in (Chrome, desktop).
 
+### Very large graphs: level of detail and clusters
+
+From tens of thousands of nodes on, the overview is drawn from clusters (communities,
+folders) instead of single nodes:
+
+```ts
+const graph = new NGraph(el, {
+    layoutMode: 'static',
+    panZoom: true,
+    minZoom: 0.01,
+    labelMinZoom: 1.5,                                    // node labels only when zoomed in
+    edgeMinZoom: 0.6,                                     // edges only when zoomed in
+    clusterZoom: 0.25                                     // below: clusters instead of nodes
+});
+
+graph.setData(nodesWithXY, edges);
+graph.setClusters(
+    [{id: 'c1', nodeIds: memberIds, label: 'Projects'}],  // x/y/size/radius optional (centroid, count, spread)
+    [{source: 'c1', target: 'c2', weight: 42}]            // aggregated edges, width by weight
+);
+graph.on('clusterClick', (id) => graph.focusCluster(id)); // zoom in until the members show
+graph.clusterAt(x, y);                                    // cluster id under a point, for tooltips
+graph.isClustered();                                      // true while the clusters are drawn
+graph.repaint();                                          // redraw only (e.g. a styleNode input changed)
+```
+
+- A cluster disc grows with its member count but stays inside the cluster's extent, so
+  neighbours do not overlap. Labels appear only where they cover no disc.
+- From 2 000 nodes on, a frame only visits the nodes in view (quadtree query).
+- Dots smaller than 2 px on screen are drawn as batched squares (at least ≈ 1 px wide).
+- `examples/atlas.html`: 20 000–100 000 notes. One overview frame of 100 000 notes takes
+  ≈ 3 ms with clusters (≈ 60 ms without, ≈ 500 ms before this level of detail). Zoomed in
+  it takes ≤ 6 ms (Chrome, desktop).
+
 ## Development
 
 ```bash

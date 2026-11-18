@@ -149,3 +149,34 @@ export interface NGraphHull {
     opacity?: number;
 }
 
+
+/**
+ * A super-node shown instead of its members when zoomed out below
+ * NGraphOptions.clusterZoom (J4 aggregation): communities, folders, tags.
+ */
+export interface NGraphCluster {
+    id: string;
+    /** Member nodes: used for the centroid (without x/y), the default size
+     *  and NGraph.focusCluster. */
+    nodeIds?: ReadonlyArray<string>;
+    /** Centre in world px. Default: centroid of the visible members. */
+    x?: number;
+    y?: number;
+    /** Member count shown in the disc and used for its radius. Default nodeIds.length. */
+    size?: number;
+    /** Extent in world px; the disc never grows past it on screen, so
+     *  neighbouring clusters do not overlap. Default: the members' spread. */
+    radius?: number;
+    /** Default: theme palette by id. */
+    color?: string;
+    /** Drawn under the disc when it does not collide with another label. */
+    label?: string;
+}
+
+/** An aggregated edge between two clusters; the stroke width follows `weight`. */
+export interface NGraphClusterEdge {
+    source: string;
+    target: string;
+    /** Default 1. */
+    weight?: number;
+}

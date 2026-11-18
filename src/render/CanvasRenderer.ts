@@ -39,6 +39,32 @@ export interface RenderScene {
     /** Drawing hooks (J8), run in world coordinates. */
     overlays: ReadonlyArray<NGraphOverlay>;
     overlayContext: OverlayContext;
+    /** Zoomed out with clusters set: draw these super-nodes instead of nodes and edges. */
+    clusters: RenderClusters | null;
+}
+
+/** A cluster disc in world coordinates; its radius is constant on screen. */
+export interface RenderCluster {
+    id: string;
+    x: number;
+    y: number;
+    size: number;
+    /** World extent the disc stays inside (Infinity = no limit). */
+    radius: number;
+    color: string;
+    label: string | null;
+}
+
+export interface RenderClusterEdge {
+    source: RenderCluster;
+    target: RenderCluster;
+    weight: number;
+}
+
+export interface RenderClusters {
+    /** Draw order: biggest first, so small clusters stay on top (and win hit tests). */
+    discs: ReadonlyArray<RenderCluster>;
+    edges: ReadonlyArray<RenderClusterEdge>;
 }
 
 export interface RenderHull {
@@ -82,6 +108,16 @@ export class CanvasRenderer {
     /** Arrowheads smaller than this on screen are left out (LOD). */
     public static readonly MIN_ARROW_PX = 2;
 
+    /** Plain dots smaller than this radius on screen are drawn as batched squares (LOD). */
+    public static readonly DOT_DETAIL_PX = 2;
+
+    /** Cluster disc radius in screen px: grows with the member count, stays inside the cluster's extent. */
+    public static clusterRadiusPx(cluster: RenderCluster, scale: number): number {
+        const bySize = Math.min(64, 6 + Math.sqrt(Math.max(0, cluster.size)) * 2.5);
+
+        return Math.max(3, Math.min(bySize, cluster.radius * scale));
+    }
+
     private readonly ctx: CanvasRenderingContext2D;
     private theme: ThemeTokens;
     private readonly batcher = new EdgeBatcher();
@@ -90,6 +126,8 @@ export class CanvasRenderer {
     private labelQueue: QueuedLabel[] | null = null;
     /** Measured label widths (world px at 11px font), by text. */
     private readonly labelWidths = new Map<string, number>();
+    /** Tiny dots of the current frame as x, y, r triples, by `color|alpha`. */
+    private readonly dotBatches = new Map<string, number[]>();
 
     public constructor(private readonly canvas: HTMLCanvasElement, theme: ThemeTokens) {
         const ctx = canvas.getContext('2d');
@@ -113,7 +151,6 @@ export class CanvasRenderer {
         const {camera} = scene;
         const view = Geometry.expand(camera.viewBounds(scene.width, scene.height), 60 / camera.scale);
         const dimOpacity = theme.dimOpacity ?? 0.15;
-        const highlight = scene.highlight;
         let animating = false;
 
         ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -137,6 +174,30 @@ export class CanvasRenderer {
             animating = true;
         }
 
+        if (scene.clusters !== null) {
+            this.drawClusters(scene.clusters, scene);
+        } else {
+            animating = this.drawGraph(scene, view, dimOpacity) || animating;
+        }
+
+        if (this.runOverlays(scene, 'over')) {
+            animating = true;
+        }
+
+        ctx.restore();
+
+        if (scene.lasso !== null && scene.lasso.length > 1) {
+            this.drawLasso(scene.lasso);
+        }
+
+        return animating;
+    }
+
+    /** Edges, nodes and labels; true when something animates. */
+    private drawGraph(scene: RenderScene, view: Bounds, dimOpacity: number): boolean {
+        const {camera} = scene;
+        const highlight = scene.highlight;
+        let animating = false;
         const zoomedIn = camera.scale >= scene.labelMinZoom;
 
         for (const edge of scene.edges) {
@@ -169,7 +230,7 @@ export class CanvasRenderer {
             }
         }
 
-        this.batcher.flush(ctx);
+        this.batcher.flush(this.ctx);
 
         const showLabels = scene.showLabels && zoomedIn;
         this.labelQueue = scene.labelCollision ? [] : null;
@@ -185,12 +246,23 @@ export class CanvasRenderer {
 
             const highlighted = highlight !== null && highlight.has(node.id);
             const dimmed = highlight !== null && scene.dimOthers && !highlighted;
+            const hovered = node.id === scene.hoveredId;
+            const selected = scene.selection.has(node.id);
+            const alpha = (dimmed ? dimOpacity : 1) * style.opacity;
+
+            // LOD: a plain dot under ~2 px on screen is one square in a batch.
+            if (style.shape === 'dot' && style.radius * camera.scale < CanvasRenderer.DOT_DETAIL_PX
+                && style.ring === null && !hovered && !selected && !highlighted) {
+                // At least ~1.2 px wide, so a zoomed-out cloud stays visible.
+                this.batchDot(node.x, node.y, Math.max(style.radius, 0.6 / camera.scale), style.fill, alpha);
+                continue;
+            }
 
             this.drawNode(node, style, {
-                hovered: node.id === scene.hoveredId,
-                selected: scene.selection.has(node.id),
+                hovered: hovered,
+                selected: selected,
                 highlighted: highlighted,
-                alpha: (dimmed ? dimOpacity : 1) * style.opacity,
+                alpha: alpha,
                 showLabel: showLabels
             }, scene.timeMs);
 
@@ -199,22 +271,129 @@ export class CanvasRenderer {
             }
         }
 
+        this.flushDots();
+
         if (this.labelQueue !== null) {
             this.placeLabels(this.labelQueue, scene);
             this.labelQueue = null;
         }
 
-        if (this.runOverlays(scene, 'over')) {
-            animating = true;
+        return animating;
+    }
+
+    private batchDot(x: number, y: number, r: number, color: string, alpha: number): void {
+        const key = `${color}|${Math.round(alpha * 100) / 100}`;
+        let batch = this.dotBatches.get(key);
+
+        if (batch === undefined) {
+            batch = [];
+            this.dotBatches.set(key, batch);
+        }
+
+        batch.push(x, y, r);
+    }
+
+    /** One fillStyle per batch; squares need no path, so there is no per-dot path cost. */
+    private flushDots(): void {
+        const {ctx} = this;
+
+        for (const [key, batch] of this.dotBatches) {
+            const cut = key.lastIndexOf('|');
+
+            ctx.fillStyle = key.slice(0, cut);
+            ctx.globalAlpha = Number(key.slice(cut + 1));
+
+            for (let i = 0; i < batch.length; i += 3) {
+                const r = batch[i + 2] as number;
+                ctx.fillRect((batch[i] as number) - r, (batch[i + 1] as number) - r, r * 2, r * 2);
+            }
+        }
+
+        ctx.globalAlpha = 1;
+        this.dotBatches.clear();
+    }
+
+    /**
+     * Zoomed-out overview: aggregated edges (width by weight), then one disc
+     * per cluster with its member count, labels placed without overlap.
+     * Sizes are in screen px, so the overview reads the same at any zoom.
+     */
+    private drawClusters(clusters: RenderClusters, scene: RenderScene): void {
+        const {ctx, theme} = this;
+        const scale = scene.camera.scale;
+        let maxWeight = 1;
+
+        for (const e of clusters.edges) {
+            maxWeight = Math.max(maxWeight, e.weight);
+        }
+
+        ctx.save();
+        ctx.strokeStyle = theme.edgeNeutral ?? theme.nodeStroke;
+        ctx.globalAlpha = 0.45;
+
+        for (const e of clusters.edges) {
+            ctx.lineWidth = Math.max(0.5, (e.weight / maxWeight) * 4) / scale;
+            ctx.beginPath();
+            ctx.moveTo(e.source.x, e.source.y);
+            ctx.lineTo(e.target.x, e.target.y);
+            ctx.stroke();
         }
 
         ctx.restore();
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
 
-        if (scene.lasso !== null && scene.lasso.length > 1) {
-            this.drawLasso(scene.lasso);
+        for (const c of clusters.discs) {
+            const r = CanvasRenderer.clusterRadiusPx(c, scale) / scale;
+
+            ctx.beginPath();
+            ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+            ctx.globalAlpha = 0.72;
+            ctx.fillStyle = c.color;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.lineWidth = 1 / scale;
+            ctx.strokeStyle = c.color;
+            ctx.stroke();
+
+            if (r * scale >= 10) {
+                ctx.font = `${10 / scale}px system-ui, sans-serif`;
+                ctx.fillStyle = theme.background;
+                ctx.fillText(String(c.size), c.x, c.y);
+            }
         }
 
-        return animating;
+        // Labels only where they cover no disc; the biggest clusters claim their space first.
+        this.placer.reset();
+
+        for (const c of clusters.discs) {
+            const at = scene.camera.toScreen(c.x, c.y);
+            const r = CanvasRenderer.clusterRadiusPx(c, scale);
+
+            this.placer.tryPlace({x: at.x - r, y: at.y - r, w: r * 2, h: r * 2});
+        }
+
+        ctx.font = `${11 / scale}px system-ui, sans-serif`;
+        ctx.fillStyle = theme.nodeLabel;
+
+        for (let i = 0; i < clusters.discs.length; i++) {
+            const c = clusters.discs[i] as RenderCluster;
+
+            if (c.label === null || c.label.length === 0) {
+                continue;
+            }
+
+            const w = ctx.measureText(c.label).width * scale;
+            const at = scene.camera.toScreen(c.x, c.y);
+            const r = CanvasRenderer.clusterRadiusPx(c, scale);
+
+            if (this.placer.tryPlace({x: at.x - w / 2, y: at.y + r + 3, w: w, h: 13})) {
+                ctx.fillText(c.label, c.x, c.y + (r + 10) / scale);
+            }
+        }
+
+        ctx.restore();
     }
 
     /** Card width/height used for drawing AND hit-testing. */

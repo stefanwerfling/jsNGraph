@@ -1,5 +1,5 @@
 export { NGraph } from './NGraph';
-export type { NGraphOptions, NGraphEvents, NGraphContextEvent, FitOptions, FocusOptions, HighlightOptions } from './NGraph';
+export type { NGraphOptions, NGraphEvents, NGraphContextEvent, FitOptions, FocusOptions, HighlightOptions, ClusterFocusOptions } from './NGraph';
 export type {
     NGraphNodeData,
     NGraphEdgeData,
@@ -9,6 +9,8 @@ export type {
     NodeStyle,
     NodeRing,
     NGraphHull,
+    NGraphCluster,
+    NGraphClusterEdge,
     EdgeStyle,
     EdgeKindStyle
 } from './model/NGraphTypes';
