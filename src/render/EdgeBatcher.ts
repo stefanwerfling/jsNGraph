@@ -23,6 +23,9 @@ interface Batch {
  */
 export class EdgeBatcher {
 
+    /** Arrowheads per fill() call. */
+    public static readonly ARROW_CHUNK = 64;
+
     private readonly batches = new Map<string, Batch>();
 
     public add(color: string, width: number, alpha: number, segment: BatchedSegment): void {
@@ -60,7 +63,10 @@ export class EdgeBatcher {
 
             ctx.stroke();
 
-            let arrows = false;
+            // Filling one path with thousands of closed sub-paths is
+            // superlinear in Chrome (5 000 heads: ~250 ms as one path, ~8 ms
+            // in chunks of 64), so the heads are filled in chunks.
+            let pending = 0;
             ctx.beginPath();
 
             for (const s of batch.segments) {
@@ -74,10 +80,15 @@ export class EdgeBatcher {
                 ctx.lineTo(s.to.x - Math.cos(angle - 0.42) * s.arrow, s.to.y - Math.sin(angle - 0.42) * s.arrow);
                 ctx.lineTo(s.to.x - Math.cos(angle + 0.42) * s.arrow, s.to.y - Math.sin(angle + 0.42) * s.arrow);
                 ctx.closePath();
-                arrows = true;
+
+                if (++pending === EdgeBatcher.ARROW_CHUNK) {
+                    ctx.fill();
+                    ctx.beginPath();
+                    pending = 0;
+                }
             }
 
-            if (arrows) {
+            if (pending > 0) {
                 ctx.fill();
             }
 

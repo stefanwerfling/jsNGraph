@@ -79,6 +79,9 @@ interface NodeDrawState {
  */
 export class CanvasRenderer {
 
+    /** Arrowheads smaller than this on screen are left out (LOD). */
+    public static readonly MIN_ARROW_PX = 2;
+
     private readonly ctx: CanvasRenderingContext2D;
     private theme: ThemeTokens;
     private readonly batcher = new EdgeBatcher();
@@ -150,11 +153,13 @@ export class CanvasRenderer {
             if (scene.edgeStyle === 'line' && style.dash === null && !style.animated
                 && (style.label === null || style.label.length === 0 || !zoomedIn)) {
                 const {start, end} = CanvasRenderer.lineEnds(edge, style.directed);
+                const arrow = 5 + style.width * 1.6;
 
                 this.batcher.add(style.color, style.width, style.opacity * alpha, {
                     from: start,
                     to: end,
-                    arrow: style.directed ? 5 + style.width * 1.6 : 0
+                    // LOD: an arrowhead under ~2 px on screen is not visible, skip it.
+                    arrow: style.directed && arrow * camera.scale >= CanvasRenderer.MIN_ARROW_PX ? arrow : 0
                 });
                 continue;
             }

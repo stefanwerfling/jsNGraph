@@ -74,6 +74,22 @@ describe('EdgeBatcher', () => {
         expect(batcher.size).toBe(0);
     });
 
+    it('fills many arrowheads in chunks, not as one huge path', () => {
+        const batcher = new EdgeBatcher();
+        const ctx = new RecordingContext();
+        const heads = EdgeBatcher.ARROW_CHUNK * 2 + 5;
+
+        for (let i = 0; i < heads; i++) {
+            batcher.add('#333', 1, 1, {from: {x: i, y: 0}, to: {x: i, y: 10}, arrow: 6});
+        }
+
+        batcher.flush(ctx as unknown as CanvasRenderingContext2D);
+
+        expect(ctx.calls.filter((c) => c.startsWith('stroke'))).toHaveLength(1);
+        expect(ctx.calls.filter((c) => c.startsWith('fill'))).toHaveLength(3);
+        expect(ctx.calls.filter((c) => c === 'closePath')).toHaveLength(heads);
+    });
+
     it('keeps dimmed edges in their own group', () => {
         const batcher = new EdgeBatcher();
 
