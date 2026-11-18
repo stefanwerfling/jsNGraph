@@ -12,6 +12,11 @@ export interface ForceLayoutOptions {
     centerStrength?: number;
     /** Velocity multiplier applied each tick (0..1), higher = jitterier, lower = sluggish. */
     damping?: number;
+    /** Fraction the simulation "temperature" (alpha) cools per tick. 0 = never
+     *  cools (runs forever, the V1 behaviour). Default 0.02 (~4 s at 60 fps). */
+    alphaDecay?: number;
+    /** Below this alpha the simulation stops moving nodes. Default 0.005. */
+    alphaMin?: number;
 }
 
 const DEFAULTS: Required<ForceLayoutOptions> = {
@@ -19,7 +24,9 @@ const DEFAULTS: Required<ForceLayoutOptions> = {
     springStrength: 0.06,
     springLength: 140,
     centerStrength: 0.01,
-    damping: 0.85
+    damping: 0.85,
+    alphaDecay: 0.02,
+    alphaMin: 0.005
 };
 
 /** Minimum gap enforced between node edges on top of the repulsion force. */
@@ -42,9 +49,23 @@ const MAX_SPEED = 40;
 export class ForceLayout {
 
     private readonly options: Required<ForceLayoutOptions>;
+    private alpha = 1;
 
     public constructor(options: ForceLayoutOptions = {}) {
         this.options = {...DEFAULTS, ...options};
+    }
+
+    /** Current temperature, 1 = hot, below alphaMin = settled. */
+    public get temperature(): number {
+        return this.alpha;
+    }
+
+    /**
+     * Warm the simulation back up so it moves again — after new data (1),
+     * a drag or a resize (a gentle 0.3). Never cools it down.
+     */
+    public reheat(alpha = 1): void {
+        this.alpha = Math.max(this.alpha, Math.min(1, alpha));
     }
 
     /**
@@ -52,7 +73,19 @@ export class ForceLayout {
      * Fixed and actively-dragged nodes are excluded from position updates.
      */
     public tick(nodes: GraphNode[], edges: GraphEdge[], width: number, height: number): void {
-        const {repulsion, springStrength, springLength, centerStrength, damping} = this.options;
+        const {springLength, damping, alphaDecay, alphaMin} = this.options;
+
+        if (this.alpha < alphaMin) {
+            return;
+        }
+
+        // Forces scale with alpha, so the motion dies down instead of
+        // oscillating forever between springs, repulsion and collisions.
+        const alpha = this.alpha;
+        const repulsion = this.options.repulsion * alpha;
+        const springStrength = this.options.springStrength * alpha;
+        const centerStrength = this.options.centerStrength * alpha;
+        this.alpha *= 1 - alphaDecay;
         const cx = width / 2;
         const cy = height / 2;
 

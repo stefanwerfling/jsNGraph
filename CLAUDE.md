@@ -137,6 +137,30 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   kinds `agent` (robot head) + `gateway` (hub hexagon).
 - `getPositions()`/`setPositions()` — dragged positions are now persistable.
 
+## V0.2 additions (knowledge-graph readiness, Synaipse plan P5)
+
+- `view/Camera.ts` (moved from `modelview/`, shared): `toScreen`, `viewBounds`, `get/setState`,
+  `fitState`/`centerState`, animated `flyTo` + `step(now)` (log-space zoom; any direct move cancels).
+  NGraph draws through it: `panZoom` option (default false — embeds keep the wheel), `fit`,
+  `focusNode`, `zoomTo`, `get/setViewport`, `screenToWorld`/`worldToScreen`. Layouts still work in
+  world coords = the initial screen coords, so V1 pictures are unchanged.
+- `view/RenderLoop.ts`: on-demand rAF loop. NGraph's frame returns "keep going" only while the
+  layout moves (> 0.05 px/frame), the camera flies, or a visible element animates (traffic dots,
+  pulse). Pauses on `visibilitychange` and while the container is 0×0. `ForceLayout` got alpha
+  cooling (`alphaDecay` 0.02, `alphaMin`, `reheat()`); without it the loop never idled. Status/load
+  `updateNode` patches only redraw, they do not reheat.
+- `util/Quadtree.ts` (from Synaipse) for hit-testing + lasso; `util/Geometry.ts`, `util/Color.ts`
+  (hex/rgb()/rgba() parsing, canvas fallback for other CSS colors, `lerp`, `withAlpha`, `fromPalette`).
+- Style layer `render/StyleResolver.ts`: node `shape: 'dot'`, `color`, `size`, `group`; edge `kind`,
+  `directed`, `dashed`, `label`, `color`, `width`; `edgeKinds` table (`EdgeKindPresets.knowledge`);
+  `styleNode`/`styleEdge` callbacks win. Theme gained optional `edgeNeutral`, `edgeLabel`,
+  `highlightStroke`, `dimOpacity`, `palette`, and `Theme.fromCssVars(el, {base, prefix, map})`.
+- Interaction API: `highlight`/`clearHighlight` (dims others), `filter(predicate)`, `neighborhood(id,
+  depth, direction)` (`model/GraphQuery.ts`), `select`/`getSelection`/`clearSelection`, ctrl/⌘-click
+  toggle, shift+drag lasso, pinch zoom; events `nodeDblClick`, `edgeClick`, `contextMenu`,
+  `selectionChange`, `viewportChange`, `nodeDragEnd`, `layoutSettle`. Labels hide below `labelMinZoom`.
+- Example: `examples/knowledge.html`.
+
 ## Known gaps (V1)
 
 - No edge-hover tooltip (only node hover).

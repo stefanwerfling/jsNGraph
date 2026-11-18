@@ -12,6 +12,14 @@ export class GraphEdge {
     public target: GraphNode;
     public load: number;
     public animated: boolean;
+    /** Whether `animated` came from the data (true) or is the default. */
+    public animatedExplicit: boolean;
+    public kind: string | null;
+    public directed: boolean | null;
+    public dashed: boolean | number[] | null;
+    public label: string | null;
+    public color: string | null;
+    public width: number | null;
     /** Phase offset (0..1) so multiple animated edges don't pulse in lockstep. */
     public readonly dashPhase: number = Math.random();
 
@@ -21,6 +29,13 @@ export class GraphEdge {
         this.target = target;
         this.load = GraphEdge.clamp01(data.load ?? 0);
         this.animated = data.animated ?? true;
+        this.animatedExplicit = data.animated !== undefined;
+        this.kind = data.kind ?? null;
+        this.directed = data.directed ?? null;
+        this.dashed = data.dashed ?? null;
+        this.label = data.label ?? null;
+        this.color = data.color ?? null;
+        this.width = data.width ?? null;
     }
 
     public updateFrom(patch: Partial<NGraphEdgeData>): void {
@@ -30,6 +45,31 @@ export class GraphEdge {
 
         if (patch.animated !== undefined) {
             this.animated = patch.animated;
+            this.animatedExplicit = true;
+        }
+
+        if (patch.kind !== undefined) {
+            this.kind = patch.kind;
+        }
+
+        if (patch.directed !== undefined) {
+            this.directed = patch.directed;
+        }
+
+        if (patch.dashed !== undefined) {
+            this.dashed = patch.dashed;
+        }
+
+        if (patch.label !== undefined) {
+            this.label = patch.label;
+        }
+
+        if (patch.color !== undefined) {
+            this.color = patch.color;
+        }
+
+        if (patch.width !== undefined) {
+            this.width = patch.width;
         }
     }
 

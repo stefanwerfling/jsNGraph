@@ -1,4 +1,4 @@
-import { NGraphNodeData, NodeKind, NodeStatus } from './NGraphTypes';
+import { NGraphNodeData, NodeKind, NodeShape, NodeStatus } from './NGraphTypes';
 
 /**
  * Runtime node: the data a caller provided, plus the physics state the
@@ -16,7 +16,10 @@ export class GraphNode {
     public sublabel: string | null;
     public pulse: boolean;
     public ring: number;
-    public shape: 'circle' | 'card';
+    public shape: NodeShape;
+    public color: string | null;
+    public size: number | null;
+    public group: string | null;
     public fixed: boolean;
 
     public x: number;
@@ -28,7 +31,7 @@ export class GraphNode {
     public constructor(data: NGraphNodeData, fallbackX: number, fallbackY: number) {
         this.id = data.id;
         this.label = data.label;
-        this.kind = data.kind;
+        this.kind = data.kind ?? 'generic';
         this.status = data.status ?? 'ok';
         this.load = GraphNode.clamp01(data.load ?? 0);
         this.ip = data.ip ?? null;
@@ -37,10 +40,10 @@ export class GraphNode {
         this.pulse = data.pulse ?? false;
         this.ring = data.ring ?? 1;
         this.shape = data.shape ?? 'circle';
-
-        if (this.shape === 'card') {
-            this.radius = 30;
-        }
+        this.color = data.color ?? null;
+        this.size = data.size ?? null;
+        this.group = data.group ?? null;
+        this.applyRadius();
         this.fixed = data.fixed ?? false;
         this.x = data.x ?? fallbackX;
         this.y = data.y ?? fallbackY;
@@ -90,6 +93,22 @@ export class GraphNode {
             this.shape = patch.shape;
         }
 
+        if (patch.color !== undefined) {
+            this.color = patch.color;
+        }
+
+        if (patch.size !== undefined) {
+            this.size = patch.size;
+        }
+
+        if (patch.group !== undefined) {
+            this.group = patch.group;
+        }
+
+        if (patch.shape !== undefined || patch.size !== undefined) {
+            this.applyRadius();
+        }
+
         if (patch.fixed !== undefined) {
             this.fixed = patch.fixed;
         }
@@ -101,6 +120,16 @@ export class GraphNode {
         if (patch.y !== undefined) {
             this.y = patch.y;
         }
+    }
+
+    /** Layout/collision radius: explicit size, else the shape's default. */
+    private applyRadius(): void {
+        if (this.size !== null && this.size > 0) {
+            this.radius = this.size;
+            return;
+        }
+
+        this.radius = this.shape === 'card' ? 30 : this.shape === 'dot' ? 7 : 22;
     }
 
     private static clamp01(value: number): number {

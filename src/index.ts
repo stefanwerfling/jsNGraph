@@ -1,11 +1,34 @@
 export { NGraph } from './NGraph';
-export type { NGraphOptions } from './NGraph';
-export type { NGraphNodeData, NGraphEdgeData, NodeKind, NodeStatus } from './model/NGraphTypes';
+export type { NGraphOptions, NGraphEvents, NGraphContextEvent, FitOptions, FocusOptions, HighlightOptions } from './NGraph';
+export type {
+    NGraphNodeData,
+    NGraphEdgeData,
+    NodeKind,
+    NodeShape,
+    NodeStatus,
+    NodeStyle,
+    EdgeStyle,
+    EdgeKindStyle
+} from './model/NGraphTypes';
+export type { GraphNode } from './model/GraphNode';
+export type { GraphEdge } from './model/GraphEdge';
+export { GraphQuery } from './model/GraphQuery';
+export type { NeighborDirection } from './model/GraphQuery';
+export { EdgeKindPresets, StyleResolver } from './render/StyleResolver';
+export type { NodeStyler, EdgeStyler, ResolvedNodeStyle, ResolvedEdgeStyle } from './render/StyleResolver';
+export { Camera } from './view/Camera';
+export type { CameraState } from './view/Camera';
+export { RenderLoop } from './view/RenderLoop';
+export { Quadtree } from './util/Quadtree';
+export type { QuadtreePoint } from './util/Quadtree';
+export { Geometry } from './util/Geometry';
+export type { Bounds, Point } from './util/Geometry';
+export { Color } from './util/Color';
 export type { ForceLayoutOptions } from './layout/ForceLayout';
 export type { RadialLayoutOptions } from './layout/RadialLayout';
 export type { LayeredLayoutOptions } from './layout/LayeredLayout';
 export { Theme } from './render/Theme';
-export type { ThemeTokens } from './render/Theme';
+export type { ThemeTokens, CssVarSource, CssVarThemeOptions } from './render/Theme';
 export { ModelView } from './modelview/ModelView';
 export type { ModelViewOptions } from './modelview/ModelView';
 export type { FlowLayoutOptions } from './modelview/FlowLayout';

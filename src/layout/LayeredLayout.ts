@@ -45,6 +45,11 @@ export class LayeredLayout {
         this.options = {...DEFAULTS, ...options};
     }
 
+    /** Interface parity with ForceLayout: slot layouts converge on their own. */
+    public reheat(_alpha = 1): void {
+        // nothing to warm up
+    }
+
     public tick(nodes: GraphNode[], edges: GraphEdge[], width: number, height: number): void {
         const {easing, marginX, marginY, maxSpacing} = this.options;
         const sweeps = Math.max(1, Math.floor(this.options.sweeps));

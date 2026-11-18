@@ -77,4 +77,23 @@ describe('ForceLayout', () => {
         expect(dist).toBeGreaterThan(100);
         expect(dist).toBeLessThan(180);
     });
+
+    it('cools down and stops moving, and reheat wakes it again', () => {
+        const nodes = Array.from({length: 60}, (_, i) => makeNode('n' + i, 400 + (i % 8) * 3, 300 + Math.floor(i / 8) * 3));
+        const edges = nodes.slice(1).map((n, i) => new GraphEdge({id: 'e' + i, source: nodes[i]!.id, target: n.id}, nodes[i]!, n));
+        const layout = new ForceLayout();
+
+        for (let i = 0; i < 400; i++) {
+            layout.tick(nodes, edges, 800, 600);
+        }
+
+        const before = nodes.map((n) => [n.x, n.y]);
+        layout.tick(nodes, edges, 800, 600);
+        expect(nodes.every((n, i) => n.x === before[i]![0] && n.y === before[i]![1])).toBe(true);
+
+        layout.reheat(1);
+        nodes[0]!.x += 200;
+        layout.tick(nodes, edges, 800, 600);
+        expect(nodes.some((n, i) => i > 0 && (n.x !== before[i]![0] || n.y !== before[i]![1]))).toBe(true);
+    });
 });

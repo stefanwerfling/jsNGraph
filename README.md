@@ -53,6 +53,42 @@ deterministic hub-and-ring arrangement (ring 0 = center) that never drifts.
 Positions: `getPositions()` / `setPositions(map, fix?)` persist a hand-arranged view.
 Status: `ok | warning | critical | down` (drives the status ring + a stop-sign overlay for `down`).
 
+### Knowledge graphs: style layer, camera, selection
+
+Device kinds are just one preset. For notes/wiki graphs use plain dots, groups and edge kinds:
+
+```ts
+import { NGraph, EdgeKindPresets, Theme } from 'jsngraph';
+
+const graph = new NGraph(el, {
+    theme: Theme.fromCssVars(document.documentElement),   // --jsng-* or mapped host vars
+    panZoom: true,                                        // wheel/pinch zoom, drag-to-pan
+    edgeKinds: EdgeKindPresets.knowledge,                 // wikilink, typed, supersedes, tag, semantic
+    styleNode: (n) => n.id === currentNote ? {radius: 12} : null
+});
+
+graph.setData(
+    [{id: 'a', label: 'Note A', shape: 'dot', group: 'Projects', size: 6}, /* … */],
+    [{id: 'e', source: 'a', target: 'b', kind: 'supersedes', label: 'supersedes'}]
+);
+
+graph.highlight(graph.neighborhood('a', 2));             // dims everything else
+graph.fit({animate: true});
+graph.focusNode('a', {scale: 2});
+graph.on('selectionChange', (ids) => …);                 // click, ctrl/⌘-click, shift+drag lasso
+```
+
+- Node fields: `shape: 'circle' | 'card' | 'dot'`, `color`, `size`, `group` (stable palette color).
+- Edge fields: `kind`, `directed`, `dashed`, `label`, `color`, `width`. Precedence: defaults →
+  data/kind preset → `styleNode`/`styleEdge` callback.
+- Camera: `fit`, `focusNode`, `zoomTo`, `get/setViewport`, `screenToWorld`/`worldToScreen`.
+- Interaction: `highlight`, `filter`, `neighborhood`, `select`/`getSelection`; events `nodeClick`,
+  `nodeDblClick`, `edgeClick`, `contextMenu`, `selectionChange`, `viewportChange`, `nodeDragEnd`,
+  `layoutSettle`.
+- Rendering is on demand: the force layout cools down (`alphaDecay`), the loop idles once
+  nothing moves, and pauses while the page is hidden or the container has no size. `pause()` /
+  `resume()` for hosts that hide the view themselves.
+
 ## Development
 
 ```bash
@@ -70,7 +106,8 @@ simulated failure button.
 ## Design notes
 
 - **Canvas, not SVG/DOM-per-node** — chosen for headroom at higher node counts; hit-testing
-  for hover/click/drag is done manually (`InteractionController`).
+  for hover/click/drag is done manually (`InteractionController`) against a `Quadtree`
+  rebuilt only when positions change; off-screen nodes and edges are culled.
 - **Custom force-directed layout** (`ForceLayout`) — plain O(n²) repulsion + edge springs +
   centering, no d3-force dependency. Includes a distance floor and per-tick speed cap on top
   of the physics (a naive 1/d² repulsion term is numerically unstable when two nodes start

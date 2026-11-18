@@ -6,6 +6,8 @@ export type NodeStatus = 'ok' | 'warning' | 'critical' | 'down';
 /**
  * Device archetype, selects which icon glyph is drawn inside a node.
  */
+export type NodeShape = 'circle' | 'card' | 'dot';
+
 export type NodeKind = 'pc' | 'laptop' | 'tablet' | 'server' | 'database' | 'router' | 'agent' | 'gateway' | 'generic';
 
 /**
@@ -14,7 +16,8 @@ export type NodeKind = 'pc' | 'laptop' | 'tablet' | 'server' | 'database' | 'rou
 export interface NGraphNodeData {
     id: string;
     label: string;
-    kind: NodeKind;
+    /** Device glyph drawn inside 'circle'/'card' nodes. Default 'generic'. */
+    kind?: NodeKind;
     status?: NodeStatus;
     /** Utilization 0..1, shown as a bar in the node detail panel. */
     load?: number;
@@ -28,9 +31,17 @@ export interface NGraphNodeData {
     pulse?: boolean;
     /** Radial layout only: ring index — 0 = center hub, 1..n = outer rings. Default 1. */
     ring?: number;
-    /** 'circle' (classic device dot, default) or 'card' — a rounded rectangle
-     *  with the icon chip, label and sublabel drawn INSIDE the node. */
-    shape?: 'circle' | 'card';
+    /** 'circle' (classic device dot, default), 'card' — a rounded rectangle
+     *  with the icon chip, label and sublabel drawn INSIDE the node — or 'dot':
+     *  a plain filled disc without icon, for dense graphs (knowledge graphs). */
+    shape?: NodeShape;
+    /** Accent color (any CSS color). 'dot': the fill; 'circle'/'card': the outline. */
+    color?: string;
+    /** Radius in world pixels (circle/dot). Default 22 (circle) / 7 (dot). */
+    size?: number;
+    /** Category key (folder, community, type). Without `color`, picks a stable
+     *  color from the theme palette, so equal groups share a color. */
+    group?: string;
     /** Optional pinned position; omit to let the force layout place it. */
     x?: number;
     y?: number;
@@ -45,8 +56,66 @@ export interface NGraphEdgeData {
     id: string;
     source: string;
     target: string;
-    /** Traffic load 0..1 — colors the edge green (low) to red (high). */
+    /** Traffic load 0..1 — colors the edge green (low) to red (high), unless
+     *  `color` or the edge kind's style says otherwise. */
     load?: number;
-    /** Draw moving traffic dots along the edge. */
+    /** Draw moving traffic dots along the edge. Default true. */
     animated?: boolean;
+    /** Semantic edge type (e.g. 'wikilink', 'supersedes', 'tag'). Looked up in
+     *  NGraphOptions.edgeKinds for a shared look. */
+    kind?: string;
+    /** Draw an arrowhead at the target. */
+    directed?: boolean;
+    /** Dashed stroke: true for the default dash, or an explicit dash pattern. */
+    dashed?: boolean | number[];
+    /** Text drawn at the middle of the edge (when zoomed in far enough). */
+    label?: string;
+    /** Stroke color (any CSS color) — overrides kind style and load coloring. */
+    color?: string;
+    /** Stroke width in world pixels. */
+    width?: number;
+}
+
+/**
+ * The look shared by every edge of one `kind`. Fields set on the edge
+ * itself win over these.
+ */
+export interface EdgeKindStyle {
+    color?: string;
+    width?: number;
+    directed?: boolean;
+    dashed?: boolean | number[];
+    /** 'load' colors by traffic load (the network-monitoring look);
+     *  'neutral' uses the theme's neutral edge color. Default 'load'. */
+    tone?: 'load' | 'neutral';
+    /** Traffic dots; overrides the edge's own `animated` default. */
+    animated?: boolean;
+}
+
+/**
+ * Per-node visual override returned by NGraphOptions.styleNode. Every field
+ * is optional; unset fields keep the value derived from the node data.
+ */
+export interface NodeStyle {
+    shape?: NodeShape;
+    /** Main color: the fill of a 'dot', the outline of 'circle'/'card'. */
+    color?: string;
+    radius?: number;
+    /** Glyph inside circle/card, or null for none. */
+    icon?: NodeKind | null;
+    label?: string;
+    labelColor?: string;
+    /** 0..1 */
+    opacity?: number;
+}
+
+/** Per-edge visual override returned by NGraphOptions.styleEdge. */
+export interface EdgeStyle {
+    color?: string;
+    width?: number;
+    directed?: boolean;
+    dash?: number[] | null;
+    label?: string | null;
+    /** 0..1 */
+    opacity?: number;
 }

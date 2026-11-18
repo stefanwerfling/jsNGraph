@@ -43,6 +43,11 @@ export class RadialLayout {
      * The edges parameter exists for interface parity with ForceLayout —
      * radial slots are independent of the wiring.
      */
+    /** Interface parity with ForceLayout: slot layouts converge on their own. */
+    public reheat(_alpha = 1): void {
+        // nothing to warm up
+    }
+
     public tick(nodes: GraphNode[], _edges: GraphEdge[], width: number, height: number): void {
         const {easing, margin, hubRadius, minArc} = this.options;
         const cx = width / 2;

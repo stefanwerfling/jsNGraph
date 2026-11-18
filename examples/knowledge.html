@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — knowledge graph</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    /* The graph theme comes from these variables via Theme.fromCssVars —
+       flip data-theme on <html> and the graph follows. */
+    :root {
+        --jsng-background: #0f1420;
+        --jsng-node-label: #aab6cc;
+        --jsng-edge-neutral: #3a4a68;
+        --jsng-highlight-stroke: #f1c40f;
+    }
+    :root[data-theme="light"] {
+        --jsng-background: #f4f6fb;
+        --jsng-grid-dot: #e2e7f2;
+        --jsng-node-label: #4b5570;
+        --jsng-edge-neutral: #b7c1d6;
+        --jsng-panel-background: #ffffff;
+        --jsng-panel-text: #1f2937;
+        --jsng-panel-border: #d7deec;
+        --jsng-highlight-stroke: #d68a00;
+    }
+    .toolbar input[type="search"] {
+        background: var(--bg-soft);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 6px 10px;
+        font: 12px system-ui, sans-serif;
+        width: 160px;
+    }
+    #status {
+        position: absolute;
+        z-index: 30;
+        left: 14px;
+        bottom: 14px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        background: rgba(26, 34, 54, 0.85);
+        border: 1px solid var(--border);
+        font-size: 12px;
+        color: var(--text-dim);
+    }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="monitoring.html">Monitoring</a>
+    <a href="layered.html">Layered flow</a>
+    <a href="radial.html">Radial</a>
+    <a href="knowledge.html" class="active">Knowledge</a>
+    <a href="kinds.html">Node gallery</a>
+    <a href="api.html">API playground</a>
+    <a href="explainer.html">Explainer</a>
+    <a href="rect-explainer.html">Rect explainer</a>
+    <a href="rect-autoroute.html">Auto-route</a>
+</nav>
+
+<div class="toolbar tl">
+    <input id="search" type="search" placeholder="Search & highlight…">
+    <label>Neighborhood
+        <select id="depth">
+            <option value="0">off</option>
+            <option value="1">1 hop</option>
+            <option value="2">2 hops</option>
+        </select>
+    </label>
+    <label><input id="only-projects" type="checkbox"> Only Projects/</label>
+    <button id="fit">Fit</button>
+    <button id="theme">Toggle theme</button>
+</div>
+
+<div id="graph" class="graph-stage"></div>
+<div id="status">Wheel: zoom · drag background: pan · shift+drag: lasso · ctrl/⌘-click: multi-select · double-click: focus</div>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+    const {NGraph, Theme, EdgeKindPresets, RectRandom} = JSNGraph;
+    const rnd = new RectRandom(42);
+    const folders = ['Projects', 'Areas', 'Resources', 'Journal', 'People'];
+    const nodes = [];
+    const edges = [];
+
+    // A synthetic vault: ~240 notes in 5 folders, wikilinks mostly within a
+    // folder, a few typed relations and tag edges across.
+    for (let i = 0; i < 240; i++) {
+        const folder = folders[Math.floor(rnd.next() * folders.length)];
+        nodes.push({
+            id: 'n' + i,
+            label: folder.slice(0, 4).toLowerCase() + '-' + i,
+            shape: 'dot',
+            group: folder,
+            size: 4 + Math.round(rnd.next() * 5),
+            meta: {folder: folder}
+        });
+    }
+
+    for (let i = 1; i < nodes.length; i++) {
+        const sameFolder = nodes.filter((n, j) => j < i && n.group === nodes[i].group);
+        const pool = sameFolder.length > 0 && rnd.next() < 0.8 ? sameFolder : nodes.slice(0, i);
+        const target = pool[Math.floor(rnd.next() * pool.length)];
+        edges.push({id: 'w' + i, source: nodes[i].id, target: target.id, kind: 'wikilink'});
+
+        if (rnd.next() < 0.08) {
+            const other = nodes[Math.floor(rnd.next() * i)];
+            edges.push({id: 's' + i, source: nodes[i].id, target: other.id, kind: 'supersedes', label: 'supersedes'});
+        } else if (rnd.next() < 0.06) {
+            const other = nodes[Math.floor(rnd.next() * i)];
+            edges.push({id: 't' + i, source: nodes[i].id, target: other.id, kind: 'tag'});
+        }
+    }
+
+    const themeFromCss = () => Theme.fromCssVars(document.documentElement, {
+        base: document.documentElement.dataset.theme === 'light' ? Theme.light : Theme.dark
+    });
+
+    const graph = new NGraph(document.getElementById('graph'), {
+        theme: themeFromCss(),
+        panZoom: true,
+        detailPanel: false,
+        edgeKinds: EdgeKindPresets.knowledge,
+        layout: {repulsion: 900, springLength: 40, springStrength: 0.08, centerStrength: 0.02},
+        tooltip: (node) => node.label + ' · ' + (node.meta ? node.meta.folder : ''),
+        styleNode: (node) => graph && graph.getSelection().includes(node.id) ? {radius: node.radius + 2} : null
+    });
+
+    graph.setData(nodes, edges);
+
+    let fittedOnce = false;
+    graph.on('layoutSettle', () => {
+        if (!fittedOnce) {
+            fittedOnce = true;
+            graph.fit({animate: 600});
+        }
+    });
+
+    const status = document.getElementById('status');
+    graph.on('selectionChange', (ids) => {
+        status.textContent = ids.length + ' selected' + (ids.length ? ': ' + ids.slice(0, 6).join(', ') + (ids.length > 6 ? ' …' : '') : '');
+        applyNeighborhood();
+    });
+    graph.on('nodeDblClick', (node) => graph.focusNode(node.id, {scale: 2}));
+    graph.on('edgeClick', (edge) => {
+        status.textContent = 'edge ' + edge.source.label + ' → ' + edge.target.label + (edge.kind ? ' (' + edge.kind + ')' : '');
+    });
+    graph.on('contextMenu', (e) => {
+        status.textContent = 'context menu on ' + (e.node ? e.node.label : e.edge ? 'edge ' + e.edge.id : 'background @ ' + Math.round(e.world.x) + ',' + Math.round(e.world.y));
+    });
+
+    const search = document.getElementById('search');
+    const depth = document.getElementById('depth');
+
+    function applyNeighborhood() {
+        const d = Number(depth.value);
+        const selected = graph.getSelection();
+
+        if (search.value.trim() !== '') {
+            return;
+        }
+
+        if (d === 0 || selected.length === 0) {
+            graph.clearHighlight();
+            return;
+        }
+
+        const ids = new Set();
+        for (const id of selected) {
+            for (const n of graph.neighborhood(id, d)) ids.add(n);
+        }
+        graph.highlight(ids);
+    }
+
+    search.addEventListener('input', () => {
+        const q = search.value.trim().toLowerCase();
+
+        if (q === '') {
+            applyNeighborhood();
+            return;
+        }
+
+        const hits = nodes.filter((n) => n.label.includes(q)).map((n) => n.id);
+        graph.highlight(hits);
+
+        if (hits.length > 0 && hits.length <= 12) {
+            graph.fit({ids: hits, animate: true, padding: 80});
+        }
+    });
+
+    depth.addEventListener('change', applyNeighborhood);
+
+    document.getElementById('only-projects').addEventListener('change', (e) => {
+        graph.filter(e.target.checked ? (n) => n.group === 'Projects' : null);
+        graph.fit({animate: true});
+    });
+
+    document.getElementById('fit').addEventListener('click', () => graph.fit({animate: true}));
+
+    document.getElementById('theme').addEventListener('click', () => {
+        const root = document.documentElement;
+        root.dataset.theme = root.dataset.theme === 'light' ? 'dark' : 'light';
+        document.body.style.background = root.dataset.theme === 'light' ? '#f4f6fb' : '';
+        graph.setTheme(themeFromCss());
+    });
+</script>
+</body>
+</html>
