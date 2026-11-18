@@ -1,18 +1,22 @@
 import { ForceLayoutOptions, ForceLayout } from './layout/ForceLayout';
 import { RadialLayoutOptions, RadialLayout } from './layout/RadialLayout';
 import { LayeredLayoutOptions, LayeredLayout } from './layout/LayeredLayout';
+import { StaticLayout } from './layout/StaticLayout';
 import { GraphEdge } from './model/GraphEdge';
 import { GraphNode } from './model/GraphNode';
 import { GraphQuery, NeighborDirection } from './model/GraphQuery';
-import { EdgeKindStyle, NGraphEdgeData, NGraphNodeData } from './model/NGraphTypes';
-import { CanvasRenderer } from './render/CanvasRenderer';
+import { EdgeKindStyle, NGraphEdgeData, NGraphHull, NGraphNodeData } from './model/NGraphTypes';
+import { CanvasRenderer, RenderHull } from './render/CanvasRenderer';
+import { Effects, NGraphOverlay, OverlayContext, PulseOptions, RippleOptions, TrailOptions } from './render/Effects';
 import { EdgeStyler, NodeStyler, StyleResolver } from './render/StyleResolver';
 import { Theme, ThemeTokens } from './render/Theme';
 import { ClickModifiers, InteractionController } from './interaction/InteractionController';
 import { Tooltip } from './ui/Tooltip';
 import { NodePanel } from './ui/NodePanel';
 import { EventEmitter } from './util/EventEmitter';
+import { Color } from './util/Color';
 import { Geometry, Point } from './util/Geometry';
+import { Hull } from './util/Hull';
 import { Quadtree } from './util/Quadtree';
 import { Camera, CameraState } from './view/Camera';
 import { RenderLoop } from './view/RenderLoop';
@@ -30,8 +34,10 @@ export interface NGraphOptions {
      *  function returning the text (null = no tooltip for that node). */
     tooltip?: boolean | ((node: GraphNode) => string | null);
     /** 'force' (default): springy self-organizing. 'radial': hub-and-ring via
-     *  node.ring. 'layered': Sugiyama-style columns via node.ring (0 = left). */
-    layoutMode?: 'force' | 'radial' | 'layered';
+     *  node.ring. 'layered': Sugiyama-style columns via node.ring (0 = left).
+     *  'static': no simulation, nodes stay at the x/y the host gives them
+     *  (precomputed layout, saved arrangement); dragging still works. */
+    layoutMode?: 'force' | 'radial' | 'layered' | 'static';
     layout?: ForceLayoutOptions;
     radialLayout?: RadialLayoutOptions;
     layeredLayout?: LayeredLayoutOptions;
@@ -47,6 +53,9 @@ export interface NGraphOptions {
     lasso?: boolean;
     /** Below this zoom, node and edge labels are hidden (hovered/selected dots keep theirs). Default 0.45. */
     labelMinZoom?: number;
+    /** Hide node labels that would overlap a more important one (hovered,
+     *  selected, highlighted, bigger). Default true. */
+    labelCollision?: boolean;
     /** Background dot grid. Default true. */
     grid?: boolean;
     /** Shared look per edge `kind` (see EdgeKindPresets.knowledge). */
@@ -129,7 +138,7 @@ export class NGraph {
     private readonly canvas: HTMLCanvasElement;
     private readonly renderer: CanvasRenderer;
     private readonly styles: StyleResolver;
-    private readonly layout: ForceLayout | RadialLayout | LayeredLayout;
+    private readonly layout: ForceLayout | RadialLayout | LayeredLayout | StaticLayout;
     private readonly edgeStyle: 'line' | 'curve';
     private readonly interaction: InteractionController;
     private readonly tooltip: Tooltip;
@@ -140,6 +149,7 @@ export class NGraph {
     private readonly camera: Camera;
     private readonly tooltipText: ((node: GraphNode) => string | null) | null;
     private readonly labelMinZoom: number;
+    private readonly labelCollision: boolean;
     private readonly grid: boolean;
     private readonly pauseWhenHidden: boolean;
 
@@ -166,6 +176,12 @@ export class NGraph {
     private spatial: Quadtree<{node: GraphNode; order: number}> | null = null;
     private spatialExtent = 0;
     private positionScratch = new Float64Array(0);
+    private hulls: NGraphHull[] = [];
+    private readonly effects = new Effects();
+    private overlays: NGraphOverlay[] = [this.effects];
+    private readonly overlayContext: OverlayContext;
+    /** Hull polygons for the current positions; null = recompute on next use. */
+    private hullCache: Array<{hull: NGraphHull; render: RenderHull}> | null = null;
     private layoutActive = true;
 
     public constructor(container: HTMLElement, options: NGraphOptions = {}) {
@@ -173,6 +189,7 @@ export class NGraph {
         this.showLabels = options.showLabels ?? true;
         this.detailPanelEnabled = options.detailPanel ?? true;
         this.labelMinZoom = options.labelMinZoom ?? 0.45;
+        this.labelCollision = options.labelCollision ?? true;
         this.grid = options.grid ?? true;
         this.pauseWhenHidden = options.pauseWhenHidden ?? true;
         this.tooltipText = options.tooltip === false
@@ -196,7 +213,9 @@ export class NGraph {
             ? new RadialLayout(options.radialLayout)
             : options.layoutMode === 'layered'
                 ? new LayeredLayout(options.layeredLayout)
-                : new ForceLayout(options.layout);
+                : options.layoutMode === 'static'
+                    ? new StaticLayout()
+                    : new ForceLayout(options.layout);
         this.edgeStyle = options.edgeStyle ?? 'line';
         this.tooltip = new Tooltip(this.root, this.theme);
         this.panel = new NodePanel(this.root, this.theme);
@@ -205,6 +224,18 @@ export class NGraph {
         });
 
         this.loop = new RenderLoop(this.frame);
+        this.overlayContext = {
+            timeMs: 0,
+            scale: 1,
+            nodePosition: (id) => {
+                const node = this.visibleNode(id);
+                return node === null ? null : {x: node.x, y: node.y};
+            },
+            nodeRadius: (id) => {
+                const node = this.visibleNode(id);
+                return node === null ? null : this.styles.node(node).radius;
+            }
+        };
 
         this.interaction = new InteractionController(
             this.canvas,
@@ -393,6 +424,56 @@ export class NGraph {
             this.styles.setEdgeKinds(style.edgeKinds);
         }
 
+        this.loop.request();
+    }
+
+    // ---- cluster hulls ---------------------------------------------------------
+
+    /** Replace the cluster outlines (J6). An empty list removes them. */
+    public setHulls(hulls: ReadonlyArray<NGraphHull>): void {
+        this.hulls = [...hulls];
+        this.hullCache = null;
+        this.loop.request();
+    }
+
+    /** Ids of the hulls under a point in container coordinates, topmost first (for tooltips). */
+    public hullsAt(x: number, y: number): string[] {
+        const world = this.camera.toWorld(x, y);
+
+        return this.hullPolygons()
+            .filter((entry) => Geometry.pointInPolygon(world, entry.render.polygon))
+            .map((entry) => entry.hull.id)
+            .reverse();
+    }
+
+    // ---- overlays and effects (J8) ---------------------------------------------
+
+    /** Add a drawing hook; returns a function that removes it again. */
+    public addOverlay(overlay: NGraphOverlay): () => void {
+        this.overlays.push(overlay);
+        this.loop.request();
+
+        return () => {
+            this.overlays = this.overlays.filter((o) => o !== overlay);
+            this.loop.request();
+        };
+    }
+
+    /** Flash a ring on these nodes (e.g. "was read"). */
+    public pulse(ids: Iterable<string>, color: string, options: PulseOptions = {}): void {
+        this.effects.pulse(ids, color, options);
+        this.loop.request();
+    }
+
+    /** A fading arc from one node to another (e.g. "followed a link"). */
+    public trail(fromId: string, toId: string, color: string, options: TrailOptions = {}): void {
+        this.effects.trail(fromId, toId, color, options);
+        this.loop.request();
+    }
+
+    /** Circles spreading out from a node (e.g. "look here"). */
+    public ripple(id: string, color: string, options: RippleOptions = {}): void {
+        this.effects.ripple(id, color, options);
         this.loop.request();
     }
 
@@ -602,6 +683,7 @@ export class NGraph {
     /** Positions changed or must be recomputed; `heat` warms the layout (0 = just redraw). */
     private invalidatePositions(heat = 0.3): void {
         this.spatial = null;
+        this.hullCache = null;
         this.layoutActive = true;
 
         if (heat > 0) {
@@ -907,6 +989,7 @@ export class NGraph {
 
             if (moved > 0) {
                 this.spatial = null;
+                this.hullCache = null;
             }
 
             layoutMoving = moved > SETTLE_EPSILON;
@@ -916,6 +999,9 @@ export class NGraph {
                 this.events.emit('layoutSettle', null);
             }
         }
+
+        this.overlayContext.timeMs = timeMs;
+        this.overlayContext.scale = this.camera.scale;
 
         const animating = this.renderer.draw({
             nodes: this.visibleNodes,
@@ -930,10 +1016,14 @@ export class NGraph {
             dimOthers: this.dimOthers,
             showLabels: this.showLabels,
             labelMinZoom: this.labelMinZoom,
+            labelCollision: this.labelCollision,
             edgeStyle: this.edgeStyle,
             grid: this.grid,
             lasso: this.lassoPoints,
-            styles: this.styles
+            styles: this.styles,
+            hulls: this.hullPolygons().map((entry) => entry.render),
+            overlays: this.overlays,
+            overlayContext: this.overlayContext
         });
 
         if (this.hoveredId !== null && (layoutMoving || flying)) {
@@ -942,6 +1032,56 @@ export class NGraph {
 
         return flying || layoutMoving || animating;
     };
+
+    /** The node if it exists and passes the filter. */
+    private visibleNode(id: string): GraphNode | null {
+        const node = this.nodes.get(id);
+
+        if (node === undefined || (this.filterFn !== null && !this.filterFn(node))) {
+            return null;
+        }
+
+        return node;
+    }
+
+    private hullPolygons(): Array<{hull: NGraphHull; render: RenderHull}> {
+        if (this.hullCache !== null) {
+            return this.hullCache;
+        }
+
+        this.refreshVisible();
+        const visible = this.filterFn === null ? null : new Set(this.visibleNodes);
+        const palette = this.theme.palette ?? Theme.palette;
+        const out: Array<{hull: NGraphHull; render: RenderHull}> = [];
+
+        for (const hull of this.hulls) {
+            const points: Point[] = [];
+
+            for (const id of hull.nodeIds) {
+                const node = this.nodes.get(id);
+
+                if (node !== undefined && (visible === null || visible.has(node))) {
+                    points.push({x: node.x, y: node.y});
+                }
+            }
+
+            if (points.length === 0) {
+                continue;
+            }
+
+            out.push({
+                hull: hull,
+                render: {
+                    polygon: Hull.padded(points, hull.padding ?? 24),
+                    color: hull.color ?? Color.fromPalette(hull.id, palette) ?? this.theme.nodeStroke,
+                    opacity: Math.min(1, Math.max(0, hull.opacity ?? 0.12))
+                }
+            });
+        }
+
+        this.hullCache = out;
+        return out;
+    }
 
     private static defaultTooltip(node: GraphNode): string {
         const detail = node.sublabel ?? `${Math.round(node.load * 100)}% load`;

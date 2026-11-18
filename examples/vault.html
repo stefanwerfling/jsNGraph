@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — large vault</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    :root {
+        --jsng-background: #0f1420;
+        --jsng-node-label: #aab6cc;
+        --jsng-edge-neutral: #2c3850;
+        --jsng-highlight-stroke: #f1c40f;
+    }
+    #status {
+        position: absolute;
+        z-index: 30;
+        left: 14px;
+        bottom: 14px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        background: rgba(26, 34, 54, 0.85);
+        border: 1px solid var(--border);
+        font-size: 12px;
+        color: var(--text-dim);
+    }
+    #hull-tip {
+        position: absolute;
+        z-index: 31;
+        pointer-events: none;
+        padding: 3px 8px;
+        border-radius: 6px;
+        background: rgba(26, 34, 54, 0.92);
+        border: 1px solid var(--border);
+        font-size: 11px;
+        color: var(--text);
+        display: none;
+    }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="monitoring.html">Monitoring</a>
+    <a href="layered.html">Layered flow</a>
+    <a href="radial.html">Radial</a>
+    <a href="knowledge.html">Knowledge</a>
+    <a href="vault.html" class="active">Large vault</a>
+    <a href="kinds.html">Node gallery</a>
+    <a href="api.html">API playground</a>
+    <a href="explainer.html">Explainer</a>
+    <a href="rect-explainer.html">Rect explainer</a>
+    <a href="rect-autoroute.html">Auto-route</a>
+</nav>
+
+<div class="toolbar tl">
+    <label>Notes
+        <select id="count">
+            <option value="1000">1 000</option>
+            <option value="3000" selected>3 000</option>
+            <option value="6000">6 000</option>
+        </select>
+    </label>
+    <label><input id="hulls" type="checkbox" checked> Folder hulls</label>
+    <label><input id="heat" type="checkbox" checked> Heat rings</label>
+    <label><input id="collision" type="checkbox" checked> Label collision</label>
+    <button id="pulse">Pulse 20</button>
+    <button id="trail">Trails</button>
+    <button id="ripple">Ripple selected</button>
+    <button id="fit">Fit</button>
+</div>
+
+<div id="graph" class="graph-stage"></div>
+<div id="hull-tip"></div>
+<div id="status">…</div>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+    const {NGraph, Theme, EdgeKindPresets, RectRandom} = JSNGraph;
+    const FOLDERS = ['Projects', 'Areas', 'Resources', 'Journal', 'People', 'Clipped', 'Memory', 'Crawler'];
+    const stage = document.getElementById('graph');
+    const status = document.getElementById('status');
+    let graph = null;
+    let data = null;
+
+    /**
+     * A synthetic vault with a PRECOMPUTED layout (layoutMode 'static'):
+     * folders sit on a ring, notes scatter around their folder centre, as a
+     * server-side layout would deliver them.
+     */
+    function makeVault(count) {
+        const rnd = new RectRandom(7);
+        const nodes = [];
+        const edges = [];
+        const heat = new Map();
+        const byFolder = new Map(FOLDERS.map((f) => [f, []]));
+
+        for (let i = 0; i < count; i++) {
+            const fi = Math.floor(rnd.next() * FOLDERS.length);
+            const folder = FOLDERS[fi];
+            const angle = (fi / FOLDERS.length) * Math.PI * 2;
+            const spread = Math.sqrt(count) * 9;
+            const r = spread * Math.sqrt(rnd.next());
+            const a = rnd.next() * Math.PI * 2;
+            const node = {
+                id: 'n' + i,
+                label: folder.toLowerCase() + '/note-' + i,
+                shape: 'dot',
+                group: folder,
+                size: 3 + Math.round(rnd.next() * 6),
+                x: Math.cos(angle) * spread * 2.2 + Math.cos(a) * r,
+                y: Math.sin(angle) * spread * 2.2 + Math.sin(a) * r
+            };
+            nodes.push(node);
+            byFolder.get(folder).push(node.id);
+
+            if (rnd.next() < 0.05) heat.set(node.id, rnd.next());
+        }
+
+        for (let i = 1; i < count; i++) {
+            const pool = byFolder.get(nodes[i].group);
+            const target = rnd.next() < 0.85 ? pool[Math.floor(rnd.next() * pool.length)] : 'n' + Math.floor(rnd.next() * i);
+            if (target !== nodes[i].id) edges.push({id: 'w' + i, source: nodes[i].id, target: target, kind: 'wikilink'});
+            if (rnd.next() < 0.04) edges.push({id: 's' + i, source: nodes[i].id, target: 'n' + Math.floor(rnd.next() * i), kind: 'typed'});
+        }
+
+        return {nodes, edges, heat, byFolder};
+    }
+
+    function build() {
+        if (graph !== null) graph.destroy();
+
+        data = makeVault(Number(document.getElementById('count').value));
+        graph = new NGraph(stage, {
+            theme: Theme.fromCssVars(document.documentElement, {base: Theme.dark}),
+            layoutMode: 'static',
+            panZoom: true,
+            detailPanel: false,
+            edgeKinds: EdgeKindPresets.knowledge,
+            labelCollision: document.getElementById('collision').checked,
+            tooltip: (node) => node.label,
+            styleNode: (node) => {
+                const h = document.getElementById('heat').checked ? data.heat.get(node.id) : undefined;
+                return h === undefined ? null : {ring: {color: '#ffd166', width: 1.5 + h * 3, opacity: 0.35 + h * 0.55}};
+            }
+        });
+        graph.setData(data.nodes, data.edges);
+        applyHulls();
+        graph.fit();
+        graph.on('nodeDragEnd', (node) => { status.dataset.dragged = node.id; });
+    }
+
+    function applyHulls() {
+        graph.setHulls(document.getElementById('hulls').checked
+            ? FOLDERS.map((f) => ({id: f, nodeIds: data.byFolder.get(f), label: f + ' · ' + data.byFolder.get(f).length}))
+            : []);
+    }
+
+    // Frame-time readout: rAF deltas while something moves.
+    let last = performance.now();
+    const deltas = [];
+    (function tick(now) {
+        deltas.push(now - last);
+        last = now;
+        if (deltas.length > 60) deltas.shift();
+        const sorted = [...deltas].sort((a, b) => a - b);
+        status.textContent = (data ? data.nodes.length + ' notes · ' + data.edges.length + ' links · ' : '')
+            + 'frame median ' + (sorted[30] ?? 0).toFixed(1) + ' ms';
+        requestAnimationFrame(tick);
+    })(last);
+
+    const rndPick = () => data.nodes[Math.floor(Math.random() * data.nodes.length)].id;
+
+    document.getElementById('pulse').addEventListener('click', () => {
+        graph.pulse(Array.from({length: 20}, rndPick), '#34d399');
+    });
+    document.getElementById('trail').addEventListener('click', () => {
+        for (let i = 0; i < 6; i++) graph.trail(rndPick(), rndPick(), '#6c9aff');
+    });
+    document.getElementById('ripple').addEventListener('click', () => {
+        const ids = graph.getSelection();
+        graph.ripple(ids[0] ?? rndPick(), '#ffd166');
+    });
+    document.getElementById('fit').addEventListener('click', () => graph.fit({animate: true}));
+    document.getElementById('count').addEventListener('change', build);
+    document.getElementById('collision').addEventListener('change', build);
+    document.getElementById('hulls').addEventListener('change', applyHulls);
+    document.getElementById('heat').addEventListener('change', () => graph.redraw());
+
+    const tip = document.getElementById('hull-tip');
+    stage.addEventListener('mousemove', (e) => {
+        const rect = stage.getBoundingClientRect();
+        const ids = graph.hullsAt(e.clientX - rect.left, e.clientY - rect.top);
+        if (ids.length === 0) { tip.style.display = 'none'; return; }
+        tip.textContent = ids[0] + ' · ' + data.byFolder.get(ids[0]).length + ' notes';
+        tip.style.display = 'block';
+        tip.style.left = (e.clientX - rect.left + 14) + 'px';
+        tip.style.top = (e.clientY - rect.top + stage.offsetTop + 14) + 'px';
+    });
+
+    build();
+</script>
+</body>
+</html>

@@ -89,6 +89,38 @@ graph.on('selectionChange', (ids) => …);                 // click, ctrl/⌘-cl
   nothing moves, and pauses while the page is hidden or the container has no size. `pause()` /
   `resume()` for hosts that hide the view themselves.
 
+### Large graphs: static layout, hulls, effects
+
+For thousands of nodes whose layout is computed elsewhere (a server, a worker, a saved
+arrangement), skip the simulation and draw what you are given:
+
+```ts
+const graph = new NGraph(el, {
+    layoutMode: 'static',                                 // positions come from node x/y, drag still works
+    panZoom: true,
+    styleNode: (n) => heat.has(n.id) ? {ring: {color: '#ffd166', width: 3, opacity: 0.8}} : null
+});
+
+graph.setData(nodesWithXY, edges);
+graph.setHulls([{id: 'Projects', nodeIds: projectIds, label: 'Projects'}]);   // padded cluster outlines
+graph.hullsAt(x, y);                                     // hull ids under a point, for tooltips
+
+graph.pulse(['a', 'b'], '#34d399');                      // flash a ring
+graph.trail('a', 'b', '#6c9aff');                        // fading arc between two nodes
+graph.ripple('a', '#ffd166');                            // circles spreading out from a node
+
+const remove = graph.addOverlay({layer: 'over', draw: (ctx, info) => { /* world coords */ return false; }});
+```
+
+- Labels that would overlap a more important one (hovered, selected, highlighted, bigger) are
+  skipped (`labelCollision`, default on).
+- Plain straight edges are stroked in one path per look, so edge count barely matters.
+- Effects follow their nodes, keep their size on screen at any zoom, and remove themselves;
+  the render loop runs only while one is active. `addOverlay` is the same hook for your own
+  drawings (return `true` while animating).
+- `examples/vault.html`: 1 000–6 000 notes with folder hulls, heat rings and effects. A frame
+  of 3 000 notes takes ≈ 6 ms in the overview and ≈ 3 ms zoomed in (Chrome, desktop).
+
 ## Development
 
 ```bash

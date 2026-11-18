@@ -7,6 +7,8 @@ export type {
     NodeShape,
     NodeStatus,
     NodeStyle,
+    NodeRing,
+    NGraphHull,
     EdgeStyle,
     EdgeKindStyle
 } from './model/NGraphTypes';
@@ -17,6 +19,9 @@ export type { NeighborDirection } from './model/GraphQuery';
 export { EdgeKindPresets, StyleResolver } from './render/StyleResolver';
 export type { NodeStyler, EdgeStyler, ResolvedNodeStyle, ResolvedEdgeStyle } from './render/StyleResolver';
 export { Camera } from './view/Camera';
+export { Effects } from './render/Effects';
+export type { NGraphOverlay, OverlayContext, PulseOptions, TrailOptions, RippleOptions } from './render/Effects';
+export { Hull } from './util/Hull';
 export type { CameraState } from './view/Camera';
 export { RenderLoop } from './view/RenderLoop';
 export { Quadtree } from './util/Quadtree';

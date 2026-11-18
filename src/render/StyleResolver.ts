@@ -1,6 +1,6 @@
 import { GraphEdge } from '../model/GraphEdge';
 import { GraphNode } from '../model/GraphNode';
-import { EdgeKindStyle, EdgeStyle, NodeKind, NodeShape, NodeStyle } from '../model/NGraphTypes';
+import { EdgeKindStyle, EdgeStyle, NodeKind, NodeRing, NodeShape, NodeStyle } from '../model/NGraphTypes';
 import { Color } from '../util/Color';
 import { Theme, ThemeTokens } from './Theme';
 
@@ -15,6 +15,7 @@ export interface ResolvedNodeStyle {
     label: string;
     labelColor: string;
     opacity: number;
+    ring: Required<NodeRing> | null;
 }
 
 export interface ResolvedEdgeStyle {
@@ -98,7 +99,8 @@ export class StyleResolver {
                 icon: null,
                 label: node.label,
                 labelColor: theme.nodeLabel,
-                opacity: 1
+                opacity: 1,
+                ring: null
             }
             : {
                 shape: node.shape,
@@ -108,7 +110,8 @@ export class StyleResolver {
                 icon: node.kind,
                 label: node.label,
                 labelColor: theme.nodeLabel,
-                opacity: 1
+                opacity: 1,
+                ring: null
             };
         const override = this.nodeStyler?.(node);
 
@@ -127,7 +130,10 @@ export class StyleResolver {
             icon: override.icon !== undefined ? override.icon : shape === 'dot' ? null : base.icon,
             label: override.label ?? base.label,
             labelColor: override.labelColor ?? base.labelColor,
-            opacity: StyleResolver.unit(override.opacity ?? base.opacity)
+            opacity: StyleResolver.unit(override.opacity ?? base.opacity),
+            ring: override.ring === undefined || override.ring === null
+                ? base.ring
+                : {color: override.ring.color, width: override.ring.width ?? 2, opacity: StyleResolver.unit(override.ring.opacity ?? 1)}
         };
     }
 

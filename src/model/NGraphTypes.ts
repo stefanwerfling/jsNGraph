@@ -107,6 +107,17 @@ export interface NodeStyle {
     labelColor?: string;
     /** 0..1 */
     opacity?: number;
+    /** Extra ring around a dot/circle (heat, recency, a badge); null = none. */
+    ring?: NodeRing | null;
+}
+
+/** Outer ring drawn around a dot or circle node. */
+export interface NodeRing {
+    color: string;
+    /** Stroke width in world px. Default 2. */
+    width?: number;
+    /** 0..1, default 1. */
+    opacity?: number;
 }
 
 /** Per-edge visual override returned by NGraphOptions.styleEdge. */
@@ -119,3 +130,22 @@ export interface EdgeStyle {
     /** 0..1 */
     opacity?: number;
 }
+
+/**
+ * A cluster outline (J6): a padded convex hull drawn under the nodes in
+ * `nodeIds` (communities, tags, folders). Nodes that are filtered out do
+ * not count; a hull with no visible node is not drawn.
+ */
+export interface NGraphHull {
+    id: string;
+    nodeIds: ReadonlyArray<string>;
+    /** Fill and outline color. Default: theme palette by id. */
+    color?: string;
+    /** Shown by hosts as a tooltip (see NGraph.hullsAt). */
+    label?: string;
+    /** Margin around the member nodes in world px. Default 24. */
+    padding?: number;
+    /** Fill opacity 0..1, default 0.12 (the outline uses 3x, max 1). */
+    opacity?: number;
+}
+

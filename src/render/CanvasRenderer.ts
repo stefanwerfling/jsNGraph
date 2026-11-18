@@ -3,6 +3,9 @@ import { GraphNode } from '../model/GraphNode';
 import { Bounds, Geometry, Point } from '../util/Geometry';
 import { Color } from '../util/Color';
 import { Camera } from '../view/Camera';
+import { EdgeBatcher } from './EdgeBatcher';
+import { NGraphOverlay, OverlayContext } from './Effects';
+import { LabelPlacer } from './LabelPlacer';
 import { NodeIcons } from './NodeIcons';
 import { ResolvedEdgeStyle, ResolvedNodeStyle, StyleResolver } from './StyleResolver';
 import { ThemeTokens } from './Theme';
@@ -24,14 +27,38 @@ export interface RenderScene {
     showLabels: boolean;
     /** Below this camera scale node labels are skipped (they would be unreadable). */
     labelMinZoom: number;
+    /** Skip node labels that would overlap a more important one. */
+    labelCollision: boolean;
     edgeStyle: 'line' | 'curve';
     grid: boolean;
     /** Lasso polygon in screen pixels while the user draws one. */
     lasso: ReadonlyArray<Point> | null;
     styles: StyleResolver;
+    /** Cluster outlines in world coordinates, drawn under edges and nodes. */
+    hulls: ReadonlyArray<RenderHull>;
+    /** Drawing hooks (J8), run in world coordinates. */
+    overlays: ReadonlyArray<NGraphOverlay>;
+    overlayContext: OverlayContext;
+}
+
+export interface RenderHull {
+    polygon: ReadonlyArray<Point>;
+    color: string;
+    opacity: number;
 }
 
 export type Cubic = [Point, Point, Point, Point];
+
+/** A node label waiting for collision placement (drawn after all bodies). */
+interface QueuedLabel {
+    node: GraphNode;
+    style: ResolvedNodeStyle;
+    offsetY: number;
+    alpha: number;
+    /** Higher wins: forced (hover/selection) > highlight > bigger node. */
+    priority: number;
+    forced: boolean;
+}
 
 interface NodeDrawState {
     hovered: boolean;
@@ -54,6 +81,12 @@ export class CanvasRenderer {
 
     private readonly ctx: CanvasRenderingContext2D;
     private theme: ThemeTokens;
+    private readonly batcher = new EdgeBatcher();
+    private readonly placer = new LabelPlacer();
+    /** Non-null while a frame with label collision collects its labels. */
+    private labelQueue: QueuedLabel[] | null = null;
+    /** Measured label widths (world px at 11px font), by text. */
+    private readonly labelWidths = new Map<string, number>();
 
     public constructor(private readonly canvas: HTMLCanvasElement, theme: ThemeTokens) {
         const ctx = canvas.getContext('2d');
@@ -93,6 +126,14 @@ export class CanvasRenderer {
         ctx.save();
         camera.apply(ctx);
 
+        for (const hull of scene.hulls) {
+            this.drawHull(hull, camera.scale);
+        }
+
+        if (this.runOverlays(scene, 'under')) {
+            animating = true;
+        }
+
         const zoomedIn = camera.scale >= scene.labelMinZoom;
 
         for (const edge of scene.edges) {
@@ -103,13 +144,30 @@ export class CanvasRenderer {
             const style = scene.styles.edge(edge);
             const dimmed = highlight !== null && scene.dimOthers
                 && !(highlight.has(edge.source.id) && highlight.has(edge.target.id));
+            const alpha = dimmed ? dimOpacity : 1;
 
-            if (this.drawEdge(edge, style, dimmed ? dimOpacity : 1, scene, zoomedIn)) {
+            // Plain straight edges are stroked in batches (one path per look).
+            if (scene.edgeStyle === 'line' && style.dash === null && !style.animated
+                && (style.label === null || style.label.length === 0 || !zoomedIn)) {
+                const {start, end} = CanvasRenderer.lineEnds(edge, style.directed);
+
+                this.batcher.add(style.color, style.width, style.opacity * alpha, {
+                    from: start,
+                    to: end,
+                    arrow: style.directed ? 5 + style.width * 1.6 : 0
+                });
+                continue;
+            }
+
+            if (this.drawEdge(edge, style, alpha, scene, zoomedIn)) {
                 animating = true;
             }
         }
 
+        this.batcher.flush(ctx);
+
         const showLabels = scene.showLabels && zoomedIn;
+        this.labelQueue = scene.labelCollision ? [] : null;
 
         for (const node of scene.nodes) {
             const style = scene.styles.node(node);
@@ -134,6 +192,15 @@ export class CanvasRenderer {
             if (node.pulse && !dimmed) {
                 animating = true;
             }
+        }
+
+        if (this.labelQueue !== null) {
+            this.placeLabels(this.labelQueue, scene);
+            this.labelQueue = null;
+        }
+
+        if (this.runOverlays(scene, 'over')) {
+            animating = true;
         }
 
         ctx.restore();
@@ -370,6 +437,8 @@ export class CanvasRenderer {
         const {ctx, theme} = this;
         const r = style.radius;
 
+        this.drawRing(node.x, node.y, r, style);
+
         if (state.highlighted || state.selected || state.hovered) {
             ctx.beginPath();
             ctx.arc(node.x, node.y, r + 3.5, 0, Math.PI * 2);
@@ -392,13 +461,153 @@ export class CanvasRenderer {
 
         // Dense graphs: labels of hovered/selected dots stay readable even when the rest are off.
         if (state.showLabel || state.hovered || state.selected) {
-            this.drawLabel(node, style, r + 12);
+            this.labelOrQueue(node, style, r + 12, state);
+        }
+    }
+
+    /** Run the overlays of one layer; true when any of them animates. */
+    private runOverlays(scene: RenderScene, layer: 'under' | 'over'): boolean {
+        let animating = false;
+
+        for (const overlay of scene.overlays) {
+            if ((overlay.layer ?? 'over') !== layer) {
+                continue;
+            }
+
+            this.ctx.save();
+
+            try {
+                if (overlay.draw(this.ctx, scene.overlayContext) === true) {
+                    animating = true;
+                }
+            } finally {
+                this.ctx.restore();
+            }
+        }
+
+        return animating;
+    }
+
+    private drawHull(hull: RenderHull, scale: number): void {
+        const {ctx} = this;
+        const first = hull.polygon[0];
+
+        if (first === undefined || hull.polygon.length < 3) {
+            return;
+        }
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(first.x, first.y);
+
+        for (let i = 1; i < hull.polygon.length; i++) {
+            const p = hull.polygon[i] as Point;
+            ctx.lineTo(p.x, p.y);
+        }
+
+        ctx.closePath();
+        ctx.fillStyle = hull.color;
+        ctx.globalAlpha = hull.opacity;
+        ctx.fill();
+        ctx.strokeStyle = hull.color;
+        ctx.globalAlpha = Math.min(1, hull.opacity * 3);
+        ctx.lineJoin = 'round';
+        // Constant 1 px on screen, whatever the zoom.
+        ctx.lineWidth = 1 / scale;
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    /** The optional outer ring (NodeStyle.ring), e.g. a heat indicator. */
+    private drawRing(x: number, y: number, r: number, style: ResolvedNodeStyle): void {
+        const ring = style.ring;
+
+        if (ring === null) {
+            return;
+        }
+
+        const {ctx} = this;
+        const base = ctx.globalAlpha;
+
+        ctx.beginPath();
+        ctx.arc(x, y, r + 1 + ring.width / 2, 0, Math.PI * 2);
+        ctx.strokeStyle = ring.color;
+        ctx.globalAlpha = base * ring.opacity;
+        ctx.lineWidth = ring.width;
+        ctx.stroke();
+        ctx.globalAlpha = base;
+    }
+
+    private labelOrQueue(node: GraphNode, style: ResolvedNodeStyle, offsetY: number, state: NodeDrawState): void {
+        if (this.labelQueue === null) {
+            this.drawLabel(node, style, offsetY);
+            return;
+        }
+
+        const forced = state.hovered || state.selected;
+
+        this.labelQueue.push({
+            node: node,
+            style: style,
+            offsetY: offsetY,
+            alpha: state.alpha,
+            priority: (forced ? 1e6 : 0) + (state.highlighted ? 1e5 : 0) + style.radius,
+            forced: forced
+        });
+    }
+
+    /**
+     * Draw queued labels most important first, skipping any whose screen box
+     * would overlap one already drawn. Forced labels (hover, selection) are
+     * always drawn and claim their space first.
+     */
+    private placeLabels(queue: QueuedLabel[], scene: RenderScene): void {
+        const {ctx} = this;
+        const {camera} = scene;
+
+        queue.sort((a, b) => b.priority - a.priority);
+        this.placer.reset();
+        ctx.font = '11px system-ui, sans-serif';
+
+        for (const item of queue) {
+            const text = item.style.label;
+
+            if (text.length === 0) {
+                continue;
+            }
+
+            let w = this.labelWidths.get(text);
+
+            if (w === undefined) {
+                w = ctx.measureText(text).width;
+
+                if (this.labelWidths.size > 20000) {
+                    this.labelWidths.clear();
+                }
+
+                this.labelWidths.set(text, w);
+            }
+
+            const top = camera.toScreen(item.node.x - w / 2, item.node.y + item.offsetY - 10);
+            const lines = item.node.sublabel !== null ? 24 : 13;
+            const fits = this.placer.tryPlace({x: top.x, y: top.y, w: w * camera.scale, h: lines * camera.scale});
+
+            if (!fits && !item.forced) {
+                continue;
+            }
+
+            ctx.save();
+            ctx.globalAlpha = item.alpha;
+            this.drawLabel(item.node, item.style, item.offsetY);
+            ctx.restore();
         }
     }
 
     private drawCircleNode(node: GraphNode, style: ResolvedNodeStyle, state: NodeDrawState, timeMs: number): void {
         const {ctx, theme} = this;
         const r = style.radius;
+
+        this.drawRing(node.x, node.y, r, style);
 
         ctx.save();
         ctx.translate(node.x, node.y);
@@ -459,7 +668,7 @@ export class CanvasRenderer {
         ctx.restore();
 
         if (state.showLabel) {
-            this.drawLabel(node, style, r + 14);
+            this.labelOrQueue(node, style, r + 14, state);
         }
     }
 
