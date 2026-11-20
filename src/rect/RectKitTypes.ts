@@ -34,6 +34,22 @@ export interface RectChartOptions {
     /** Seed for the deterministic value generator, so a chart never flickers. */
     seed?: number;
     accent?: RectAccent;
+    /**
+     * Stretch to the container width (`width: 100%`, height follows the
+     * aspect ratio) instead of a fixed pixel size.
+     */
+    fluid?: boolean;
+    /** Colour of axis/base lines; any CSS colour incl. `var(--x)`. */
+    axisColor?: string;
+}
+
+/** One data series of a Sparkline in data mode. */
+export interface SparklineSeries {
+    points: Array<{x?: number; y: number; title?: string}>;
+    /** Any CSS colour incl. `var(--x)`; default the chart accent. */
+    color?: string;
+    /** Draw a dot per point (default: only for short series). */
+    dots?: boolean;
 }
 
 export interface HeatmapOptions extends RectChartOptions {
@@ -51,6 +67,16 @@ export interface BarStripOptions extends RectChartOptions {
     barWidth?: number;
     gap?: number;
     height?: number;
+    /** Data mode: real values instead of seeded random ones (`count` is ignored). */
+    values?: number[];
+    /** Data mode: total width in px (default count × (barWidth + gap)). */
+    width?: number;
+    /** Data mode: scale top (default the largest |value|). */
+    max?: number;
+    /** Data mode: per-bar tooltip (SVG <title>). */
+    titles?: string[];
+    /** Data mode: per-bar colour (any CSS colour); default the accent. */
+    colors?: Array<string | undefined>;
 }
 
 export interface FeatureColumnOptions extends RectChartOptions {
@@ -64,6 +90,17 @@ export interface SparklineOptions extends RectChartOptions {
     count?: number;
     width?: number;
     height?: number;
+    /** Data mode: one series of y values (shortcut for `series`). */
+    values?: number[];
+    /** Data mode: several series in one x/y space. */
+    series?: SparklineSeries[];
+    /** Data mode: fixed y range, e.g. {min: 0}. */
+    yMin?: number;
+    yMax?: number;
+    /** Fill the area under a single series (default true). */
+    area?: boolean;
+    /** Data mode: dot radius in px (default 2.6). */
+    dot?: number;
 }
 
 export interface ScatterOptions extends RectChartOptions {
@@ -115,6 +152,12 @@ export interface TimelineOptions extends RectChartOptions {
     ticks?: string[];
     /** Animate the playhead sweeping across the strip. */
     sweep?: boolean;
+    /** Data mode: one cell per value, intensity = value / max (`count` is ignored). */
+    values?: number[];
+    /** Data mode: scale top (default the largest |value|). */
+    max?: number;
+    /** Data mode: per-cell tooltip (SVG <title>). */
+    titles?: string[];
 }
 
 /** Direction an arrow points / a pipeline flows. */

@@ -1,5 +1,6 @@
 import { RectColor } from './RectColor';
 import { RectRandom } from './RectRandom';
+import { RectChartData } from './RectChartData';
 import {
     BarStripOptions,
     FeatureColumnOptions,
@@ -7,7 +8,9 @@ import {
     MatrixOptions,
     NetworkOptions,
     ScatterOptions,
+    RectChartOptions,
     SparklineOptions,
+    SparklineSeries,
     TimelineOptions
 } from './RectKitTypes';
 
@@ -40,6 +43,28 @@ abstract class RectChart {
         }
 
         return node;
+    }
+
+    /** Data mode: fluid width and a tooltip helper. */
+    protected static finish(svg: SVGSVGElement, options: RectChartOptions): SVGSVGElement {
+        if (options.fluid) {
+            svg.removeAttribute('width');
+            svg.removeAttribute('height');
+            svg.style.width = '100%';
+            svg.style.height = 'auto';
+        }
+
+        return svg;
+    }
+
+    protected static title(node: SVGElement, text: string | undefined): void {
+        if (text === undefined || text === '') {
+            return;
+        }
+
+        const title = document.createElementNS(RectChart.NS, 'title');
+        title.textContent = text;
+        node.appendChild(title);
     }
 
     /** A looping SMIL <animate> child — self-contained, no keyframes needed. */
@@ -106,6 +131,10 @@ export class BarStrip extends RectChart {
     }
 
     public render(): SVGSVGElement {
+        if (this.options.values !== undefined) {
+            return this.renderData(this.options.values);
+        }
+
         const count = this.options.count ?? 12;
         const barWidth = this.options.barWidth ?? 6;
         const gap = this.options.gap ?? 3;
@@ -129,7 +158,32 @@ export class BarStrip extends RectChart {
             }));
         }
 
-        return svg;
+        return RectChart.finish(svg, this.options);
+    }
+
+    private renderData(values: number[]): SVGSVGElement {
+        const barWidth = this.options.barWidth ?? 6;
+        const gap = this.options.gap ?? 3;
+        const height = this.options.height ?? 52;
+        const width = this.options.width ?? Math.max(1, values.length * (barWidth + gap) - gap);
+        const accent = RectColor.resolve(this.options.accent, 'amber');
+        const svg = RectChart.svg(width, height);
+
+        for (const bar of RectChartData.bars(values, width, height - 1, gap, this.options.max)) {
+            const rect = RectChart.shape('rect', {
+                x: bar.x.toFixed(2), y: bar.y.toFixed(2), width: bar.width.toFixed(2), height: bar.height.toFixed(2),
+                rx: Math.min(2, bar.width / 4), fill: this.options.colors?.[bar.index] ?? accent
+            });
+            RectChart.title(rect, this.options.titles?.[bar.index]);
+            svg.appendChild(rect);
+        }
+
+        svg.appendChild(RectChart.shape('line', {
+            x1: 0, y1: height - 0.5, x2: width, y2: height - 0.5,
+            stroke: this.options.axisColor ?? 'rgba(255,255,255,0.12)', 'stroke-width': 1
+        }));
+
+        return RectChart.finish(svg, this.options);
     }
 
 }
@@ -173,6 +227,13 @@ export class Sparkline extends RectChart {
     }
 
     public render(): SVGSVGElement {
+        const series = this.options.series
+            ?? (this.options.values !== undefined ? [{points: this.options.values.map((y) => ({y}))}] : undefined);
+
+        if (series !== undefined) {
+            return this.renderData(series);
+        }
+
         const count = this.options.count ?? 24;
         const width = this.options.width ?? 110;
         const height = this.options.height ?? 44;
@@ -198,7 +259,55 @@ export class Sparkline extends RectChart {
             d: line, fill: 'none', stroke: accent, 'stroke-width': 1.6, 'stroke-linejoin': 'round'
         }));
 
-        return svg;
+        return RectChart.finish(svg, this.options);
+    }
+
+    private renderData(series: SparklineSeries[]): SVGSVGElement {
+        const width = this.options.width ?? 110;
+        const height = this.options.height ?? 44;
+        const accent = RectColor.resolve(this.options.accent, 'green');
+        const pad = 4;
+        const svg = RectChart.svg(width, height);
+        const fixed: {min?: number; max?: number} = {};
+
+        if (this.options.yMin !== undefined) fixed.min = this.options.yMin;
+        if (this.options.yMax !== undefined) fixed.max = this.options.yMax;
+
+        const lines = RectChartData.lines(series.map((s) => s.points), width, height, pad, fixed);
+        const fillArea = series.length === 1 && (this.options.area ?? true);
+
+        lines.forEach((points, i) => {
+            const spec = series[i] as SparklineSeries;
+            const color = spec.color ?? accent;
+            const path = points
+                .map((p, j) => (j === 0 ? 'M' : 'L') + p.x.toFixed(1) + ' ' + p.y.toFixed(1))
+                .join(' ');
+
+            if (points.length > 1) {
+                if (fillArea) {
+                    const first = points[0] as {x: number};
+                    const last = points[points.length - 1] as {x: number};
+                    svg.appendChild(RectChart.shape('path', {
+                        d: `${path} L ${last.x.toFixed(1)} ${height} L ${first.x.toFixed(1)} ${height} Z`,
+                        fill: color, 'fill-opacity': 0.12
+                    }));
+                }
+
+                svg.appendChild(RectChart.shape('path', {
+                    d: path, fill: 'none', stroke: color, 'stroke-width': 1.6, 'stroke-linejoin': 'round'
+                }));
+            }
+
+            if (spec.dots ?? points.length <= 40) {
+                points.forEach((p, j) => {
+                    const dot = RectChart.shape('circle', {cx: p.x.toFixed(1), cy: p.y.toFixed(1), r: this.options.dot ?? 2.6, fill: color});
+                    RectChart.title(dot, spec.points[j]?.title);
+                    svg.appendChild(dot);
+                });
+            }
+        });
+
+        return RectChart.finish(svg, this.options);
     }
 
 }
@@ -367,17 +476,32 @@ export class Timeline extends RectChart {
         const faultColor = this.options.faultColor ?? '#ff6a6a';
         const rand = new RectRandom(this.options.seed ?? 17);
 
+        const values = this.options.values;
+        const cells = values?.length ?? count;
         const ticks = this.options.ticks ?? [];
         const tickH = ticks.length > 0 ? 14 : 0;
-        const width = count * (cell + gap) - gap;
+        const width = Math.max(1, cells * (cell + gap) - gap);
         const svg = RectChart.svg(width, height + tickH);
 
-        for (let i = 0; i < count; i++) {
-            const v = rand.next();
-            const fill = v > faultThreshold ? faultColor : RectColor.shade(accent, 0.2 + v * 0.8);
-            svg.appendChild(RectChart.shape('rect', {
-                x: i * (cell + gap), y: 0, width: cell, height: height, rx: 1.5, fill: fill
-            }));
+        if (values !== undefined) {
+            // Data mode: one cell per value; empty cells stay faintly visible.
+            const color = RectColor.resolve(accent, 'green');
+            RectChartData.intensities(values, this.options.max).forEach((v, i) => {
+                const rect = RectChart.shape('rect', {
+                    x: i * (cell + gap), y: 0, width: cell, height: height, rx: 1.5,
+                    fill: color, 'fill-opacity': (v === 0 ? 0.08 : 0.25 + v * 0.75).toFixed(3)
+                });
+                RectChart.title(rect, this.options.titles?.[i]);
+                svg.appendChild(rect);
+            });
+        } else {
+            for (let i = 0; i < count; i++) {
+                const v = rand.next();
+                const fill = v > faultThreshold ? faultColor : RectColor.shade(accent, 0.2 + v * 0.8);
+                svg.appendChild(RectChart.shape('rect', {
+                    x: i * (cell + gap), y: 0, width: cell, height: height, rx: 1.5, fill: fill
+                }));
+            }
         }
 
         if (this.options.sweep) {
@@ -403,7 +527,7 @@ export class Timeline extends RectChart {
             svg.appendChild(text);
         });
 
-        return svg;
+        return RectChart.finish(svg, this.options);
     }
 
 }

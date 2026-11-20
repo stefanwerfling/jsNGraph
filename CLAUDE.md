@@ -47,7 +47,9 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   wiring-diagram visuals. Blocks: `RectBox` (labeled block, optional `glow`), `RectGroup`
   (nested container frame). Mini-charts (`RectCharts.ts`): `Heatmap`, `BarStrip`,
   `FeatureColumn`, `Sparkline`, `Scatter` (opt. axes/target), `Network` (layered node-link),
-  `Matrix` (axis-labeled grid), `Timeline` (opt. cursor/ticks). Labels (`RectLabels.ts`):
+  `Matrix` (axis-labeled grid), `Timeline` (opt. cursor/ticks). `BarStrip`, `Sparkline` and
+  `Timeline` also have a data mode (`values`/`series`, `titles`, `colors`, `max`/`yMin`, `fluid`;
+  any CSS colour incl. `var(--x)`), geometry in the pure `RectChartData.ts`. Labels (`RectLabels.ts`):
   `RectHeader`, `RectChip`, `RectLegend`. Reference panels (`RectReference.ts`): `RectSymbols`
   (glyph·name·type·note key) and `RectGlossary` (term·definition). Connectors: `RectArrow`/`RectPipeline` — directional
   (`RectDirection`), labeled, optionally `animated` (flowing dashes) or `dots` (travelling dots);

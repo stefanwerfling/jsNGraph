@@ -53,6 +53,8 @@ export { RectHeader, RectChip, RectLegend } from './rect/RectLabels';
 export { RectSymbols, RectGlossary } from './rect/RectReference';
 export { RectBoard } from './rect/RectBoard';
 export { Heatmap, BarStrip, FeatureColumn, Sparkline, Scatter, Network, Matrix, Timeline } from './rect/RectCharts';
+export { RectChartData } from './rect/RectChartData';
+export type { BarRect, LinePoint, Domain } from './rect/RectChartData';
 export { RectColor } from './rect/RectColor';
 export { RectRandom } from './rect/RectRandom';
 export { RectAnim } from './rect/RectAnim';
@@ -66,6 +68,7 @@ export type {
     BarStripOptions,
     FeatureColumnOptions,
     SparklineOptions,
+    SparklineSeries,
     ScatterOptions,
     NetworkOptions,
     MatrixOptions,
