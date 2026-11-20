@@ -137,6 +137,33 @@ describe('LayeredLayout', () => {
         expect(crossingsAfter(12)).toBe(standard);
     });
 
+    it('minSpacing and minColumnGap let a big graph grow past the canvas instead of overlapping', () => {
+        const column = Array.from({length: 20}, (_, i) => makeNode(`n${i}`, 0));
+        const far = Array.from({length: 6}, (_, i) => makeNode(`c${i}`, i + 1));
+        const plain = new LayeredLayout();
+        const spaced = new LayeredLayout({minSpacing: 56, minColumnGap: 260});
+        const copy = (nodes: GraphNode[]): GraphNode[] => nodes.map((n) => makeNode(n.id, n.ring));
+        const a = [...copy(column), ...copy(far)];
+        const b = [...copy(column), ...copy(far)];
+
+        settle(plain, a, [], 800, 400);
+        settle(spaced, b, [], 800, 400);
+
+        const gapY = (nodes: GraphNode[]): number => {
+            const ys = nodes.filter((n) => n.ring === 0).map((n) => n.y).sort((p, q) => p - q);
+            return (ys[1] ?? 0) - (ys[0] ?? 0);
+        };
+        const gapX = (nodes: GraphNode[]): number => (nodes.find((n) => n.id === 'c1')?.x ?? 0) - (nodes.find((n) => n.id === 'c0')?.x ?? 0);
+
+        expect(gapY(a)).toBeLessThan(20);
+        expect(gapY(b)).toBeCloseTo(56, 0);
+        expect(gapX(a)).toBeLessThan(110);
+        expect(gapX(b)).toBeCloseTo(260, 0);
+        // Still centred on the canvas.
+        const xs = b.map((n) => n.x);
+        expect((Math.min(...xs) + Math.max(...xs)) / 2).toBeCloseTo(400, 0);
+    });
+
     it('never moves fixed nodes', () => {
         const pinned = makeNode('p', 1);
 

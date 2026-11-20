@@ -17,6 +17,15 @@ export interface LayeredLayoutOptions {
      * crossings further on deeper flows. Clamped to >= 1.
      */
     sweeps?: number;
+    /**
+     * Minimum vertical distance between two nodes in a column. Default 0:
+     * a column always fits the canvas height. Set it (e.g. to the card
+     * height plus a gap) to let tall columns grow past the canvas instead
+     * of overlapping; `fit()` then zooms out to show them.
+     */
+    minSpacing?: number;
+    /** Minimum horizontal distance between two columns. Default 0 (columns fit the canvas width). */
+    minColumnGap?: number;
 }
 
 const DEFAULTS: Required<LayeredLayoutOptions> = {
@@ -24,7 +33,9 @@ const DEFAULTS: Required<LayeredLayoutOptions> = {
     marginX: 120,
     marginY: 48,
     maxSpacing: 84,
-    sweeps: 4
+    sweeps: 4,
+    minSpacing: 0,
+    minColumnGap: 0
 };
 
 /**
@@ -51,7 +62,7 @@ export class LayeredLayout {
     }
 
     public tick(nodes: GraphNode[], edges: GraphEdge[], width: number, height: number): void {
-        const {easing, marginX, marginY, maxSpacing} = this.options;
+        const {easing, marginX, marginY, maxSpacing, minSpacing, minColumnGap} = this.options;
         const sweeps = Math.max(1, Math.floor(this.options.sweeps));
 
         const columns = new Map<number, GraphNode[]>();
@@ -125,14 +136,15 @@ export class LayeredLayout {
             }
         }
 
+        // Columns spread over the width, centred; never closer than minColumnGap.
+        const columnGap = maxRing === 0 ? 0 : Math.max(minColumnGap, (width - 2 * marginX) / maxRing);
+
         for (const ring of orderedRings) {
             const members = columns.get(ring) ?? [];
-            const tx = maxRing === 0
-                ? width / 2
-                : marginX + ((width - 2 * marginX) * ring) / maxRing;
+            const tx = width / 2 + (ring - maxRing / 2) * columnGap;
             const spacing = members.length <= 1
                 ? 0
-                : Math.min(maxSpacing, (height - 2 * marginY) / (members.length - 1));
+                : Math.max(minSpacing, Math.min(maxSpacing, (height - 2 * marginY) / (members.length - 1)));
 
             for (let i = 0; i < members.length; i++) {
                 const node = members[i];
