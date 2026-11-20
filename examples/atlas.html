@@ -50,6 +50,12 @@
             <option value="100000">100 000</option>
         </select>
     </label>
+    <label>Renderer
+        <select id="renderer">
+            <option value="canvas">canvas 2d</option>
+            <option value="webgl" selected>WebGL (J11)</option>
+        </select>
+    </label>
     <label><input id="clusters" type="checkbox" checked> Aggregate when zoomed out</label>
     <button id="pulse">Pulse 50</button>
     <button id="fit">Fit</button>
@@ -145,6 +151,7 @@
             draggable: false,
             lasso: false,
             grid: false,
+            renderer: document.getElementById('renderer').value,
             minZoom: 0.01,
             maxZoom: 40,
             labelMinZoom: 1.5,
@@ -192,13 +199,14 @@
     });
     document.getElementById('fit').addEventListener('click', () => graph.fit({animate: true, padding: 20}));
     document.getElementById('count').addEventListener('change', build);
+    document.getElementById('renderer').addEventListener('change', build);
     document.getElementById('clusters').addEventListener('change', applyClusters);
 
     let zoomText = '';
     setInterval(() => {
         if (graph === null) return;
         zoomText = 'zoom ' + graph.getViewport().scale.toFixed(3);
-        status.textContent = data.nodes.length + ' notes · ' + data.edges.length + ' links · ' + data.clusters.length + ' communities · ' + zoomText;
+        status.textContent = graph.activeRenderer + ' · ' + data.nodes.length + ' notes · ' + data.edges.length + ' links · ' + data.clusters.length + ' communities · ' + zoomText;
     }, 250);
 
     build();

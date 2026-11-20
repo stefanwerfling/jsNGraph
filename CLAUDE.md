@@ -37,6 +37,16 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
 - `render/` — `CanvasRenderer.ts` (draws grid/edges/traffic-dots/nodes/labels each frame),
   `NodeIcons.ts` (hand-drawn device glyphs, no icon font/image assets), `Theme.ts`
   (`ThemeTokens` + built-in `dark`/`light` palettes).
+  Optional WebGL2 layer (J11, `renderer: 'webgl' | 'auto'`, `webglMinNodes` default 50 000):
+  `WebGLLayer.ts` is a second canvas *under* the 2d one. `CanvasRenderer.draw(scene, bulk)` then
+  leaves the 2d canvas transparent and hands plain straight edges (+ arrowheads) and plain dots
+  to the `BulkSink` (`BulkBuffers.ts`, pure, tested) instead of drawing them; the layer draws
+  them as three instanced draw calls. Everything with detail (cards, circles with icons, rings,
+  hover/selection/highlight, labels, curves, dashes, hulls, overlays, clusters, lasso) stays 2d.
+  Accepted differences: the bulk is always under all 2d content (the dot grid and hulls draw
+  over GL edges; a curved/dashed edge can lie over a GL dot). No WebGL2 or a lost context →
+  back to 2d for good (`activeRenderer` says which drew). Atlas example has a toggle; 100k
+  nodes zoomed out: ~70 → ~14 ms/frame, with all edges ~190 → ~38 ms (CPU-side loop remains).
 - `interaction/InteractionController.ts` — manual canvas hit-testing (circle-vs-pointer) for
   hover/click/drag-to-reposition, since there are no per-node DOM elements to attach listeners to.
 - `ui/` — `Tooltip.ts` (hover), `NodePanel.ts` (click-to-open detail panel: name/IP/status/load

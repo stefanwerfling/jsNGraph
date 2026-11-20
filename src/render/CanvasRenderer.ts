@@ -3,6 +3,7 @@ import { GraphNode } from '../model/GraphNode';
 import { Bounds, Geometry, Point } from '../util/Geometry';
 import { Color } from '../util/Color';
 import { Camera } from '../view/Camera';
+import { BulkSink } from './BulkBuffers';
 import { EdgeBatcher } from './EdgeBatcher';
 import { NGraphOverlay, OverlayContext } from './Effects';
 import { LabelPlacer } from './LabelPlacer';
@@ -144,8 +145,13 @@ export class CanvasRenderer {
         this.theme = theme;
     }
 
-    /** Draw one frame. Returns true when a visible element animates (traffic dots, pulse). */
-    public draw(scene: RenderScene): boolean {
+    /**
+     * Draw one frame. Returns true when a visible element animates (traffic
+     * dots, pulse). With a `bulk` sink (the WebGL layer underneath, J11) the
+     * canvas stays transparent and plain straight edges and plain dots go to
+     * the sink instead of being drawn here.
+     */
+    public draw(scene: RenderScene, bulk: BulkSink | null = null): boolean {
         const {ctx, canvas, theme} = this;
         const dpr = window.devicePixelRatio || 1;
         const {camera} = scene;
@@ -156,8 +162,11 @@ export class CanvasRenderer {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.scale(dpr, dpr);
-        ctx.fillStyle = theme.background;
-        ctx.fillRect(0, 0, scene.width, scene.height);
+
+        if (bulk === null) {
+            ctx.fillStyle = theme.background;
+            ctx.fillRect(0, 0, scene.width, scene.height);
+        }
 
         if (scene.grid) {
             this.drawGrid(scene);
@@ -177,7 +186,7 @@ export class CanvasRenderer {
         if (scene.clusters !== null) {
             this.drawClusters(scene.clusters, scene);
         } else {
-            animating = this.drawGraph(scene, view, dimOpacity) || animating;
+            animating = this.drawGraph(scene, view, dimOpacity, bulk) || animating;
         }
 
         if (this.runOverlays(scene, 'over')) {
@@ -194,7 +203,7 @@ export class CanvasRenderer {
     }
 
     /** Edges, nodes and labels; true when something animates. */
-    private drawGraph(scene: RenderScene, view: Bounds, dimOpacity: number): boolean {
+    private drawGraph(scene: RenderScene, view: Bounds, dimOpacity: number, bulk: BulkSink | null): boolean {
         const {camera} = scene;
         const highlight = scene.highlight;
         let animating = false;
@@ -216,12 +225,18 @@ export class CanvasRenderer {
                 const {start, end} = CanvasRenderer.lineEnds(edge, style.directed);
                 const arrow = 5 + style.width * 1.6;
 
-                this.batcher.add(style.color, style.width, style.opacity * alpha, {
+                const segment = {
                     from: start,
                     to: end,
                     // LOD: an arrowhead under ~2 px on screen is not visible, skip it.
                     arrow: style.directed && arrow * camera.scale >= CanvasRenderer.MIN_ARROW_PX ? arrow : 0
-                });
+                };
+
+                if (bulk !== null) {
+                    bulk.line(style.color, style.width, style.opacity * alpha, segment);
+                } else {
+                    this.batcher.add(style.color, style.width, style.opacity * alpha, segment);
+                }
                 continue;
             }
 
@@ -249,6 +264,19 @@ export class CanvasRenderer {
             const hovered = node.id === scene.hoveredId;
             const selected = scene.selection.has(node.id);
             const alpha = (dimmed ? dimOpacity : 1) * style.opacity;
+
+            // WebGL: every plain dot is one instance; only its label stays on the canvas.
+            if (bulk !== null && style.shape === 'dot' && style.ring === null && !hovered && !selected && !highlighted) {
+                bulk.disc(node.x, node.y, style.radius, style.fill, style.stroke, alpha);
+
+                if (showLabels && style.radius * camera.scale >= CanvasRenderer.DOT_DETAIL_PX) {
+                    this.ctx.globalAlpha = alpha;
+                    this.labelOrQueue(node, style, style.radius + 12,
+                        {hovered: false, selected: false, highlighted: false, alpha: alpha, showLabel: true});
+                    this.ctx.globalAlpha = 1;
+                }
+                continue;
+            }
 
             // LOD: a plain dot under ~2 px on screen is one square in a batch.
             if (style.shape === 'dot' && style.radius * camera.scale < CanvasRenderer.DOT_DETAIL_PX

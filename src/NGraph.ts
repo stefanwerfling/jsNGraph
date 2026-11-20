@@ -7,6 +7,7 @@ import { GraphNode } from './model/GraphNode';
 import { GraphQuery, NeighborDirection } from './model/GraphQuery';
 import { EdgeKindStyle, NGraphCluster, NGraphClusterEdge, NGraphEdgeData, NGraphHull, NGraphNodeData } from './model/NGraphTypes';
 import { CanvasRenderer, RenderCluster, RenderClusters, RenderHull } from './render/CanvasRenderer';
+import { WebGLLayer } from './render/WebGLLayer';
 import { ClusterResolver } from './render/ClusterResolver';
 import { Effects, NGraphOverlay, OverlayContext, PulseOptions, RippleOptions, TrailOptions } from './render/Effects';
 import { EdgeStyler, NodeStyler, StyleResolver } from './render/StyleResolver';
@@ -72,6 +73,17 @@ export interface NGraphOptions {
     styleEdge?: EdgeStyler;
     /** Stop rendering while the document is hidden. Default true. */
     pauseWhenHidden?: boolean;
+    /**
+     * J11. 'canvas' (default): everything on canvas 2d. 'webgl': plain
+     * straight edges, arrowheads and plain dots go to a WebGL2 layer under
+     * the canvas (three instanced draw calls); labels, cards, icons, rings,
+     * hover/selection, curves, dashes, hulls, overlays and clusters stay 2d.
+     * 'auto': WebGL from `webglMinNodes` visible nodes on. Without WebGL2,
+     * or after a lost context, it falls back to 'canvas'.
+     */
+    renderer?: 'canvas' | 'webgl' | 'auto';
+    /** With renderer 'auto': visible node count from which WebGL draws. Default 50 000. */
+    webglMinNodes?: number;
 }
 
 export interface NGraphContextEvent {
@@ -175,6 +187,10 @@ export class NGraph {
     private readonly labelCollision: boolean;
     private readonly grid: boolean;
     private readonly pauseWhenHidden: boolean;
+    private readonly rendererMode: 'canvas' | 'webgl' | 'auto';
+    private readonly webglMinNodes: number;
+    /** Created on first use; null = not yet, false = unavailable (stay on 2d). */
+    private gl: WebGLLayer | null | false = null;
 
     private readonly nodes = new Map<string, GraphNode>();
     private readonly edges = new Map<string, GraphEdge>();
@@ -221,6 +237,8 @@ export class NGraph {
         this.labelCollision = options.labelCollision ?? true;
         this.grid = options.grid ?? true;
         this.pauseWhenHidden = options.pauseWhenHidden ?? true;
+        this.rendererMode = options.renderer ?? 'canvas';
+        this.webglMinNodes = options.webglMinNodes ?? 50_000;
         this.tooltipText = options.tooltip === false
             ? null
             : typeof options.tooltip === 'function'
@@ -232,7 +250,7 @@ export class NGraph {
         container.appendChild(this.root);
 
         this.canvas = document.createElement('canvas');
-        this.canvas.style.cssText = 'display:block; width:100%; height:100%;';
+        this.canvas.style.cssText = 'position:relative; display:block; width:100%; height:100%;';
         this.root.appendChild(this.canvas);
 
         this.camera = new Camera(options.minZoom ?? 0.1, options.maxZoom ?? 4);
@@ -761,7 +779,17 @@ export class NGraph {
         this.tooltip.destroy();
         this.panel.destroy();
         this.events.clear();
+
+        if (this.gl) {
+            this.gl.destroy();
+        }
+
         this.root.remove();
+    }
+
+    /** Which renderer drew the last frame: 'webgl' when the J11 layer is active, else 'canvas'. */
+    public get activeRenderer(): 'canvas' | 'webgl' {
+        return this.gl && this.gl.canvas.style.display !== 'none' ? 'webgl' : 'canvas';
     }
 
     // ---- internals -----------------------------------------------------------
@@ -1181,6 +1209,7 @@ export class NGraph {
         this.overlayContext.scale = this.camera.scale;
 
         const clustered = this.isClustered();
+        const gl = this.glLayer();
         const animating = this.renderer.draw({
             nodes: clustered ? [] : this.nodesInView(),
             edges: clustered || this.camera.scale < this.edgeMinZoom ? [] : this.visibleEdges,
@@ -1203,7 +1232,14 @@ export class NGraph {
             overlays: this.overlays,
             overlayContext: this.overlayContext,
             clusters: clustered ? this.clusterScene() : null
-        });
+        }, gl === null ? null : gl.buffers);
+
+        if (gl !== null) {
+            const origin = this.camera.toScreen(0, 0);
+
+            gl.render({scale: this.camera.scale, offsetX: origin.x, offsetY: origin.y},
+                this.width, this.height, window.devicePixelRatio || 1, this.theme.background);
+        }
 
         if (this.hoveredId !== null && (layoutMoving || flying)) {
             this.updateTooltip();
@@ -1211,6 +1247,44 @@ export class NGraph {
 
         return flying || layoutMoving || animating;
     };
+
+    /**
+     * The WebGL layer for this frame, or null to draw everything on 2d.
+     * Created lazily the first time it is wanted; a lost context or missing
+     * WebGL2 switches to 2d for good.
+     */
+    private glLayer(): WebGLLayer | null {
+        const wanted = this.rendererMode === 'webgl'
+            || (this.rendererMode === 'auto' && this.visibleNodes.length >= this.webglMinNodes);
+
+        if (this.gl === null && wanted) {
+            const canvas = document.createElement('canvas');
+
+            canvas.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; pointer-events:none;';
+            this.root.insertBefore(canvas, this.canvas);
+            this.gl = WebGLLayer.create(canvas) ?? false;
+
+            if (this.gl === false) {
+                canvas.remove();
+            } else {
+                // Redraw at once on 2d, even when the loop is idle.
+                canvas.addEventListener('webglcontextlost', () => this.loop.request());
+            }
+        }
+
+        if (this.gl && this.gl.lost) {
+            this.gl.canvas.remove();
+            this.gl = false;
+        }
+
+        if (!this.gl) {
+            return null;
+        }
+
+        this.gl.canvas.style.display = wanted ? '' : 'none';
+
+        return wanted ? this.gl : null;
+    }
 
     /** The node if it exists and passes the filter. */
     private visibleNode(id: string): GraphNode | null {
