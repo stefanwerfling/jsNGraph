@@ -22,6 +22,7 @@
     <a href="explainer.html">Explainer</a>
     <a href="rect-explainer.html">Rect explainer</a>
     <a href="rect-autoroute.html">Auto-route</a>
+    <a href="rect-editor.html">Editor</a>
 </nav>
 
 <div class="wrap">
@@ -107,6 +108,12 @@
             <h3>Auto-route</h3>
             <p>Place boxes, then <code>board.connect(a, b)</code> — connectors route themselves between
                the boxes from their live geometry (curve / orthogonal / straight, plus a feedback edge).</p>
+        </a>
+        <a class="card" href="rect-editor.html">
+            <span class="tag">rect kit · editable</span>
+            <h3>Editor</h3>
+            <p><code>RectBoard({editable: true})</code>: drag, resize, connect from side anchors, reroute,
+               select, frames that carry their contents — every gesture a <code>commit</code> for undo.</p>
         </a>
     </div>
 

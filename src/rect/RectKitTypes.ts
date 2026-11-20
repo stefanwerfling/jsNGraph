@@ -296,6 +296,79 @@ export interface RectBoardOptions {
     maxScale?: number;
     /** Gap kept between framed content and the viewport edge, in px. */
     padding?: number;
+    /**
+     * Editing mode (J12): drag and resize items, draw connectors from side
+     * anchors, reroute them by their end handles, select (click, Shift
+     * toggles, Ctrl/Cmd rubber band). Every finished gesture fires `commit`.
+     * Default false: a pan/zoom view.
+     */
+    editable?: boolean;
+    /** Grid step for move/resize in world px (Alt held: pixel precise). 0 = no grid. */
+    grid?: number;
+    /** Smallest size a resize may produce. Default 40 × 30. */
+    minItemSize?: {w: number; h: number};
+    /** Zoom factor of one wheel step. Default 1.12. */
+    zoomStep?: number;
+    /** Shape of 'curve' connectors: control points `clamp(dist * factor, min, max)` out. */
+    curve?: {factor?: number; min?: number; max?: number};
+    /** Class toggled on selected items. Default 'rb-selected'. */
+    selectedClass?: string;
+    /**
+     * Items that move along with a dragged item besides the rest of the
+     * selection — e.g. everything inside a frame.
+     */
+    dragPartners?: (id: string) => string[];
+    /** Rubber band on empty space with Shift / Ctrl / Cmd. Default true when editable. */
+    band?: boolean;
+    /** Connector labels as plain text or on a pill. Default 'plain'. */
+    edgeLabels?: 'plain' | 'pill';
+    /** Re-fit the camera on window resize. Default true unless editable. */
+    refitOnResize?: boolean;
+}
+
+/** Placement options of an item (`RectBoard.add`). */
+export interface RectItemOptions {
+    /** Board-controlled size, needed for resizing. Omit to use the element's own size. */
+    w?: number;
+    h?: number;
+    /** 'back' items (frames, groups) sit under the connectors, 'front' (default) above. */
+    layer?: 'back' | 'front';
+    /** Editable boards only; all default true. */
+    movable?: boolean;
+    resizable?: boolean;
+    connectable?: boolean;
+}
+
+/** A connector with an id, for editable boards (`RectBoard.setEdges`). */
+export interface RectEdgeSpec extends RectRouteOptions {
+    id: string;
+    from: string;
+    to: string;
+    /** Arrowhead at the source end too. */
+    fromArrow?: boolean;
+    /** Extra class on the connector's <g>. */
+    className?: string;
+}
+
+/** One finished gesture on an editable board — the undo hook. */
+export type RectBoardChange =
+    | {type: 'move'; items: Array<{id: string; from: {x: number; y: number}; to: {x: number; y: number}}>}
+    | {type: 'resize'; id: string; from: {w: number; h: number}; to: {w: number; h: number}}
+    | {type: 'connect'; edgeId: string; from: string; fromSide: RectSide; to: string}
+    | {type: 'reroute'; edgeId: string; endpoint: 'from' | 'to'; to: string};
+
+export interface RectBoardEvents {
+    /** A gesture finished and changed the board (move, resize, connect, reroute). */
+    commit: (change: RectBoardChange) => void;
+    /** The item selection changed. */
+    select: (ids: string[]) => void;
+    /** A connector was selected (or null: none). */
+    edgeSelect: (id: string | null) => void;
+    /** A rubber band was drawn on empty space (world rect, modifiers at start). */
+    band: (rect: {x: number; y: number; w: number; h: number}, mods: {shift: boolean; ctrl: boolean}) => void;
+    itemDblClick: (id: string, event: MouseEvent) => void;
+    edgeDblClick: (id: string, event: MouseEvent) => void;
+    backgroundDblClick: (point: {x: number; y: number}, event: MouseEvent) => void;
 }
 
 export interface RectStoryHandlers {

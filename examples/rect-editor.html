@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — editable board</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    html, body { height: 100%; overflow: hidden; }
+    #viewport { position: absolute; inset: 48px 0 0 0; background: var(--bg); }
+    .hud { position: absolute; z-index: 40; }
+    #caption {
+        top: 58px; left: 14px; max-width: 380px;
+        background: rgba(17,23,38,0.88); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px;
+    }
+    #caption h1 { margin: 0 0 4px; font-size: 16px; color: #fff; }
+    #caption p { margin: 0; font-size: 12.5px; color: var(--text-dim); line-height: 1.45; }
+    #caption code { color: var(--accent); }
+    #log { bottom: 14px; left: 14px; font: 12px ui-monospace, monospace; color: var(--text-dim);
+        background: rgba(15,20,32,0.8); padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); }
+    #bar { top: 58px; right: 14px; display: flex; gap: 6px; }
+    #bar button { background: var(--bg-soft); color: var(--text); border: 1px solid var(--border);
+        border-radius: 6px; height: 28px; padding: 0 10px; font-size: 12px; cursor: pointer; }
+    .card { background: #111a2e; border: 1px solid #2a3654; border-radius: 10px; color: #dbe4ff;
+        padding: 10px 12px; font: 13px system-ui, sans-serif; box-sizing: border-box; }
+    .frame { border: 1px dashed #43527a; border-radius: 14px; background: rgba(67,82,122,0.08); }
+    .frame b { position: absolute; top: -20px; left: 4px; font: 600 12px system-ui; color: #8595b5; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="rect-explainer.html">Rect explainer</a>
+    <a href="rect-autoroute.html">Auto-route</a>
+    <a href="rect-editor.html" class="active">Editor</a>
+</nav>
+
+<div id="caption" class="hud">
+    <h1>Editable board</h1>
+    <p><code>new RectBoard(el, {editable: true, grid: 20})</code>: drag cards (Alt: no grid), resize at the
+       corner, drag from a side dot to connect, select a connector and drag its end to reroute.
+       Shift-click toggles, Ctrl/⌘-drag selects, Shift-drag on empty space draws a frame. Moving the frame
+       carries what is inside (<code>dragPartners</code>). Every gesture fires <code>commit</code>;
+       <code>RectHistory</code> gives Ctrl+Z / Ctrl+Y.</p>
+</div>
+<div id="bar" class="hud">
+    <button id="undo">undo</button>
+    <button id="redo">redo</button>
+    <button id="fit">fit</button>
+</div>
+<div id="log" class="hud">—</div>
+<div id="viewport"></div>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+    const {RectBoard, RectHistory, RectBoardGeometry} = JSNGraph;
+    const log = document.getElementById('log');
+
+    let doc = {
+        items: [
+            {id: 'f1', kind: 'frame', label: 'Ingest', x: 40, y: 40, w: 520, h: 220},
+            {id: 'a', kind: 'card', text: 'Source', x: 80, y: 100, w: 160, h: 80},
+            {id: 'b', kind: 'card', text: 'Parser', x: 360, y: 100, w: 160, h: 80},
+            {id: 'c', kind: 'card', text: 'Store', x: 700, y: 140, w: 160, h: 80},
+            {id: 'd', kind: 'card', text: 'Alerts', x: 700, y: 320, w: 160, h: 80}
+        ],
+        edges: [
+            {id: 'e1', from: 'a', to: 'b', label: 'json'},
+            {id: 'e2', from: 'b', to: 'c'},
+            {id: 'e3', from: 'b', to: 'd', color: 'amber', label: 'fault', fromArrow: true}
+        ]
+    };
+    let seq = 10;
+    const history = new RectHistory(doc);
+
+    const board = new RectBoard(document.getElementById('viewport'), {
+        editable: true, grid: 20, minScale: 0.15, maxScale: 4, edgeLabels: 'pill',
+        curve: {min: 32, max: 160},
+        dragPartners: (id) => {
+            const it = doc.items.find((i) => i.id === id);
+            if (it === undefined || it.kind !== 'frame') return [];
+            const r = {x: it.x, y: it.y, w: it.w, h: it.h};
+            return doc.items.filter((o) => o.id !== id && RectBoardGeometry.contains(r, o)).map((o) => o.id);
+        }
+    });
+
+    const render = () => {
+        board.clear();
+        for (const it of doc.items) {
+            const el = document.createElement('div');
+            if (it.kind === 'frame') {
+                el.className = 'frame';
+                el.innerHTML = '<b></b>';
+                el.firstChild.textContent = it.label;
+                board.add(el, it.x, it.y, it.id, {w: it.w, h: it.h, layer: 'back', connectable: false});
+            } else {
+                el.className = 'card';
+                el.textContent = it.text;
+                board.add(el, it.x, it.y, it.id, {w: it.w, h: it.h});
+            }
+        }
+        board.setEdges(doc.edges);
+    };
+
+    const commit = (what) => {
+        history.record(doc);
+        log.textContent = what;
+    };
+
+    board.on('commit', (c) => {
+        if (c.type === 'move') {
+            for (const m of c.items) Object.assign(doc.items.find((i) => i.id === m.id), m.to);
+        } else if (c.type === 'resize') {
+            Object.assign(doc.items.find((i) => i.id === c.id), c.to);
+        } else if (c.type === 'connect') {
+            doc.edges.push({id: 'e' + (++seq), from: c.from, to: c.to, fromSide: c.fromSide});
+            board.setEdges(doc.edges);
+        } else if (c.type === 'reroute') {
+            const e = doc.edges.find((x) => x.id === c.edgeId);
+            e[c.endpoint] = c.to;
+            delete e[c.endpoint === 'from' ? 'fromSide' : 'toSide'];
+        }
+        commit('commit ' + JSON.stringify(c));
+    });
+    board.on('select', (ids) => { log.textContent = 'select ' + ids.join(', '); });
+    board.on('edgeSelect', (id) => { log.textContent = 'edge ' + id; });
+    board.on('band', (r, mods) => {
+        if (!mods.shift || mods.ctrl || r.w < 40 || r.h < 40) return;
+        doc.items.unshift({id: 'f' + (++seq), kind: 'frame', label: 'Frame', x: r.x, y: r.y, w: r.w, h: r.h});
+        render();
+        commit('frame added');
+    });
+    board.on('backgroundDblClick', (p) => {
+        doc.items.push({id: 'n' + (++seq), kind: 'card', text: 'New', x: Math.round(p.x / 20) * 20, y: Math.round(p.y / 20) * 20, w: 160, h: 80});
+        render();
+        commit('card added');
+    });
+
+    const restore = (state) => {
+        if (state === undefined) return;
+        doc = structuredClone(state);
+        render();
+    };
+    document.getElementById('undo').onclick = () => restore(history.undo());
+    document.getElementById('redo').onclick = () => restore(history.redo());
+    document.getElementById('fit').onclick = () => board.fitAll(true);
+    window.addEventListener('keydown', (e) => {
+        if (!(e.ctrlKey || e.metaKey)) return;
+        if (e.key === 'z') { e.preventDefault(); restore(history.undo()); }
+        if (e.key === 'y') { e.preventDefault(); restore(history.redo()); }
+    });
+
+    render();
+    board.fitAll(false);
+</script>
+</body>
+</html>

@@ -52,6 +52,9 @@ export { RectElbow, RectBranch, RectLoop } from './rect/RectConnectors';
 export { RectHeader, RectChip, RectLegend } from './rect/RectLabels';
 export { RectSymbols, RectGlossary } from './rect/RectReference';
 export { RectBoard } from './rect/RectBoard';
+export { RectBoardGeometry, DEFAULT_CURVE, RECT_SIDES } from './rect/RectBoardGeometry';
+export type { RectArea, RectPoint, RectAnchorPoint, RectCurveShape } from './rect/RectBoardGeometry';
+export { RectHistory } from './rect/RectHistory';
 export { Heatmap, BarStrip, FeatureColumn, Sparkline, Scatter, Network, Matrix, Timeline } from './rect/RectCharts';
 export { RectChartData } from './rect/RectChartData';
 export type { BarRect, LinePoint, Domain } from './rect/RectChartData';
@@ -89,6 +92,10 @@ export type {
     RectBranchOptions,
     RectLoopOptions,
     RectBoardOptions,
+    RectItemOptions,
+    RectEdgeSpec,
+    RectBoardChange,
+    RectBoardEvents,
     RectStoryHandlers,
     RectRouteOptions
 } from './rect/RectKitTypes';

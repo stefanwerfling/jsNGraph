@@ -61,7 +61,16 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   on one pan/zoom camera; `connect(fromId, toId, opts)` auto-routes a connector between two placed
   boxes from their live geometry (curve/orthogonal/straight, arrowed, animated/dots, into a
   behind-the-boxes SVG overlay); and `story([ids], {onStep})` turns wheel/arrow input into smooth
-  camera fly-throughs — the scrollytelling the explainer runs on. Deterministic (`RectRandom`),
+  camera fly-throughs — the scrollytelling the explainer runs on.
+  With `editable: true` (J12) it is an editor surface: items drag (grid snap, Alt bypasses) and
+  resize, side anchors (`data-rb="anchor"`, default dots injected unless the host renders its own)
+  draw connectors, the selected connector's end handles reroute, click/Shift/Ctrl-band select,
+  `dragPartners` lets a frame carry its contents, `layer: 'back'` puts frames under the connector
+  overlay. The host owns the document: one `commit` event per finished gesture (move / resize /
+  connect / reroute with before/after — the undo hook), plus `select`, `edgeSelect`, `band`,
+  `*DblClick`; it re-syncs with `update`, `setEdges`, `clear` + `add`. `RectHistory<T>` is a generic
+  snapshot undo stack; geometry (anchors, curves, snap, overlap) is pure in `RectBoardGeometry.ts`.
+  Default edit styles are injected once with zero-specificity `:where()` rules (`RectAnim`). Deterministic (`RectRandom`),
   inline-styled like the other DOM overlays — no stylesheet for static use, zero deps. Not
   canvas/graph-related; shares the package because consumers compose it alongside NGraph (see
   `examples/explainer.html`). All exported from `index.ts`.
