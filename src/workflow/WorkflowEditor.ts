@@ -8,11 +8,14 @@ import { WorkflowStyles } from './WorkflowStyles';
 import {
     WorkflowChangeKind,
     WorkflowConnection,
+    WorkflowConnectionStatus,
     WorkflowDocument,
     WorkflowEditorEvents,
     WorkflowEditorOptions,
     WorkflowFragment,
     WorkflowNodeData,
+    WorkflowNodeStatus,
+    WorkflowNodeStatusInfo,
     WorkflowNodeType,
     WorkflowNote,
     WorkflowPortDir,
@@ -56,6 +59,10 @@ interface ConnView {
     hit: SVGPathElement;
     path: SVGPathElement;
     mid: RectPoint;
+    /** Item-count pill, while the connection has one. */
+    label: HTMLDivElement | null;
+    /** Travelling dots, while the connection is active. */
+    dots: SVGGElement | null;
 }
 
 interface DraftTarget {
@@ -109,6 +116,10 @@ export class WorkflowEditor {
     private readonly fitOnLoad: boolean;
     private readonly reconnectOnDelete: boolean;
     private readonly tools: HTMLDivElement;
+    private readonly labelLayer: HTMLDivElement;
+    private readonly nodeStatus = new Map<string, {status: WorkflowNodeStatus; message?: string}>();
+    private readonly connStatus = new Map<string, WorkflowConnectionStatus>();
+    private runPath: Set<string> | null = null;
     private hoveredConn: string | null = null;
     /** Last pointer position (root-local px) while the pointer is over the editor. */
     private lastPointer: RectPoint | null = null;
@@ -178,6 +189,7 @@ export class WorkflowEditor {
 
         this.nodeLayer = document.createElement('div');
         this.noteLayer = document.createElement('div');
+        this.labelLayer = document.createElement('div');
 
         this.tools = document.createElement('div');
         this.tools.className = 'wf-conn-tools';
@@ -186,7 +198,7 @@ export class WorkflowEditor {
             '<button type="button" data-wf-tool="insert" title="Insert node">+</button>' +
             '<button type="button" data-wf-tool="delete" title="Delete connection">×</button>';
 
-        this.stage.append(this.noteLayer, this.svg, this.nodeLayer, this.tools);
+        this.stage.append(this.noteLayer, this.svg, this.labelLayer, this.nodeLayer, this.tools);
         this.root.appendChild(this.stage);
         container.appendChild(this.root);
 
@@ -732,6 +744,61 @@ export class WorkflowEditor {
         return true;
     }
 
+    // ---- run status ----------------------------------------------------
+
+    /**
+     * Show a node's run state: a badge (spinner, ✓, !, …) and a tinted
+     * border; `message` becomes the badge tooltip. Run state is display only —
+     * not part of the document, not undoable — and survives re-renders.
+     */
+    public setNodeStatus(id: string, status: WorkflowNodeStatus, info: WorkflowNodeStatusInfo = {}): void {
+        if (status === 'idle') {
+            this.nodeStatus.delete(id);
+        } else {
+            this.nodeStatus.set(id, {status, ...info});
+        }
+        this.applyNodeStatus(id);
+    }
+
+    public getNodeStatus(id: string): WorkflowNodeStatus {
+        return this.nodeStatus.get(id)?.status ?? 'idle';
+    }
+
+    /** Show a connection's run state (item count, travelling dots, tint); null clears it. */
+    public setConnectionStatus(id: string, status: WorkflowConnectionStatus | null): void {
+        if (status === null) {
+            this.connStatus.delete(id);
+        } else {
+            this.connStatus.set(id, {...status});
+        }
+
+        const cv = this.connViews.get(id);
+
+        if (cv !== undefined) {
+            this.applyConnStatus(id, cv, cv.path.getAttribute('d') ?? '');
+        }
+    }
+
+    /**
+     * Dim everything outside an executed path: nodes not in `nodeIds` and
+     * connections not running between two of them. null shows all again.
+     */
+    public setRunPath(nodeIds: Iterable<string> | null): void {
+        this.runPath = nodeIds === null ? null : new Set(nodeIds);
+
+        for (const id of this.nodeViews.keys()) {
+            this.applyNodeStatus(id);
+        }
+        this.renderConnections();
+    }
+
+    /** Clear every node and connection status and the run path. */
+    public clearStatus(): void {
+        this.nodeStatus.clear();
+        this.connStatus.clear();
+        this.setRunPath(null);
+    }
+
     // ---- undo ----------------------------------------------------------
 
     public get canUndo(): boolean {
@@ -906,6 +973,7 @@ export class WorkflowEditor {
         this.noteLayer.replaceChildren();
         this.noteViews.clear();
         this.connLayer.replaceChildren();
+        this.labelLayer.replaceChildren();
         this.connViews.clear();
 
         for (const note of this.model.allNotes()) {
@@ -933,6 +1001,40 @@ export class WorkflowEditor {
 
         this.nodeViews.set(node.id, view);
         this.positionNode(node.id);
+        this.applyNodeStatus(node.id);
+    }
+
+    /** Status classes, badge and run-path dimming of one node. */
+    private applyNodeStatus(id: string): void {
+        const el = this.nodeViews.get(id)?.el;
+
+        if (el === undefined) {
+            return;
+        }
+
+        const st = this.nodeStatus.get(id);
+        const status = st?.status ?? 'idle';
+
+        for (const s of ['waiting', 'running', 'success', 'error'] as const) {
+            el.classList.toggle(`wf-st-${s}`, status === s);
+        }
+        el.classList.toggle('wf-dim', this.runPath !== null && !this.runPath.has(id));
+
+        let badge = el.querySelector<HTMLDivElement>(':scope > .wf-badge');
+
+        if (status === 'idle') {
+            badge?.remove();
+            return;
+        }
+        if (badge === null) {
+            badge = document.createElement('div');
+            badge.className = 'wf-badge';
+            el.appendChild(badge);
+        }
+
+        badge.dataset.wfStatus = status;
+        badge.textContent = status === 'success' ? '✓' : status === 'error' ? '!' : status === 'waiting' ? '…' : '';
+        badge.title = st?.message ?? status;
     }
 
     /** A node's element with body, ports, "+" buttons and port labels (not yet placed). */
@@ -1194,16 +1296,74 @@ export class WorkflowEditor {
             cv.g.classList.toggle('wf-off',
                 this.model.node(conn.from.node)?.disabled === true || this.model.node(conn.to.node)?.disabled === true);
             cv.g.classList.toggle('wf-selected', this.selectedConn === conn.id);
+            this.applyConnStatus(conn.id, cv, d);
         }
 
         for (const [id, cv] of this.connViews) {
             if (!seen.has(id)) {
                 cv.g.remove();
+                cv.label?.remove();
                 this.connViews.delete(id);
             }
         }
 
         this.updateTools();
+    }
+
+    /** Tint, item label, travelling dots and run-path dimming of one connection. */
+    private applyConnStatus(id: string, cv: ConnView, d: string): void {
+        const st = this.connStatus.get(id);
+        const conn = this.model.connection(id);
+        const text = st?.label ?? (st?.items === undefined ? undefined : WorkflowGeometry.itemsLabel(st.items));
+
+        cv.g.classList.toggle('wf-st-success', st?.status === 'success');
+        cv.g.classList.toggle('wf-st-error', st?.status === 'error');
+        cv.g.classList.toggle('wf-dim', this.runPath !== null && conn !== undefined
+            && !(this.runPath.has(conn.from.node) && this.runPath.has(conn.to.node)));
+
+        if (text === undefined) {
+            cv.label?.remove();
+            cv.label = null;
+        } else {
+            if (cv.label === null) {
+                cv.label = document.createElement('div');
+                cv.label.className = 'wf-conn-label';
+                this.labelLayer.appendChild(cv.label);
+            }
+            cv.label.textContent = text;
+            cv.label.dataset.wfStatus = st?.status ?? '';
+            cv.label.style.left = `${cv.mid.x}px`;
+            cv.label.style.top = `${cv.mid.y}px`;
+        }
+
+        if (st?.active !== true) {
+            cv.dots?.remove();
+            cv.dots = null;
+            return;
+        }
+
+        if (cv.dots === null) {
+            // Three dots a third of a lap apart, each moving along the path (SMIL, no rAF needed).
+            cv.dots = document.createElementNS(SVG_NS, 'g');
+            cv.dots.classList.add('wf-dots');
+            for (let i = 0; i < 3; i++) {
+                const dot = document.createElementNS(SVG_NS, 'circle');
+                const motion = document.createElementNS(SVG_NS, 'animateMotion');
+                dot.setAttribute('r', '3.5');
+                motion.setAttribute('dur', '1.2s');
+                motion.setAttribute('repeatCount', 'indefinite');
+                motion.setAttribute('begin', `${-i * 0.4}s`);
+                dot.appendChild(motion);
+                cv.dots.appendChild(dot);
+            }
+            cv.g.appendChild(cv.dots);
+        }
+
+        for (const motion of cv.dots.querySelectorAll('animateMotion')) {
+            if (motion.getAttribute('path') !== d) {
+                motion.setAttribute('path', d);
+            }
+        }
     }
 
     /** Show the insert/delete buttons on the hovered (else the selected) connection. */
@@ -1235,7 +1395,7 @@ export class WorkflowEditor {
         g.append(hit, path);
         this.connLayer.appendChild(g);
 
-        const cv = {g, hit, path, mid: {x: 0, y: 0}};
+        const cv: ConnView = {g, hit, path, mid: {x: 0, y: 0}, label: null, dots: null};
         this.connViews.set(id, cv);
 
         return cv;

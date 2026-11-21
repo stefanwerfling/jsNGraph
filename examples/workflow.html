@@ -57,6 +57,10 @@
     <span class="sep"></span>
     <button id="note">+ Note</button>
     <span class="sep"></span>
+    <button id="run">▶ Run</button>
+    <button id="fail">Fail mail: off</button>
+    <button id="clearRun">Clear run</button>
+    <span class="sep"></span>
     <button id="disable">Disable</button>
     <button id="dup">Duplicate</button>
     <button id="dump">Log JSON</button>
@@ -229,6 +233,126 @@
         (type) => editor.insertNode(e.connection, {type})));
     addEventListener('pointerdown', (e) => { if (!picker.contains(e.target)) closePicker(); }, true);
     addEventListener('keydown', (e) => { if (e.key === 'Escape') closePicker(); });
+
+    // ---- Simulated execution: the host's job. It only feeds the status API. ----
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    let failMail = false;
+    let running = false;
+
+    async function runWorkflow() {
+        if (running) return;
+        running = true;
+        $('run').disabled = true;
+        editor.clearStatus();
+
+        const doc = editor.getDocument();
+        const byId = new Map(doc.nodes.map((n) => [n.id, n]));
+        const typeOf = (id) => types.find((t) => t.type === byId.get(id)?.type);
+        const kindOf = (id, dir, port) => ((dir === 'in' ? typeOf(id)?.inputs : typeOf(id)?.outputs) ?? [])
+            .find((p) => p.id === port)?.kind ?? 'main';
+        const isMain = (c) => kindOf(c.from.node, 'out', c.from.port) === 'main';
+        const mainIn = (id) => doc.connections.filter((c) => c.to.node === id && isMain(c));
+        const touched = new Set();
+        const executed = new Set();
+        const received = new Map();   // node -> items delivered so far
+        const arrived = new Map();    // node -> input ports that delivered
+        const pending = new Set();    // waiting for more inputs
+        const connItems = new Map();  // connection -> items that travelled along it
+        const queue = doc.nodes.filter((n) => typeOf(n.id) && !(typeOf(n.id).inputs ?? []).length && !n.disabled && n.type === 'webhook');
+
+        for (const n of queue) editor.setNodeStatus(n.id, 'waiting');
+
+        while (queue.length > 0) {
+            const node = queue.shift();
+            const id = node.id;
+            const items = received.get(id) ?? 1;
+
+            editor.setNodeStatus(id, 'running');
+            // Sub-nodes (model, tools) work while their agent runs.
+            const subs = doc.connections.filter((c) => c.to.node === id && !isMain(c));
+            for (const c of subs) {
+                editor.setNodeStatus(c.from.node, 'running');
+                editor.setConnectionStatus(c.id, {active: true});
+                touched.add(c.id);
+            }
+
+            await sleep(450 + Math.random() * 350);
+
+            for (const c of subs) {
+                editor.setNodeStatus(c.from.node, 'success');
+                editor.setConnectionStatus(c.id, {status: 'success'});
+                executed.add(c.from.node);
+            }
+            for (const c of mainIn(id)) {
+                if (touched.has(c.id)) {   // data has arrived: stop the dots, keep the count
+                    editor.setConnectionStatus(c.id, {status: 'success', items: connItems.get(c.id)});
+                }
+            }
+            executed.add(id);
+
+            if (node.type === 'mail' && failMail) {
+                editor.setNodeStatus(id, 'error', {message: 'SMTP timeout after 30 s'});
+                continue;
+            }
+            editor.setNodeStatus(id, 'success');
+
+            const outs = doc.connections.filter((c) => c.from.node === id && isMain(c));
+            const produced = node.type === 'http' ? items * 3 : items;
+
+            for (const c of outs) {
+                const target = byId.get(c.to.node);
+                if (!target || target.disabled || executed.has(target.id)) continue;   // loop back / disabled: stop
+
+                // An If splits its items: two thirds true, the rest false.
+                const out = node.type === 'if'
+                    ? (c.from.port === 'true' ? Math.ceil(produced * 2 / 3) : Math.floor(produced / 3))
+                    : produced;
+                if (out === 0) continue;
+
+                touched.add(c.id);
+                connItems.set(c.id, out);
+                editor.setConnectionStatus(c.id, {items: out, active: true, status: 'success'});
+                received.set(target.id, (received.get(target.id) ?? 0) + out);
+
+                const ports = arrived.get(target.id) ?? new Set();
+                ports.add(c.to.port);
+                arrived.set(target.id, ports);
+
+                // Run once every connected input has delivered (Merge waits for A and B).
+                const ready = [...new Set(mainIn(target.id).map((x) => x.to.port))].every((p) => ports.has(p));
+                editor.setNodeStatus(target.id, 'waiting');
+                if (ready) {
+                    pending.delete(target);
+                    if (!queue.includes(target)) queue.push(target);
+                } else {
+                    pending.add(target);
+                }
+            }
+
+            // Nothing else can run: let waiting nodes go with what arrived (a branch was not taken).
+            if (queue.length === 0 && pending.size > 0) {
+                queue.push(...pending);
+                pending.clear();
+            }
+        }
+
+        for (const id of touched) {
+            const n = connItems.get(id);
+            editor.setConnectionStatus(id, n === undefined ? {status: 'success'} : {items: n, status: 'success'});
+        }
+        editor.setRunPath(executed);
+        log(`run finished: ${executed.size} nodes${failMail ? ' — Send mail failed (hover its badge)' : ''}`);
+        running = false;
+        $('run').disabled = false;
+    }
+
+    $('run').onclick = () => runWorkflow();
+    $('fail').onclick = () => {
+        failMail = !failMail;
+        $('fail').textContent = `Fail mail: ${failMail ? 'on' : 'off'}`;
+        $('fail').classList.toggle('on', failMail);
+    };
+    $('clearRun').onclick = () => { editor.clearStatus(); log('run cleared'); };
 
     syncButtons();
     window.editor = editor;

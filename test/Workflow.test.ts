@@ -191,6 +191,16 @@ describe('WorkflowModel notes and insertion', () => {
         expect(m.note(added.notes[0]!)).toMatchObject({x: 140, y: 100, text: 'n'});
     });
 
+    it('lists the connections inside an executed path', () => {
+        const m = model();
+        m.connect({node: 't', port: 'main'}, {node: 'if', port: 'main'}, 'p1');
+        m.connect({node: 'if', port: 'true'}, {node: 's', port: 'main'}, 'p2');
+        m.connect({node: 'if', port: 'false'}, {node: 'a', port: 'main'}, 'p3');
+
+        expect(m.connectionsWithin(['t', 'if', 's']).map((c) => c.id)).toEqual(['p1', 'p2']);
+        expect(m.connectionsWithin([])).toEqual([]);
+    });
+
     it('knows which node types fit into a connection', () => {
         const m = model();
         const main = m.connect({node: 't', port: 'main'}, {node: 'if', port: 'main'});
@@ -245,6 +255,12 @@ describe('WorkflowGeometry', () => {
         // Target behind and clearly below: the path runs between the rows.
         const below = G.connectionPath({x: 500, y: 32, side: 'right'}, {x: 0, y: 332, side: 'left'}, aRect, {...bRect, y: 300});
         expect(below.mid.y).toBe(182);
+    });
+
+    it('labels item counts', () => {
+        expect(G.itemsLabel(0)).toBe('0 items');
+        expect(G.itemsLabel(1)).toBe('1 item');
+        expect(G.itemsLabel(12)).toBe('12 items');
     });
 
     it('rounds polyline corners without overshooting short segments', () => {

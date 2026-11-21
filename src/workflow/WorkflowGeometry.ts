@@ -176,6 +176,11 @@ export class WorkflowGeometry {
         return {x, y};
     }
 
+    /** "1 item" / "3 items" — the text of a connection's item count. */
+    public static itemsLabel(items: number): string {
+        return `${items} ${items === 1 ? 'item' : 'items'}`;
+    }
+
     /** Polyline with rounded corners (radius clamped to half of the shorter neighbour segment). */
     public static roundedPath(points: RectPoint[], radius: number): string {
         const first = points[0];

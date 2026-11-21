@@ -78,6 +78,26 @@ export interface WorkflowDocument {
     notes?: WorkflowNote[];
 }
 
+/** Run state of a node, shown as a badge and a tinted border. Not part of the document. */
+export type WorkflowNodeStatus = 'idle' | 'waiting' | 'running' | 'success' | 'error';
+
+export interface WorkflowNodeStatusInfo {
+    /** Tooltip on the status badge (e.g. the error message). */
+    message?: string;
+}
+
+/** Run state of a connection. Not part of the document. */
+export interface WorkflowConnectionStatus {
+    /** Item count shown on the connection ("1 item", "3 items"). */
+    items?: number;
+    /** Free label instead of the item count. */
+    label?: string;
+    /** Dots travel along the connection while data flows. */
+    active?: boolean;
+    /** Tint the connection. */
+    status?: 'success' | 'error';
+}
+
 /** Host veto: return false (or a reason string) to refuse a connection. */
 export type WorkflowCanConnect = (from: WorkflowPortRef, to: WorkflowPortRef, doc: WorkflowDocument) => boolean | string;
 

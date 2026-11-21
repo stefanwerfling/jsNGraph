@@ -127,7 +127,9 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   delete bridges chains (`reconnectOnDelete`). W4: host palettes call `beginDrag(type, pointerEvent)` (ghost preview,
   drop onto a fitting connection inserts; `dropAt` is the programmatic form); sticky notes live in `doc.notes`
   (behind nodes, share the node id space). Gotcha: presses set pointer capture on the root, so click/dblclick
-  `target` is the root — resolve the element with `elementFromPoint`. Plan + milestones W1–W6: `docs/workflow-editor.md`.
+  `target` is the root — resolve the element with `elementFromPoint`. W5: run status is display-only state kept
+  outside the model (`setNodeStatus`/`setConnectionStatus`/`setRunPath`/`clearStatus`), re-applied on every render.
+  Plan + milestones W1–W6: `docs/workflow-editor.md`.
   Example: `examples/workflow.html`.
 
 ## Commands

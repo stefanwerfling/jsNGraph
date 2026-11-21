@@ -95,6 +95,31 @@ export class WorkflowStyles {
             ':where(.wf-conn-tools button:hover){border-color:var(--wf-sel);color:var(--wf-sel)}',
             ':where(.wf-conn-tools button[data-wf-tool="delete"]:hover){border-color:var(--wf-bad);color:var(--wf-bad)}',
 
+            // Run status
+            ':where(.wf-node.wf-st-running){border-color:var(--wf-sel);animation:wf-glow 1.4s ease-in-out infinite}',
+            ':where(.wf-node.wf-st-success){border-color:var(--wf-ok)}',
+            ':where(.wf-node.wf-st-error){border-color:var(--wf-bad);box-shadow:0 0 0 3px color-mix(in srgb,var(--wf-bad) 25%,transparent)}',
+            ':where(.wf-node.wf-st-waiting){border-style:dashed}',
+            ':where(.wf-badge){position:absolute;top:-9px;right:-9px;width:18px;height:18px;border-radius:50%;box-sizing:border-box;' +
+            'display:grid;place-items:center;font:700 11px/1 system-ui;color:#fff;background:var(--wf-subtext);z-index:2;cursor:default}',
+            ':where(.wf-badge[data-wf-status="success"]){background:var(--wf-ok)}',
+            ':where(.wf-badge[data-wf-status="error"]){background:var(--wf-bad)}',
+            ':where(.wf-badge[data-wf-status="running"]){background:var(--wf-node-bg);border:2.5px solid color-mix(in srgb,var(--wf-sel) 25%,transparent);' +
+            'border-top-color:var(--wf-sel);animation:wf-spin .8s linear infinite}',
+            ':where(.wf-dim){opacity:.28}',
+            ':where(g.wf-conn-g.wf-st-success .wf-conn){stroke:var(--wf-ok)}',
+            ':where(g.wf-conn-g.wf-st-error .wf-conn){stroke:var(--wf-bad)}',
+            ':where(.wf-dots circle){fill:var(--wf-ok)}',
+            ':where(.wf-conn-label){position:absolute;transform:translate(-50%,-150%);padding:1px 7px;border-radius:9px;white-space:nowrap;' +
+            'font:600 10.5px/16px system-ui;color:var(--wf-subtext);background:var(--wf-bg);border:1px solid var(--wf-node-border);pointer-events:none}',
+            ':where(.wf-conn-label[data-wf-status="success"]){color:var(--wf-ok);border-color:color-mix(in srgb,var(--wf-ok) 50%,transparent)}',
+            ':where(.wf-conn-label[data-wf-status="error"]){color:var(--wf-bad);border-color:color-mix(in srgb,var(--wf-bad) 50%,transparent)}',
+            '@keyframes wf-spin{to{transform:rotate(360deg)}}',
+            '@keyframes wf-glow{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--wf-sel) 0%,transparent)}' +
+            '50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--wf-sel) 28%,transparent)}}',
+            '@media (prefers-reduced-motion:reduce){:where(.wf-dots){display:none}' +
+            ':where(.wf-node.wf-st-running,.wf-badge[data-wf-status="running"]){animation:none}}',
+
             // Sticky notes
             ':where(.wf-note){position:absolute;box-sizing:border-box;border-radius:8px;padding:10px 12px;' +
             'background:color-mix(in srgb,var(--wf-note-color,var(--wf-note)) 16%,var(--wf-bg));' +

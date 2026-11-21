@@ -264,6 +264,13 @@ export class WorkflowModel {
         return changed;
     }
 
+    /** Connections whose both ends are among `nodeIds` (e.g. the edges of an executed path). */
+    public connectionsWithin(nodeIds: Iterable<string>): WorkflowConnection[] {
+        const set = new Set(nodeIds);
+
+        return this.allConnections().filter((c) => set.has(c.from.node) && set.has(c.to.node));
+    }
+
     /** The nodes and notes `ids` and the connections running between those nodes, deep-copied. */
     public fragment(ids: Iterable<string>): WorkflowDocument {
         ids = [...ids];
@@ -271,9 +278,7 @@ export class WorkflowModel {
 
         const frag: WorkflowDocument = {
             nodes: [...set].map((id) => structuredClone(this.nodes.get(id)!)),
-            connections: this.allConnections()
-                .filter((c) => set.has(c.from.node) && set.has(c.to.node))
-                .map((c) => structuredClone(c))
+            connections: this.connectionsWithin(set).map((c) => structuredClone(c))
         };
         const notes = [...new Set(ids)].filter((id) => this.notes.has(id)).map((id) => structuredClone(this.notes.get(id)!));
 
