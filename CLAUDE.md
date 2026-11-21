@@ -112,6 +112,17 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   and `ui/Tooltip.ts` from NGraph; `ModelView.ts` auto-fits on every resize until the user pans/zooms.
   See `examples/modelview.html`.
 
+- `workflow/` — a fourth, standalone export: `WorkflowEditor`, a node-based workflow editor widget
+  (DOM nodes + one SVG connection layer on a stage transformed by `view/Camera`). Graphics only — the
+  host describes node *types* (`WorkflowNodeType`: label, icon, colour, typed `inputs`/`outputs`
+  ports with `kind`/`side`/`max`) and owns what nodes do. The widget owns the document
+  (`get/setDocument`, built-in undo via `RectHistory`, one `change` event per finished gesture);
+  `readOnly: true` / `setReadOnly` makes the same widget a viewer. `WorkflowModel.ts` (pure: nodes,
+  connections, validation incl. host `canConnect`; unknown types/ports are kept, not drawn) and
+  `WorkflowGeometry.ts` (pure: node size, port placement, forward curve vs. rounded backward detour)
+  are tested in `test/Workflow.test.ts`. Styles are `:where()` rules over `--wf-*` CSS variables
+  (`WorkflowStyles.ts`). Plan + milestones W1–W6: `docs/workflow-editor.md`. Example: `examples/workflow.html`.
+
 ## Commands
 
 - `npm run dev` — `tsup --watch`. `npm run build` — `dist/index.{js,cjs,d.ts}` (npm) +

@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — workflow editor</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    html, body { height: 100%; overflow: hidden; }
+    #editor { position: absolute; inset: 45px 0 0 0; }
+    .hud { position: absolute; z-index: 40; }
+    #bar { top: 58px; left: 14px; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 28px); }
+    #bar button { background: var(--bg-soft); color: var(--text); border: 1px solid var(--border);
+        border-radius: 6px; height: 28px; padding: 0 10px; font-size: 12px; cursor: pointer; }
+    #bar button.on { border-color: var(--accent); color: var(--accent); }
+    #bar button:disabled { opacity: .4; cursor: default; }
+    #bar .sep { width: 1px; background: var(--border); margin: 0 4px; }
+    #log { bottom: 14px; left: 14px; right: 14px; max-width: 560px; font: 12px ui-monospace, monospace;
+        color: var(--text-dim); background: rgba(15,20,32,0.85); padding: 6px 10px; border-radius: 8px;
+        border: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #help { bottom: 14px; right: 14px; font-size: 12px; color: var(--text-dim); text-align: right; line-height: 1.5; }
+    @media (max-width: 720px) { #help { display: none; } }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="rect-editor.html">Board editor</a>
+    <a href="workflow.html" class="active">Workflow</a>
+</nav>
+
+<div id="editor"></div>
+
+<div id="bar" class="hud">
+    <button id="mode" class="on">Edit</button>
+    <button id="theme">Light</button>
+    <button id="fit">Fit</button>
+    <button id="undo">Undo</button>
+    <button id="redo">Redo</button>
+    <span class="sep"></span>
+    <button data-add="http">+ HTTP</button>
+    <button data-add="if">+ If</button>
+    <button data-add="code">+ Code</button>
+    <button data-add="mail">+ Mail</button>
+    <button data-add="tool">+ Tool</button>
+    <span class="sep"></span>
+    <button id="disable">Disable</button>
+    <button id="dump">Log JSON</button>
+</div>
+
+<div id="log" class="hud">Drag from an output port to an input port.</div>
+<div id="help" class="hud">
+    drag ports to connect · drag a connected input to move it<br>
+    Shift+drag: select area · Del: delete · Ctrl+Z / Ctrl+Y · wheel: zoom
+</div>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+    const { WorkflowEditor } = window.JSNGraph;
+
+    const types = [
+        {type: 'webhook', label: 'Webhook', icon: '⚡', color: '#ff6d5a', outputs: [{id: 'main'}]},
+        {type: 'schedule', label: 'Schedule', icon: '⏱', color: '#ff6d5a', outputs: [{id: 'main'}]},
+        {type: 'http', label: 'HTTP request', icon: '⇄', color: '#5b8def', inputs: [{id: 'main'}], outputs: [{id: 'main'}]},
+        {type: 'if', label: 'If', icon: '?', color: '#3ecf8e', inputs: [{id: 'main'}],
+            outputs: [{id: 'true', label: 'true'}, {id: 'false', label: 'false'}]},
+        {type: 'merge', label: 'Merge', icon: '⋈', color: '#3fb5c9',
+            inputs: [{id: 'a', label: 'A', max: 1}, {id: 'b', label: 'B', max: 1}], outputs: [{id: 'main'}]},
+        {type: 'code', label: 'Code', icon: '{}', color: '#e8a33d', inputs: [{id: 'main'}], outputs: [{id: 'main'}]},
+        {type: 'mail', label: 'Send mail', icon: '✉', color: '#d9617a', inputs: [{id: 'main'}], outputs: [{id: 'main'}]},
+        {type: 'agent', label: 'AI agent', icon: '◎', color: '#9a7be0', width: 240,
+            inputs: [{id: 'main'}, {id: 'model', label: 'model', kind: 'model', side: 'bottom', max: 1},
+                {id: 'tool', label: 'tools', kind: 'tool', side: 'bottom'}],
+            outputs: [{id: 'main'}]},
+        {type: 'llm', label: 'Chat model', icon: '✦', color: '#9a7be0', width: 160,
+            outputs: [{id: 'model', kind: 'model', side: 'top'}]},
+        {type: 'tool', label: 'Tool', icon: '⚙', color: '#9a7be0', width: 160,
+            outputs: [{id: 'tool', kind: 'tool', side: 'top'}]}
+    ];
+
+    const doc = {
+        nodes: [
+            {id: 'hook', type: 'webhook', x: 0, y: 120, label: 'Incoming order'},
+            {id: 'fetch', type: 'http', x: 280, y: 120, label: 'Load customer'},
+            {id: 'vip', type: 'if', x: 560, y: 120, label: 'Is VIP?'},
+            {id: 'agent', type: 'agent', x: 860, y: 0, label: 'Draft reply'},
+            {id: 'llm', type: 'llm', x: 820, y: 200},
+            {id: 'crm', type: 'tool', x: 1000, y: 200, label: 'CRM lookup'},
+            {id: 'fmt', type: 'code', x: 860, y: 340, label: 'Format standard'},
+            {id: 'merge', type: 'merge', x: 1200, y: 140},
+            {id: 'send', type: 'mail', x: 1480, y: 140, label: 'Send confirmation'},
+            {id: 'nightly', type: 'schedule', x: 0, y: 360, label: 'Nightly'},
+            {id: 'report', type: 'code', x: 280, y: 360, label: 'Build report', disabled: true}
+        ],
+        connections: [
+            {id: 'c1', from: {node: 'hook', port: 'main'}, to: {node: 'fetch', port: 'main'}},
+            {id: 'c2', from: {node: 'fetch', port: 'main'}, to: {node: 'vip', port: 'main'}},
+            {id: 'c3', from: {node: 'vip', port: 'true'}, to: {node: 'agent', port: 'main'}},
+            {id: 'c4', from: {node: 'vip', port: 'false'}, to: {node: 'fmt', port: 'main'}},
+            {id: 'c5', from: {node: 'llm', port: 'model'}, to: {node: 'agent', port: 'model'}},
+            {id: 'c6', from: {node: 'crm', port: 'tool'}, to: {node: 'agent', port: 'tool'}},
+            {id: 'c7', from: {node: 'agent', port: 'main'}, to: {node: 'merge', port: 'a'}},
+            {id: 'c8', from: {node: 'fmt', port: 'main'}, to: {node: 'merge', port: 'b'}},
+            {id: 'c9', from: {node: 'merge', port: 'main'}, to: {node: 'send', port: 'main'}},
+            {id: 'c10', from: {node: 'nightly', port: 'main'}, to: {node: 'report', port: 'main'}},
+            // A loop back: the report feeds the customer lookup again — drawn as a detour.
+            {id: 'c11', from: {node: 'send', port: 'main'}, to: {node: 'fetch', port: 'main'}}
+        ]
+    };
+
+    const editor = new WorkflowEditor(document.getElementById('editor'), {
+        types,
+        document: doc,
+        // Host rule on top of the built-in ones: nothing may be wired into a disabled node.
+        canConnect: (from, to, d) => d.nodes.find((n) => n.id === to.node)?.disabled ? 'target is disabled' : true
+    });
+
+    const $ = (id) => document.getElementById(id);
+    const log = (text) => { $('log').textContent = text; };
+    const syncButtons = () => {
+        $('undo').disabled = editor.readOnly || !editor.canUndo;
+        $('redo').disabled = editor.readOnly || !editor.canRedo;
+        const sel = editor.getSelection().nodes;
+        $('disable').disabled = editor.readOnly || sel.length === 0;
+    };
+
+    editor.on('change', (c) => { log(`change: ${c.kind} ${[...c.nodes, ...c.connections].join(', ')}`); syncButtons(); });
+    editor.on('selectionChange', (s) => syncButtons());
+    editor.on('nodeClick', (e) => log(`nodeClick: ${e.id}`));
+    editor.on('nodeDblClick', (e) => log(`nodeDblClick: ${e.id} — the host would open its parameter panel here`));
+    editor.on('connectionClick', (e) => log(`connectionClick: ${e.id}`));
+    editor.on('connectRefused', (e) => log(`refused ${e.from.node}.${e.from.port} → ${e.to.node}.${e.to.port}: ${e.reason}`));
+
+    $('mode').onclick = () => {
+        editor.setReadOnly(!editor.readOnly);
+        $('mode').textContent = editor.readOnly ? 'View only' : 'Edit';
+        $('mode').classList.toggle('on', !editor.readOnly);
+        document.querySelectorAll('[data-add]').forEach((b) => { b.disabled = editor.readOnly; });
+        syncButtons();
+    };
+    let light = false;
+    $('theme').onclick = () => {
+        light = !light;
+        editor.setTheme(light ? 'light' : 'dark');
+        $('theme').textContent = light ? 'Dark' : 'Light';
+    };
+    $('fit').onclick = () => editor.fit();
+    $('undo').onclick = () => editor.undo();
+    $('redo').onclick = () => editor.redo();
+    $('disable').onclick = () => {
+        for (const id of editor.getSelection().nodes) {
+            editor.updateNode(id, {disabled: !editor.getNode(id).disabled});
+        }
+    };
+    $('dump').onclick = () => console.log(JSON.stringify(editor.getDocument(), null, 2)) || log('document logged to the console');
+
+    document.querySelectorAll('[data-add]').forEach((btn) => {
+        btn.onclick = () => {
+            const r = editor.element.getBoundingClientRect();
+            const c = editor.screenToWorld(r.left + r.width / 2, r.top + r.height / 2);
+            const node = editor.addNode({type: btn.dataset.add, x: Math.round((c.x - 100) / 20) * 20, y: Math.round((c.y - 32) / 20) * 20});
+            editor.select([node.id]);
+        };
+    });
+
+    syncButtons();
+    window.editor = editor;
+</script>
+</body>
+</html>

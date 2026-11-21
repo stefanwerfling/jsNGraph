@@ -99,3 +99,24 @@ export type {
     RectStoryHandlers,
     RectRouteOptions
 } from './rect/RectKitTypes';
+export { WorkflowEditor } from './workflow/WorkflowEditor';
+export { WorkflowModel } from './workflow/WorkflowModel';
+export { WorkflowGeometry, WORKFLOW_CURVE } from './workflow/WorkflowGeometry';
+export type { WorkflowPortPlace, WorkflowPath } from './workflow/WorkflowGeometry';
+export { WorkflowStyles } from './workflow/WorkflowStyles';
+export type {
+    WorkflowSide,
+    WorkflowPortDir,
+    WorkflowPortSpec,
+    WorkflowNodeType,
+    WorkflowNodeData,
+    WorkflowPortRef,
+    WorkflowConnection,
+    WorkflowDocument,
+    WorkflowCanConnect,
+    WorkflowChangeKind,
+    WorkflowChange,
+    WorkflowEditorOptions,
+    WorkflowClickEvent,
+    WorkflowEditorEvents
+} from './workflow/WorkflowTypes';
