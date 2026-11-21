@@ -107,6 +107,9 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   fit-to-content), `ModelInteraction.ts` (drag-pan, wheel-zoom-at-cursor, world-space hit-test —
   its own, since NGraph's `InteractionController` has no camera), `ModelRenderer.ts` (outlined chips +
   orthogonal edges + nested `GroupFrame` container boxes), `ModelPanel.ts` (click detail panel).
+  Edges are muted toward `nodeStroke` (dots keep the full accent), chips have a slight vertical gradient. Text
+  asks for Inter with a system-ui fallback; the font is not bundled (zero assets) — a page that loads Inter via CSS
+  gets it automatically, since the view redraws every frame.
   `ModelView.computeGroups` builds a `GroupFrame` (padded bbox + label tab + ×N) per expanded
   parent, padded more for outer groups so nested frames sit cleanly inside. Reuses `render/Theme.ts`
   and `ui/Tooltip.ts` from NGraph; `ModelView.ts` auto-fits on every resize until the user pans/zooms.

@@ -170,13 +170,15 @@ export class ModelRenderer {
         const {ctx, theme} = this;
         const sideRoute = edge.kind !== 'flow';
         const accent = this.accentFor(edge.source);
-        const color = sideRoute ? theme.nodeStroke : accent;
+        // Lines carry only a hint of their source's hue, so a dense graph reads
+        // as one calm wiring layer and the chips stay the coloured elements.
+        const color = sideRoute ? theme.nodeStroke : ModelRenderer.mix(accent, theme.nodeStroke, 0.55);
         const points = sideRoute ? ModelRenderer.sideRoute(edge) : ModelRenderer.flowRoute(edge);
 
         ctx.save();
         ctx.strokeStyle = color;
-        ctx.lineWidth = 1.5;
-        ctx.globalAlpha = sideRoute ? 0.5 : 0.6;
+        ctx.lineWidth = 1.4;
+        ctx.globalAlpha = sideRoute ? 0.5 : 0.7;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
@@ -200,7 +202,8 @@ export class ModelRenderer {
         }
 
         if (animate && edge.animated) {
-            this.drawFlowDots(points, color, edge.phase, timeMs);
+            // Dots keep the full accent: they are the moving highlight on the muted line.
+            this.drawFlowDots(points, accent, edge.phase, timeMs);
         }
     }
 
@@ -308,7 +311,9 @@ export class ModelRenderer {
         const accent = this.accentFor(node);
         const dark = ModelRenderer.isDark(theme.background);
         const bg = this.bgColor();
-        const fill = ModelRenderer.mix(accent, bg, 0.84);
+        // Slight vertical gradient: a touch lighter at the top, like a lit surface.
+        const fillTop = ModelRenderer.mix(accent, bg, dark ? 0.78 : 0.82);
+        const fillBottom = ModelRenderer.mix(accent, bg, dark ? 0.89 : 0.9);
         const textColor = dark ? ModelRenderer.mix(accent, '#ffffff', 0.72) : ModelRenderer.mix(accent, '#000000', 0.35);
         const x = node.x - node.w / 2;
         const y = node.y - node.h / 2;
@@ -329,7 +334,11 @@ export class ModelRenderer {
             }
         }
 
-        // Chip body: dark tinted fill + accent outline.
+        // Chip body: dark tinted gradient fill + accent outline.
+        const fill = ctx.createLinearGradient(0, y, 0, y + node.h);
+
+        fill.addColorStop(0, fillTop);
+        fill.addColorStop(1, fillBottom);
         ModelRenderer.roundRectPath(ctx, x, y, node.w, node.h, 7);
         ctx.fillStyle = fill;
         ctx.fill();
