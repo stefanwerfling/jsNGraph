@@ -14,9 +14,13 @@ import {
     WorkflowFragment,
     WorkflowNodeData,
     WorkflowNodeType,
+    WorkflowNote,
     WorkflowPortDir,
     WorkflowPortRef
 } from './WorkflowTypes';
+
+/** Node data as a palette or picker hands it in: everything but id/position is optional. */
+export type WorkflowNodeInput = Omit<WorkflowNodeData, 'id' | 'x' | 'y'> & {id?: string; x?: number; y?: number};
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 /** Screen px a press may travel before it counts as a drag instead of a click. */
@@ -36,6 +40,17 @@ interface NodeView {
     ports: Map<string, PortView>;
 }
 
+interface NoteView {
+    el: HTMLDivElement;
+    rect: RectArea;
+}
+
+interface NoteEdit {
+    id: string;
+    area: HTMLTextAreaElement;
+    before: string;
+}
+
 interface ConnView {
     g: SVGGElement;
     hit: SVGPathElement;
@@ -53,6 +68,7 @@ type Gesture =
     | {kind: 'node'; id: string; startX: number; startY: number; origins: Map<string, RectPoint>;
         moved: boolean; collapseOnClick: boolean}
     | {kind: 'conn'; id: string}
+    | {kind: 'resize'; id: string; startX: number; startY: number; w0: number; h0: number; moved: boolean}
     | {kind: 'draft'; anchor: WorkflowPortRef; anchorDir: WorkflowPortDir; rerouting: string | null;
         valid: Set<string>; target: DraftTarget | null; overNode: string | null}
     | {kind: 'band'; start: RectPoint; el: HTMLDivElement; base: Set<string>};
@@ -82,6 +98,7 @@ export class WorkflowEditor {
     private readonly connLayer: SVGGElement;
     private readonly draftPath: SVGPathElement;
     private readonly nodeLayer: HTMLDivElement;
+    private readonly noteLayer: HTMLDivElement;
     private readonly arrowId: string;
 
     private readonly model: WorkflowModel;
@@ -98,6 +115,10 @@ export class WorkflowEditor {
 
     private readonly nodeViews = new Map<string, NodeView>();
     private readonly connViews = new Map<string, ConnView>();
+    private readonly noteViews = new Map<string, NoteView>();
+    private noteEdit: NoteEdit | null = null;
+    /** Cleanup of a running palette drag. */
+    private paletteDrag: (() => void) | null = null;
     private selected = new Set<string>();
     private selectedConn: string | null = null;
     private gesture: Gesture | null = null;
@@ -156,6 +177,7 @@ export class WorkflowEditor {
         this.svg.append(this.connLayer, this.draftPath);
 
         this.nodeLayer = document.createElement('div');
+        this.noteLayer = document.createElement('div');
 
         this.tools = document.createElement('div');
         this.tools.className = 'wf-conn-tools';
@@ -164,7 +186,7 @@ export class WorkflowEditor {
             '<button type="button" data-wf-tool="insert" title="Insert node">+</button>' +
             '<button type="button" data-wf-tool="delete" title="Delete connection">×</button>';
 
-        this.stage.append(this.svg, this.nodeLayer, this.tools);
+        this.stage.append(this.noteLayer, this.svg, this.nodeLayer, this.tools);
         this.root.appendChild(this.stage);
         container.appendChild(this.root);
 
@@ -205,6 +227,7 @@ export class WorkflowEditor {
     /** Replace the whole document; clears undo history and selection. */
     public setDocument(doc: WorkflowDocument, fit = this.fitOnLoad): void {
         this.cancelGesture();
+        this.finishNoteEdit(false);
         this.model.load(doc);
         this.history.reset(this.model.toDocument());
         this.selected.clear();
@@ -303,7 +326,7 @@ export class WorkflowEditor {
     public addNodeFrom(
         port: WorkflowPortRef,
         dir: WorkflowPortDir,
-        data: Omit<WorkflowNodeData, 'id' | 'x' | 'y'> & {id?: string; x?: number; y?: number}
+        data: WorkflowNodeInput
     ): WorkflowNodeData | null {
         const place = this.nodeViews.get(port.node)?.ports.get(`${dir}:${port.port}`)?.place;
 
@@ -340,13 +363,13 @@ export class WorkflowEditor {
      */
     public insertNode(
         connectionId: string,
-        data: Omit<WorkflowNodeData, 'id' | 'x' | 'y'> & {id?: string; x?: number; y?: number}
+        data: WorkflowNodeInput
     ): WorkflowNodeData | null {
         const conn = this.model.connection(connectionId);
         const source = conn === undefined ? undefined : this.nodeViews.get(conn.from.node);
         const port = source?.ports.get(`out:${conn!.from.port}`)?.place;
 
-        if (conn === undefined || source === undefined || port === undefined) {
+        if (conn === undefined || source === undefined || port === undefined || !this.model.canInsert(data.type, connectionId)) {
             return null;
         }
 
@@ -399,7 +422,7 @@ export class WorkflowEditor {
         return this.model.typesFor(port, dir);
     }
 
-    /** The selected nodes and the connections between them; null when nothing is selected. */
+    /** The selected nodes and notes and the connections between those nodes; null when nothing is selected. */
     public copySelection(): WorkflowFragment | null {
         if (this.selected.size === 0) {
             return null;
@@ -414,12 +437,14 @@ export class WorkflowEditor {
      * offset from the original until it no longer sits on top of it.
      */
     public paste(fragment: WorkflowDocument, at?: RectPoint): string[] {
-        if (this.readOnlyFlag || fragment.nodes.length === 0) {
+        const items: RectPoint[] = [...fragment.nodes, ...(fragment.notes ?? [])];
+
+        if (this.readOnlyFlag || items.length === 0) {
             return [];
         }
 
-        const minX = Math.min(...fragment.nodes.map((n) => n.x));
-        const minY = Math.min(...fragment.nodes.map((n) => n.y));
+        const minX = Math.min(...items.map((n) => n.x));
+        const minY = Math.min(...items.map((n) => n.y));
         let dx: number;
         let dy: number;
 
@@ -427,8 +452,8 @@ export class WorkflowEditor {
             dx = RectBoardGeometry.snap(at.x - minX, this.grid);
             dy = RectBoardGeometry.snap(at.y - minY, this.grid);
         } else {
-            const taken = new Set(this.model.allNodes().map((n) => `${n.x},${n.y}`));
-            const first = fragment.nodes[0]!;
+            const taken = new Set([...this.model.allNodes(), ...this.model.allNotes()].map((n) => `${n.x},${n.y}`));
+            const first = items[0]!;
             let k = 1;
 
             while (k < 50 && taken.has(`${first.x + 40 * k},${first.y + 40 * k}`)) {
@@ -443,11 +468,14 @@ export class WorkflowEditor {
         for (const id of added.nodes) {
             this.renderNode(this.model.node(id)!);
         }
+        for (const id of added.notes) {
+            this.renderNote(this.model.note(id)!);
+        }
         this.renderConnections();
-        this.setSelection(new Set(added.nodes), null);
-        this.commit('paste', added.nodes, added.connections);
+        this.setSelection(new Set([...added.nodes, ...added.notes]), null);
+        this.commit('paste', added.nodes, added.connections, added.notes);
 
-        return added.nodes;
+        return [...added.nodes, ...added.notes];
     }
 
     /** Copy the selection and paste it right next to itself. */
@@ -455,6 +483,219 @@ export class WorkflowEditor {
         const fragment = this.copySelection();
 
         return fragment === null ? [] : this.paste(fragment);
+    }
+
+    /** Remove nodes and notes in one undo step (nodes re-link chains like `removeNodes`). */
+    public remove(ids: Iterable<string>, reconnect = this.reconnectOnDelete): void {
+        const list = [...ids];
+        const nodes = list.filter((id) => this.model.node(id) !== undefined);
+        const notes = list.filter((id) => this.model.note(id) !== undefined);
+
+        if (nodes.length === 0 && notes.length === 0) {
+            return;
+        }
+
+        const {removed, added} = this.model.removeNodes(nodes, reconnect);
+        this.model.removeNotes(notes);
+        this.afterRemove(nodes, notes);
+        this.commit(notes.length > 0 ? 'remove' : 'removeNodes', nodes, [...removed, ...added], notes);
+    }
+
+    // ---- notes ---------------------------------------------------------
+
+    public getNote(id: string): WorkflowNote | undefined {
+        const note = this.model.note(id);
+
+        return note === undefined ? undefined : structuredClone(note);
+    }
+
+    /** Add a sticky note (default 240×160, empty). */
+    public addNote(data: Partial<WorkflowNote> & {x: number; y: number}): WorkflowNote {
+        const note = this.model.addNote(data);
+        this.renderNote(note);
+        this.commit('addNote', [], [], [note.id]);
+
+        return structuredClone(note);
+    }
+
+    /** Patch text, colour, position or size of a note. */
+    public updateNote(id: string, patch: Partial<Omit<WorkflowNote, 'id'>>): boolean {
+        if (!this.model.updateNote(id, patch)) {
+            return false;
+        }
+
+        this.renderNote(this.model.note(id)!);
+        this.commit('updateNote', [], [], [id]);
+
+        return true;
+    }
+
+    /** Open a note's text for editing (what a double-click does). */
+    public editNote(id: string): void {
+        const view = this.noteViews.get(id);
+        const note = this.model.note(id);
+
+        if (this.readOnlyFlag || view === undefined || note === undefined) {
+            return;
+        }
+
+        this.finishNoteEdit(true);
+
+        const area = document.createElement('textarea');
+        area.className = 'wf-note-edit';
+        area.value = note.text;
+        area.addEventListener('blur', () => this.finishNoteEdit(true));
+        area.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            if (e.key === 'Escape') {
+                this.finishNoteEdit(false);
+                this.root.focus({preventScroll: true});
+            } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                this.finishNoteEdit(true);
+                this.root.focus({preventScroll: true});
+            }
+        });
+
+        view.el.querySelector<HTMLElement>('.wf-note-text')!.style.visibility = 'hidden';
+        view.el.appendChild(area);
+        this.noteEdit = {id, area, before: note.text};
+        area.focus();
+        area.setSelectionRange(area.value.length, area.value.length);
+    }
+
+    // ---- adding from outside --------------------------------------------
+
+    /**
+     * Add a node where a palette item was dropped (client coordinates): the
+     * node is centred on the point and snapped. Dropped onto a connection it
+     * can sit in, it is inserted into that connection. Null when the point is
+     * not over the editor or the editor is read-only.
+     */
+    public dropAt(data: string | WorkflowNodeInput, clientX: number, clientY: number): WorkflowNodeData | null {
+        const input: WorkflowNodeInput = typeof data === 'string' ? {type: data} : data;
+
+        if (this.readOnlyFlag || !this.isOver(clientX, clientY)) {
+            return null;
+        }
+
+        const size = WorkflowGeometry.nodeSize(this.model.getType(input.type));
+        const w = this.screenToWorld(clientX, clientY);
+        const x = RectBoardGeometry.snap(w.x - size.w / 2, this.grid);
+        const y = RectBoardGeometry.snap(w.y - size.h / 2, this.grid);
+        const conn = this.connectionAt(clientX, clientY, input.type);
+
+        if (conn !== null) {
+            return this.insertNode(conn, {...input, x, y});
+        }
+
+        const node = this.addNode({...input, x, y});
+        this.select([node.id]);
+
+        return node;
+    }
+
+    /**
+     * Start dragging a new node from a host palette — call it from the
+     * palette item's `pointerdown`. A preview of the node follows the
+     * pointer (mouse, pen or touch; give the palette `touch-action: none`),
+     * a connection it would drop into lights up, and releasing over the
+     * editor calls {@link dropAt}. Escape cancels.
+     */
+    public beginDrag(data: string | WorkflowNodeInput, e: PointerEvent): void {
+        const input: WorkflowNodeInput = typeof data === 'string' ? {type: data} : data;
+
+        if (this.readOnlyFlag) {
+            return;
+        }
+
+        e.preventDefault();
+        this.paletteDrag?.();
+
+        const type = this.model.getType(input.type);
+        const size = WorkflowGeometry.nodeSize(type);
+        const preview = this.buildNode({...input, id: '', x: 0, y: 0}, type, {x: 0, y: 0, ...size});
+        const ghost = document.createElement('div');
+        let target: string | null = null;
+
+        ghost.className = 'wf-ghost';
+        ghost.dataset.wfTheme = this.root.dataset.wfTheme;
+        ghost.appendChild(preview.el);
+        document.body.appendChild(ghost);
+
+        const mark = (id: string | null): void => {
+            if (target !== null) {
+                this.connViews.get(target)?.g.classList.remove('wf-drop');
+            }
+            target = id;
+            if (id !== null) {
+                this.connViews.get(id)?.g.classList.add('wf-drop');
+            }
+        };
+        const move = (ev: PointerEvent): void => {
+            const s = this.camera.scale;
+            const over = this.isOver(ev.clientX, ev.clientY);
+
+            ghost.style.transform = `translate(${ev.clientX - size.w * s / 2}px, ${ev.clientY - size.h * s / 2}px) scale(${s})`;
+            ghost.classList.toggle('wf-ghost-out', !over);
+            mark(over ? this.connectionAt(ev.clientX, ev.clientY, input.type) : null);
+        };
+        const cleanup = (): void => {
+            mark(null);
+            ghost.remove();
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+            window.removeEventListener('pointercancel', up);
+            window.removeEventListener('keydown', key, true);
+            this.paletteDrag = null;
+        };
+        const up = (ev: PointerEvent): void => {
+            cleanup();
+            if (ev.type === 'pointerup') {
+                const node = this.dropAt(input, ev.clientX, ev.clientY);
+                if (node !== null) {
+                    this.root.focus({preventScroll: true});
+                }
+            }
+        };
+        const key = (ev: KeyboardEvent): void => {
+            if (ev.key === 'Escape') {
+                ev.preventDefault();
+                cleanup();
+            }
+        };
+
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+        window.addEventListener('pointercancel', up);
+        window.addEventListener('keydown', key, true);
+        this.paletteDrag = cleanup;
+        move(e);
+    }
+
+    /** The client point lies on the editor and nothing of the host covers it there. */
+    private isOver(clientX: number, clientY: number): boolean {
+        const hit = typeof document.elementFromPoint === 'function' ? document.elementFromPoint(clientX, clientY) : null;
+
+        return hit !== null && this.root.contains(hit);
+    }
+
+    /**
+     * The connection under (or within a few px of) a client point that a node
+     * of `type` could be inserted into — a thin line is hard to hit exactly.
+     */
+    private connectionAt(clientX: number, clientY: number, type: string): string | null {
+        const r = 10;
+
+        for (const [dx, dy] of [[0, 0], [0, -r], [0, r], [-r, 0], [r, 0]] as const) {
+            const hit = document.elementFromPoint(clientX + dx, clientY + dy);
+            const id = hit?.closest<SVGGElement>('[data-wf-conn]')?.dataset.wfConn;
+
+            if (id !== undefined && this.root.contains(hit) && this.model.canInsert(type, id)) {
+                return id;
+            }
+        }
+
+        return null;
     }
 
     /** Connect an output to an input; null (and `connectRefused`) when invalid. */
@@ -511,12 +752,17 @@ export class WorkflowEditor {
 
     // ---- selection -----------------------------------------------------
 
-    public getSelection(): {nodes: string[]; connection: string | null} {
-        return {nodes: [...this.selected], connection: this.selectedConn};
+    public getSelection(): {nodes: string[]; notes: string[]; connection: string | null} {
+        return {
+            nodes: [...this.selected].filter((id) => this.nodeViews.has(id)),
+            notes: [...this.selected].filter((id) => this.noteViews.has(id)),
+            connection: this.selectedConn
+        };
     }
 
+    /** Select nodes and/or notes by id. */
     public select(ids: Iterable<string>): void {
-        this.setSelection(new Set([...ids].filter((id) => this.nodeViews.has(id))), null);
+        this.setSelection(new Set([...ids].filter((id) => this.hasItem(id))), null);
     }
 
     public selectConnection(id: string | null): void {
@@ -536,6 +782,8 @@ export class WorkflowEditor {
     /** Switch between editor and viewer at runtime. */
     public setReadOnly(readOnly: boolean): void {
         this.cancelGesture();
+        this.paletteDrag?.();
+        this.finishNoteEdit(true);
         this.readOnlyFlag = readOnly;
         this.root.classList.toggle('wf-editable', !readOnly);
         this.updateTools();
@@ -561,7 +809,7 @@ export class WorkflowEditor {
         }
 
         this.pendingFit = false;
-        const box = RectBoardGeometry.bounds([...this.nodeViews.values()].map((v) => v.rect));
+        const box = RectBoardGeometry.bounds([...this.nodeViews.values(), ...this.noteViews.values()].map((v) => v.rect));
 
         if (box === null) {
             this.camera.setState({scale: 1, offsetX: 0, offsetY: 0});
@@ -628,6 +876,8 @@ export class WorkflowEditor {
 
     public destroy(): void {
         this.cancelGesture();
+        this.paletteDrag?.();
+        this.finishNoteEdit(false);
         if (this.flightFrame !== null) {
             cancelAnimationFrame(this.flightFrame);
         }
@@ -653,9 +903,14 @@ export class WorkflowEditor {
     private renderAll(): void {
         this.nodeLayer.replaceChildren();
         this.nodeViews.clear();
+        this.noteLayer.replaceChildren();
+        this.noteViews.clear();
         this.connLayer.replaceChildren();
         this.connViews.clear();
 
+        for (const note of this.model.allNotes()) {
+            this.renderNote(note);
+        }
         for (const node of this.model.allNodes()) {
             this.renderNode(node);
         }
@@ -667,7 +922,22 @@ export class WorkflowEditor {
     private renderNode(node: WorkflowNodeData): void {
         const type = this.model.getType(node.type);
         const size = WorkflowGeometry.nodeSize(type);
-        const rect: RectArea = {x: node.x, y: node.y, w: size.w, h: size.h};
+        const view = this.buildNode(node, type, {x: node.x, y: node.y, w: size.w, h: size.h});
+        const old = this.nodeViews.get(node.id);
+
+        if (old === undefined) {
+            this.nodeLayer.appendChild(view.el);
+        } else {
+            old.el.replaceWith(view.el);
+        }
+
+        this.nodeViews.set(node.id, view);
+        this.positionNode(node.id);
+    }
+
+    /** A node's element with body, ports, "+" buttons and port labels (not yet placed). */
+    private buildNode(node: WorkflowNodeData, type: WorkflowNodeType | undefined, rect: RectArea): NodeView {
+        const size = {w: rect.w, h: rect.h};
         const el = document.createElement('div');
 
         el.className = 'wf-node';
@@ -726,16 +996,80 @@ export class WorkflowEditor {
             view.ports.set(key, {place, el: portEl});
         }
 
-        const old = this.nodeViews.get(node.id);
+        return view;
+    }
+
+    /** (Re)build one sticky note's element. */
+    private renderNote(note: WorkflowNote): void {
+        const el = document.createElement('div');
+        const text = document.createElement('div');
+        const grip = document.createElement('div');
+
+        el.className = 'wf-note';
+        el.dataset.wfNote = note.id;
+        el.classList.toggle('wf-selected', this.selected.has(note.id));
+        if (note.color !== undefined) {
+            el.style.setProperty('--wf-note-color', note.color);
+        }
+        text.className = 'wf-note-text';
+        text.textContent = note.text;
+        grip.className = 'wf-note-resize';
+        grip.dataset.wfResize = note.id;
+        el.append(text, grip);
+
+        const old = this.noteViews.get(note.id);
 
         if (old === undefined) {
-            this.nodeLayer.appendChild(el);
+            this.noteLayer.appendChild(el);
         } else {
             old.el.replaceWith(el);
         }
 
-        this.nodeViews.set(node.id, view);
-        this.positionNode(node.id);
+        this.noteViews.set(note.id, {el, rect: {x: note.x, y: note.y, w: note.w, h: note.h}});
+        this.positionNote(note.id);
+    }
+
+    private positionNote(id: string): void {
+        const view = this.noteViews.get(id);
+        const note = this.model.note(id);
+
+        if (view === undefined || note === undefined) {
+            return;
+        }
+
+        view.rect = {x: note.x, y: note.y, w: note.w, h: note.h};
+        view.el.style.left = `${note.x}px`;
+        view.el.style.top = `${note.y}px`;
+        view.el.style.width = `${note.w}px`;
+        view.el.style.height = `${note.h}px`;
+    }
+
+    /** Close the note editor; `keep` stores the text (one undo step) when it changed. */
+    private finishNoteEdit(keep: boolean): void {
+        const edit = this.noteEdit;
+
+        if (edit === null) {
+            return;
+        }
+
+        this.noteEdit = null;     // first: removing the textarea fires blur → re-entry
+        const text = edit.area.value;
+        edit.area.remove();
+
+        if (keep && text !== edit.before && this.model.updateNote(edit.id, {text})) {
+            this.renderNote(this.model.note(edit.id)!);
+            this.commit('updateNote', [], [], [edit.id]);
+        } else if (this.model.note(edit.id) !== undefined) {
+            this.renderNote(this.model.note(edit.id)!);
+        }
+    }
+
+    private hasItem(id: string): boolean {
+        return this.nodeViews.has(id) || this.noteViews.has(id);
+    }
+
+    private itemEl(id: string): HTMLElement | undefined {
+        return this.nodeViews.get(id)?.el ?? this.noteViews.get(id)?.el;
     }
 
     private static defaultBody(node: WorkflowNodeData, type: WorkflowNodeType | undefined, body: HTMLElement): void {
@@ -948,9 +1282,11 @@ export class WorkflowEditor {
 
     // ---- state helpers -------------------------------------------------
 
-    private commit(kind: WorkflowChangeKind, nodes: string[], connections: string[]): void {
+    private commit(kind: WorkflowChangeKind, nodes: string[], connections: string[], notes: string[] = []): void {
         this.history.record(this.model.toDocument());
-        this.events.emit('change', {kind, nodes: [...new Set(nodes)], connections});
+        this.events.emit('change', notes.length > 0
+            ? {kind, nodes: [...new Set(nodes)], connections, notes}
+            : {kind, nodes: [...new Set(nodes)], connections});
     }
 
     private restore(doc: WorkflowDocument | undefined, kind: 'undo' | 'redo'): boolean {
@@ -959,10 +1295,11 @@ export class WorkflowEditor {
         }
 
         this.cancelGesture();
+        this.finishNoteEdit(false);
         this.model.load(doc);
         this.renderAll();
 
-        const nodes = new Set([...this.selected].filter((id) => this.nodeViews.has(id)));
+        const nodes = new Set([...this.selected].filter((id) => this.hasItem(id)));
         const conn = this.selectedConn !== null && this.connViews.has(this.selectedConn) ? this.selectedConn : null;
         this.setSelection(nodes, conn);
         this.events.emit('change', {kind, nodes: [], connections: []});
@@ -970,16 +1307,23 @@ export class WorkflowEditor {
         return true;
     }
 
-    /** Drop the elements of removed nodes and fix up the selection. */
-    private afterRemove(nodeIds: string[]): void {
+    /** Drop the elements of removed nodes/notes and fix up the selection. */
+    private afterRemove(nodeIds: string[], noteIds: string[] = []): void {
         for (const id of nodeIds) {
             this.nodeViews.get(id)?.el.remove();
             this.nodeViews.delete(id);
         }
+        for (const id of noteIds) {
+            if (this.noteEdit?.id === id) {
+                this.finishNoteEdit(false);
+            }
+            this.noteViews.get(id)?.el.remove();
+            this.noteViews.delete(id);
+        }
 
         this.renderConnections();
 
-        const nodes = new Set([...this.selected].filter((id) => this.nodeViews.has(id)));
+        const nodes = new Set([...this.selected].filter((id) => this.hasItem(id)));
         const conn = this.selectedConn !== null && this.connViews.has(this.selectedConn) ? this.selectedConn : null;
         this.setSelection(nodes, conn);
     }
@@ -993,10 +1337,10 @@ export class WorkflowEditor {
         }
 
         for (const id of this.selected) {
-            this.nodeViews.get(id)?.el.classList.remove('wf-selected');
+            this.itemEl(id)?.classList.remove('wf-selected');
         }
         for (const id of nodes) {
-            this.nodeViews.get(id)?.el.classList.add('wf-selected');
+            this.itemEl(id)?.classList.add('wf-selected');
         }
         if (this.selectedConn !== null) {
             this.connViews.get(this.selectedConn)?.g.classList.remove('wf-selected');
@@ -1012,14 +1356,14 @@ export class WorkflowEditor {
     }
 
     private emitSelection(): void {
-        this.events.emit('selectionChange', {nodes: [...this.selected], connection: this.selectedConn});
+        this.events.emit('selectionChange', this.getSelection());
     }
 
     private deleteSelection(): void {
         if (this.selectedConn !== null) {
             this.disconnect(this.selectedConn);
         } else if (this.selected.size > 0) {
-            this.removeNodes([...this.selected]);
+            this.remove([...this.selected]);
         }
     }
 
@@ -1047,9 +1391,15 @@ export class WorkflowEditor {
             return;
         }
 
+        const target = e.target as Element;
+
+        // Form fields (a note being edited, inputs in a custom node body) keep their own input.
+        if (WorkflowEditor.isField(target)) {
+            return;
+        }
+
         this.root.focus({preventScroll: true});
 
-        const target = e.target as Element;
         const addEl = target.closest<HTMLButtonElement>('[data-wf-add]');
         const toolEl = target.closest<HTMLButtonElement>('[data-wf-tool]');
 
@@ -1064,11 +1414,19 @@ export class WorkflowEditor {
         const portEl = target.closest<HTMLDivElement>('[data-wf-port]');
         const nodeEl = target.closest<HTMLDivElement>('[data-wf-node]');
         const connEl = target.closest<SVGGElement>('[data-wf-conn]');
+        const noteEl = target.closest<HTMLDivElement>('[data-wf-note]');
+        const gripEl = target.closest<HTMLDivElement>('[data-wf-resize]');
 
         if (portEl !== null && nodeEl !== null && !this.readOnlyFlag) {
             this.startDraft(e, nodeEl.dataset.wfNode!, portEl.dataset.wfPort!, portEl.dataset.wfDir as WorkflowPortDir);
         } else if (nodeEl !== null) {
             this.startNodePress(e, nodeEl.dataset.wfNode!, p);
+        } else if (gripEl !== null && !this.readOnlyFlag) {
+            const note = this.model.note(gripEl.dataset.wfResize!)!;
+            this.setSelection(new Set([note.id]), null);
+            this.startGesture(e, {kind: 'resize', id: note.id, startX: p.x, startY: p.y, w0: note.w, h0: note.h, moved: false});
+        } else if (noteEl !== null) {
+            this.startNodePress(e, noteEl.dataset.wfNote!, p);
         } else if (connEl !== null) {
             const id = connEl.dataset.wfConn!;
             this.setSelection(new Set(), id);
@@ -1138,7 +1496,7 @@ export class WorkflowEditor {
     private handleClipboard(e: ClipboardEvent, kind: 'copy' | 'cut' | 'paste'): void {
         const active = document.activeElement;
 
-        if (active === null || !this.root.contains(active) || this.gesture !== null) {
+        if (active === null || !this.root.contains(active) || this.gesture !== null || WorkflowEditor.isField(active)) {
             return;
         }
 
@@ -1167,7 +1525,7 @@ export class WorkflowEditor {
         e.clipboardData.setData('text/plain', JSON.stringify(fragment));
 
         if (kind === 'cut' && !this.readOnlyFlag) {
-            this.removeNodes([...this.selected], false);
+            this.remove([...this.selected], false);
         }
     }
 
@@ -1209,7 +1567,7 @@ export class WorkflowEditor {
 
         if (this.selected.has(id)) {
             for (const sid of this.selected) {
-                const n = this.model.node(sid);
+                const n = this.model.node(sid) ?? this.model.note(sid);
                 if (n !== undefined) {
                     origins.set(sid, {x: n.x, y: n.y});
                 }
@@ -1305,9 +1663,34 @@ export class WorkflowEditor {
             case 'band':
                 this.updateBand(p);
                 break;
+            case 'resize': {
+                const s = this.camera.scale;
+                const step = e.altKey ? 0 : this.grid;
+                const w = Math.max(120, RectBoardGeometry.snap(g.w0 + (p.x - g.startX) / s, step));
+                const h = Math.max(60, RectBoardGeometry.snap(g.h0 + (p.y - g.startY) / s, step));
+
+                g.moved = true;
+                this.model.updateNote(g.id, {w, h});
+                this.positionNote(g.id);
+                break;
+            }
             default:
                 break;
         }
+    }
+
+    /** A move of the given items (nodes and/or notes) to origin + delta. */
+    private placeItems(origins: Map<string, RectPoint>, dx: number, dy: number): void {
+        for (const [id, o] of origins) {
+            if (this.model.node(id) !== undefined) {
+                this.model.moveNode(id, o.x + dx, o.y + dy);
+                this.positionNode(id);
+            } else if (this.model.updateNote(id, {x: o.x + dx, y: o.y + dy})) {
+                this.positionNote(id);
+            }
+        }
+
+        this.renderConnections();
     }
 
     private dragNodes(g: Extract<Gesture, {kind: 'node'}>, p: RectPoint, free: boolean): void {
@@ -1325,12 +1708,7 @@ export class WorkflowEditor {
         const dx = RectBoardGeometry.snap(rawX, step) - lead.x;
         const dy = RectBoardGeometry.snap(rawY, step) - lead.y;
 
-        for (const [id, o] of g.origins) {
-            this.model.moveNode(id, o.x + dx, o.y + dy);
-            this.positionNode(id);
-        }
-
-        this.renderConnections();
+        this.placeItems(g.origins, dx, dy);
     }
 
     private updateDraft(e: PointerEvent): void {
@@ -1445,6 +1823,12 @@ export class WorkflowEditor {
                 next.add(id);
             }
         }
+        // Notes are big backdrops: only a band around the whole note picks it.
+        for (const [id, view] of this.noteViews) {
+            if (RectBoardGeometry.contains(world, view.rect)) {
+                next.add(id);
+            }
+        }
 
         this.setSelection(next, null);
     }
@@ -1473,12 +1857,20 @@ export class WorkflowEditor {
                 break;
             case 'node':
                 if (g.moved) {
-                    this.commit('move', [...g.origins.keys()], []);
+                    const ids = [...g.origins.keys()];
+                    this.commit('move', ids.filter((id) => this.nodeViews.has(id)), [], ids.filter((id) => this.noteViews.has(id)));
                 } else if (e.type === 'pointerup') {
                     if (g.collapseOnClick) {
                         this.setSelection(new Set([g.id]), null);
                     }
-                    this.events.emit('nodeClick', {id: g.id, originalEvent: e});
+                    if (this.nodeViews.has(g.id)) {
+                        this.events.emit('nodeClick', {id: g.id, originalEvent: e});
+                    }
+                }
+                break;
+            case 'resize':
+                if (g.moved) {
+                    this.commit('updateNote', [], [], [g.id]);
                 }
                 break;
             case 'conn':
@@ -1584,11 +1976,10 @@ export class WorkflowEditor {
         } else if (g.kind === 'band') {
             g.el.remove();
         } else if (g.kind === 'node' && g.moved) {
-            for (const [id, o] of g.origins) {
-                this.model.moveNode(id, o.x, o.y);
-                this.positionNode(id);
-            }
-            this.renderConnections();
+            this.placeItems(g.origins, 0, 0);
+        } else if (g.kind === 'resize' && g.moved) {
+            this.model.updateNote(g.id, {w: g.w0, h: g.h0});
+            this.positionNote(g.id);
         }
     }
 
@@ -1606,9 +1997,23 @@ export class WorkflowEditor {
     }
 
     private handleDblClick(e: MouseEvent): void {
-        const nodeEl = (e.target as Element).closest<HTMLDivElement>('[data-wf-node]');
+        // The press captured the pointer on the root, so the event's target is
+        // the root: look up what is really under the cursor.
+        const under = typeof document.elementFromPoint === 'function' ? document.elementFromPoint(e.clientX, e.clientY) : null;
+        const target = (under !== null && this.root.contains(under) ? under : e.target) as Element;
+        const noteEl = target.closest<HTMLDivElement>('[data-wf-note]');
 
-        if (nodeEl !== null && (e.target as Element).closest('[data-wf-port]') === null) {
+        if (WorkflowEditor.isField(target)) {
+            return;
+        }
+        if (noteEl !== null) {
+            this.editNote(noteEl.dataset.wfNote!);
+            return;
+        }
+
+        const nodeEl = target.closest<HTMLDivElement>('[data-wf-node]');
+
+        if (nodeEl !== null && target.closest('[data-wf-port]') === null) {
             this.events.emit('nodeDblClick', {id: nodeEl.dataset.wfNode!, originalEvent: e});
         }
     }
@@ -1616,6 +2021,10 @@ export class WorkflowEditor {
     private handleKey(e: KeyboardEvent): void {
         const mod = e.ctrlKey || e.metaKey;
         const key = e.key.toLowerCase();
+
+        if (WorkflowEditor.isField(e.target as Element)) {
+            return;
+        }
 
         if (key === 'escape') {
             if (this.gesture !== null) {
@@ -1627,7 +2036,7 @@ export class WorkflowEditor {
         }
         if (mod && key === 'a') {
             e.preventDefault();
-            this.select(this.nodeViews.keys());
+            this.select([...this.nodeViews.keys(), ...this.noteViews.keys()]);
             return;
         }
         if (this.readOnlyFlag || this.gesture !== null) {
@@ -1649,6 +2058,11 @@ export class WorkflowEditor {
             e.preventDefault();
             this.setDisabled(this.selected);
         }
+    }
+
+    /** Text inputs and editable content: the editor leaves their keys and clicks alone. */
+    private static isField(el: Element | null): boolean {
+        return el !== null && el.closest('textarea, input, select, [contenteditable=""], [contenteditable="true"]') !== null;
     }
 
     private static refKey(ref: WorkflowPortRef): string {

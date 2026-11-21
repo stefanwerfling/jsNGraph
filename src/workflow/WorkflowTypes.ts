@@ -59,9 +59,23 @@ export interface WorkflowConnection {
     to: WorkflowPortRef;
 }
 
+/** A sticky note on the canvas: free text in a resizable box, behind the nodes. */
+export interface WorkflowNote {
+    id: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    text: string;
+    /** Tint (any CSS colour). Default: a warm yellow. */
+    color?: string;
+}
+
 export interface WorkflowDocument {
     nodes: WorkflowNodeData[];
     connections: WorkflowConnection[];
+    /** Omitted when there are none. */
+    notes?: WorkflowNote[];
 }
 
 /** Host veto: return false (or a reason string) to refuse a connection. */
@@ -80,6 +94,8 @@ export type WorkflowChangeKind =
     | 'disable'
     | 'paste'
     | 'insertNode'
+    | 'addNote'
+    | 'updateNote'
     | 'undo'
     | 'redo';
 
@@ -90,6 +106,8 @@ export interface WorkflowChange {
     nodes: string[];
     /** Connection ids touched (added, removed or rerouted). */
     connections: string[];
+    /** Note ids touched, when any. */
+    notes?: string[];
 }
 
 export interface WorkflowEditorOptions {
@@ -125,7 +143,7 @@ export interface WorkflowClickEvent {
 
 export interface WorkflowEditorEvents extends Record<string, unknown> {
     change: WorkflowChange;
-    selectionChange: {nodes: string[]; connection: string | null};
+    selectionChange: {nodes: string[]; notes: string[]; connection: string | null};
     nodeClick: WorkflowClickEvent;
     nodeDblClick: WorkflowClickEvent;
     connectionClick: WorkflowClickEvent;

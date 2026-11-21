@@ -100,6 +100,7 @@ export type {
     RectRouteOptions
 } from './rect/RectKitTypes';
 export { WorkflowEditor } from './workflow/WorkflowEditor';
+export type { WorkflowNodeInput } from './workflow/WorkflowEditor';
 export { WorkflowModel } from './workflow/WorkflowModel';
 export { WorkflowGeometry, WORKFLOW_CURVE } from './workflow/WorkflowGeometry';
 export type { WorkflowPortPlace, WorkflowPath } from './workflow/WorkflowGeometry';
@@ -114,6 +115,7 @@ export type {
     WorkflowConnection,
     WorkflowDocument,
     WorkflowFragment,
+    WorkflowNote,
     WorkflowCanConnect,
     WorkflowChangeKind,
     WorkflowChange,

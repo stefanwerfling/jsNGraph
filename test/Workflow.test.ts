@@ -161,6 +161,48 @@ describe('WorkflowModel editing helpers', () => {
     });
 });
 
+describe('WorkflowModel notes and insertion', () => {
+    it('keeps notes in the document, shares the id space and omits an empty list', () => {
+        const m = model();
+        expect(m.toDocument().notes).toBeUndefined();
+
+        const note = m.addNote({x: 10, y: 20, text: 'hello'});
+        expect(note).toMatchObject({w: 240, h: 160, text: 'hello'});
+        expect(() => m.addNote({id: 't', x: 0, y: 0})).toThrow(/exists/);
+        expect(() => m.addNode({id: note.id, type: 'trigger', x: 0, y: 0})).toThrow(/exists/);
+
+        m.updateNote(note.id, {text: 'bye', w: 300});
+        expect(m.toDocument().notes).toEqual([{...note, text: 'bye', w: 300}]);
+
+        const copy = new WorkflowModel(TYPES, m.toDocument());
+        expect(copy.allNotes().length).toBe(1);
+        expect(copy.removeNotes([note.id, 'nope'])).toEqual([note.id]);
+        expect(copy.toDocument().notes).toBeUndefined();
+    });
+
+    it('copies and pastes notes with the nodes', () => {
+        const m = model();
+        const note = m.addNote({x: 100, y: 100, text: 'n'});
+        const frag = m.fragment(['t', note.id]);
+
+        expect(frag.notes?.map((n) => n.id)).toEqual([note.id]);
+        const added = m.paste(frag, 40, 0);
+        expect(added.notes.length).toBe(1);
+        expect(m.note(added.notes[0]!)).toMatchObject({x: 140, y: 100, text: 'n'});
+    });
+
+    it('knows which node types fit into a connection', () => {
+        const m = model();
+        const main = m.connect({node: 't', port: 'main'}, {node: 'if', port: 'main'});
+        const tool = m.connect({node: 'tool', port: 'tool'}, {node: 'a', port: 'tool'});
+
+        expect(m.canInsert('single', main.id)).toBe(true);
+        expect(m.canInsert('trigger', main.id)).toBe(false);   // no input
+        expect(m.canInsert('single', tool.id)).toBe(false);    // kinds differ
+        expect(m.canInsert('nope', main.id)).toBe(false);
+    });
+});
+
 describe('WorkflowGeometry', () => {
     it('places a new node beside a port, clear of other nodes', () => {
         const size = {w: 200, h: 64};

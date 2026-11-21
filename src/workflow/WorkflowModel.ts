@@ -4,6 +4,7 @@ import {
     WorkflowDocument,
     WorkflowNodeData,
     WorkflowNodeType,
+    WorkflowNote,
     WorkflowPortDir,
     WorkflowPortRef,
     WorkflowPortSpec
@@ -23,6 +24,7 @@ export class WorkflowModel {
     private readonly types = new Map<string, WorkflowNodeType>();
     private nodes = new Map<string, WorkflowNodeData>();
     private connections = new Map<string, WorkflowConnection>();
+    private notes = new Map<string, WorkflowNote>();
     private idCounter = 0;
 
     public constructor(
@@ -69,14 +71,21 @@ export class WorkflowModel {
     public load(doc: WorkflowDocument): void {
         this.nodes = new Map(doc.nodes.map((n) => [n.id, structuredClone(n)]));
         this.connections = new Map(doc.connections.map((c) => [c.id, structuredClone(c)]));
+        this.notes = new Map((doc.notes ?? []).map((n) => [n.id, structuredClone(n)]));
     }
 
     /** Deep copy of the current document. */
     public toDocument(): WorkflowDocument {
-        return {
+        const doc: WorkflowDocument = {
             nodes: [...this.nodes.values()].map((n) => structuredClone(n)),
             connections: [...this.connections.values()].map((c) => structuredClone(c))
         };
+
+        if (this.notes.size > 0) {
+            doc.notes = [...this.notes.values()].map((n) => structuredClone(n));
+        }
+
+        return doc;
     }
 
     public node(id: string): WorkflowNodeData | undefined {
@@ -112,7 +121,7 @@ export class WorkflowModel {
         do {
             this.idCounter++;
             id = prefix + this.idCounter;
-        } while (this.nodes.has(id) || this.connections.has(id));
+        } while (this.nodes.has(id) || this.connections.has(id) || this.notes.has(id));
 
         return id;
     }
@@ -121,7 +130,7 @@ export class WorkflowModel {
     public addNode(data: Omit<WorkflowNodeData, 'id'> & {id?: string}): WorkflowNodeData {
         const id = data.id !== undefined && data.id.length > 0 ? data.id : this.nextId('n');
 
-        if (this.nodes.has(id)) {
+        if (this.nodes.has(id) || this.notes.has(id)) {
             throw new Error(`Workflow node id '${id}' already exists`);
         }
 
@@ -199,6 +208,46 @@ export class WorkflowModel {
         return {removed, added};
     }
 
+    // ---- notes ---------------------------------------------------------
+
+    public note(id: string): WorkflowNote | undefined {
+        return this.notes.get(id);
+    }
+
+    public allNotes(): WorkflowNote[] {
+        return [...this.notes.values()];
+    }
+
+    /** Adds a copy of `data` (id generated when empty, default size 240×160). Throws on a duplicate id. */
+    public addNote(data: Partial<WorkflowNote> & {x: number; y: number}): WorkflowNote {
+        const id = data.id !== undefined && data.id.length > 0 ? data.id : this.nextId('note');
+
+        if (this.notes.has(id) || this.nodes.has(id)) {
+            throw new Error(`Workflow note id '${id}' already exists`);
+        }
+
+        const note: WorkflowNote = {w: 240, h: 160, text: '', ...structuredClone(data), id: id};
+        this.notes.set(id, note);
+
+        return note;
+    }
+
+    public updateNote(id: string, patch: Partial<Omit<WorkflowNote, 'id'>>): boolean {
+        const note = this.notes.get(id);
+
+        if (note === undefined) {
+            return false;
+        }
+
+        Object.assign(note, structuredClone(patch), {id: id});
+        return true;
+    }
+
+    /** Removes notes; returns the ids that existed. */
+    public removeNotes(ids: Iterable<string>): string[] {
+        return [...new Set(ids)].filter((id) => this.notes.delete(id));
+    }
+
     /** Toggle or set `disabled` on nodes; returns the ids that changed. */
     public setDisabled(ids: Iterable<string>, disabled: boolean): string[] {
         const changed: string[] = [];
@@ -215,26 +264,39 @@ export class WorkflowModel {
         return changed;
     }
 
-    /** The nodes `ids` and the connections running between them, deep-copied. */
+    /** The nodes and notes `ids` and the connections running between those nodes, deep-copied. */
     public fragment(ids: Iterable<string>): WorkflowDocument {
+        ids = [...ids];
         const set = new Set([...ids].filter((id) => this.nodes.has(id)));
 
-        return {
+        const frag: WorkflowDocument = {
             nodes: [...set].map((id) => structuredClone(this.nodes.get(id)!)),
             connections: this.allConnections()
                 .filter((c) => set.has(c.from.node) && set.has(c.to.node))
                 .map((c) => structuredClone(c))
         };
+        const notes = [...new Set(ids)].filter((id) => this.notes.has(id)).map((id) => structuredClone(this.notes.get(id)!));
+
+        if (notes.length > 0) {
+            frag.notes = notes;
+        }
+
+        return frag;
     }
 
     /**
      * Add a fragment under fresh ids, shifted by (dx, dy). Connections are
      * kept when both ends came along and the rules still allow them.
      */
-    public paste(fragment: WorkflowDocument, dx: number, dy: number): {nodes: string[]; connections: string[]} {
+    public paste(fragment: WorkflowDocument, dx: number, dy: number): {nodes: string[]; connections: string[]; notes: string[]} {
         const idMap = new Map<string, string>();
         const nodes: string[] = [];
         const connections: string[] = [];
+        const notes: string[] = [];
+
+        for (const n of fragment.notes ?? []) {
+            notes.push(this.addNote({...n, id: this.nextId('note'), x: n.x + dx, y: n.y + dy}).id);
+        }
 
         for (const n of fragment.nodes) {
             const node = this.addNode({...n, id: this.nextId('n'), x: n.x + dx, y: n.y + dy});
@@ -258,7 +320,25 @@ export class WorkflowModel {
             }
         }
 
-        return {nodes, connections};
+        return {nodes, connections, notes};
+    }
+
+    /**
+     * Whether a node of `type` can sit inside connection `id`: it has an
+     * input of the source port's kind and an output of the target port's kind.
+     */
+    public canInsert(type: string, id: string): boolean {
+        const conn = this.connections.get(id);
+        const t = this.types.get(type);
+        const out = conn === undefined ? undefined : this.port(conn.from, 'out');
+        const inp = conn === undefined ? undefined : this.port(conn.to, 'in');
+
+        if (t === undefined || out === undefined || inp === undefined) {
+            return false;
+        }
+
+        return (t.inputs ?? []).some((p) => (p.kind ?? 'main') === (out.kind ?? 'main'))
+            && (t.outputs ?? []).some((p) => (p.kind ?? 'main') === (inp.kind ?? 'main'));
     }
 
     /**

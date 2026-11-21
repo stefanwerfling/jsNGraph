@@ -53,7 +53,10 @@ interface WorkflowNodeData { id: string; type: string; x: number; y: number;
     label?: string; sublabel?: string; disabled?: boolean; meta?: unknown; }
 interface WorkflowConnection { id: string;
     from: {node: string; port: string}; to: {node: string; port: string}; }
-interface WorkflowDocument { nodes: WorkflowNodeData[]; connections: WorkflowConnection[]; }
+interface WorkflowNote { id: string; x: number; y: number; w: number; h: number;
+    text: string; color?: string; }
+interface WorkflowDocument { nodes: WorkflowNodeData[]; connections: WorkflowConnection[];
+    notes?: WorkflowNote[]; }
 ```
 
 Decisions:
@@ -71,14 +74,14 @@ Decisions:
 
 ## Milestones
 
-Status: W1–W3 done (`examples/workflow.html`).
+Status: W1–W4 done (`examples/workflow.html`).
 
 | # | Content |
 |---|---|
 | **W1** | Skeleton: `WorkflowEditor`, type registry, DOM nodes with ports, port-to-port curves, pan/zoom/fit, drag with grid snap (Alt bypasses), select (click, Shift/Ctrl toggle, Shift+drag band), read-only mode. |
 | **W2** | Connecting: drag from a port with a live draft curve, valid targets highlighted, drop on a port or a node body (first free compatible port), drag a connected input to pick the connection up again, select/delete connections, undo/redo, keyboard (Delete, Ctrl+Z/Y, Ctrl+A). |
 | **W3** | Editing comfort: "+" on free outputs and on free non-left inputs (`addRequest` → host picker → `addNodeFrom`, placed beside the port clear of other nodes; `typesFor` lists compatible types), insert/delete buttons on the hovered connection (`insertRequest` → `insertNode`: right of the source, downstream nodes shift when crowded), copy/cut/paste through the system clipboard as a JSON `WorkflowFragment` (paste lands at the cursor), Ctrl+D duplicate, delete re-links a chain (`reconnectOnDelete`), D toggles disabled (connections of disabled nodes are dashed). Pasted connections go through the same validation, so a host `canConnect` veto also applies to them. |
-| **W4** | Adding from outside: `dropAt(type, clientX, clientY)` for a host-rendered node palette; sticky notes. |
+| **W4** | Adding from outside: the host renders its palette and calls `beginDrag(type, pointerEvent)` on an item's `pointerdown` — a preview of the real node follows the pointer (mouse/pen/touch; palette needs `touch-action: none`), a connection it fits into lights up (±10 px tolerance), release over the editor calls `dropAt(type, clientX, clientY)` (insert into that connection, else add centred and snapped), Escape cancels. Sticky notes (`doc.notes`, `WorkflowNote`): behind the nodes, move/resize with snap, double-click edits the text (Ctrl+Enter/blur keeps, Escape discards), select (a band must enclose a note), delete, copy/paste, undo; `addNote`/`updateNote`/`editNote`, `remove(ids)` for mixed deletions. Keys and clicks inside text fields (note editor, inputs in a custom node body) are left alone. |
 | **W5** | Run status: `setNodeStatus(id, 'idle' \| 'running' \| 'success' \| 'error', {items?, message?})` — status ring, spinner, error badge, item counts on connections, animated dots on active connections, highlight the execution path. |
 | **W6** | Tidy-up auto-layout (`FlowLayout`), minimap, obstacle-aware routing for backward connections (today the detour only clears its own two nodes and can pass behind others), theme tokens from CSS variables, `examples/workflow.html` polish. |
 

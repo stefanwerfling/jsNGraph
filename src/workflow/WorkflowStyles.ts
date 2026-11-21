@@ -23,14 +23,16 @@ export class WorkflowStyles {
 
     public static css(): string {
         return [
-            ':where(.wf-root){--wf-bg:#12151d;--wf-grid:#262b38;--wf-node-bg:#1d2230;--wf-node-border:#363d50;' +
+            // Tokens live on the editor root and on the drag ghost (which hangs off <body>).
+            ':where(.wf-root,.wf-ghost){--wf-bg:#12151d;--wf-grid:#262b38;--wf-node-bg:#1d2230;--wf-node-border:#363d50;' +
             '--wf-text:#e6eaf2;--wf-subtext:#8c95a8;--wf-edge:#6b7488;--wf-accent:#ff6d5a;--wf-sel:#7aa2ff;' +
-            '--wf-port-bg:#2a3142;--wf-ok:#3ecf8e;--wf-bad:#ef5b5b;--wf-band:rgba(122,162,255,.12);' +
-            'position:relative;overflow:hidden;width:100%;height:100%;background-color:var(--wf-bg);' +
+            '--wf-port-bg:#2a3142;--wf-ok:#3ecf8e;--wf-bad:#ef5b5b;--wf-band:rgba(122,162,255,.12);--wf-note:#e8b931;' +
+            'font:13px system-ui,-apple-system,sans-serif;color:var(--wf-text)}',
+            ':where(.wf-root){position:relative;overflow:hidden;width:100%;height:100%;background-color:var(--wf-bg);' +
             'background-image:radial-gradient(circle,var(--wf-grid) 1.2px,transparent 1.3px);' +
-            'outline:none;touch-action:none;user-select:none;font:13px system-ui,-apple-system,sans-serif;color:var(--wf-text)}',
+            'outline:none;touch-action:none;user-select:none}',
 
-            ':where(.wf-root[data-wf-theme="light"]){--wf-bg:#f5f6f9;--wf-grid:#d6dae3;--wf-node-bg:#fff;' +
+            ':where(.wf-root[data-wf-theme="light"],.wf-ghost[data-wf-theme="light"]){--wf-bg:#f5f6f9;--wf-grid:#d6dae3;--wf-node-bg:#fff;' +
             '--wf-node-border:#cfd5e0;--wf-text:#1f2430;--wf-subtext:#6a7386;--wf-edge:#9aa2b2;--wf-sel:#3a6df0;' +
             '--wf-port-bg:#e9ecf2;--wf-band:rgba(58,109,240,.1)}',
 
@@ -41,7 +43,7 @@ export class WorkflowStyles {
             // Nodes
             ':where(.wf-node){position:absolute;box-sizing:border-box;display:flex;align-items:center;gap:10px;' +
             'padding:0 14px 0 10px;background:var(--wf-node-bg);border:1.5px solid var(--wf-node-border);' +
-            'border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.18);cursor:default}',
+            'border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.18);cursor:default;isolation:isolate}',
             ':where(.wf-editable .wf-node){cursor:grab}',
             ':where(.wf-node:hover){border-color:color-mix(in srgb,var(--wf-node-color,var(--wf-accent)) 60%,var(--wf-node-border))}',
             ':where(.wf-node.wf-selected){border-color:var(--wf-sel);box-shadow:0 0 0 3px color-mix(in srgb,var(--wf-sel) 30%,transparent)}',
@@ -92,6 +94,27 @@ export class WorkflowStyles {
             'border:1px solid var(--wf-node-border);background:var(--wf-node-bg);color:var(--wf-text);font:600 14px/1 system-ui}',
             ':where(.wf-conn-tools button:hover){border-color:var(--wf-sel);color:var(--wf-sel)}',
             ':where(.wf-conn-tools button[data-wf-tool="delete"]:hover){border-color:var(--wf-bad);color:var(--wf-bad)}',
+
+            // Sticky notes
+            ':where(.wf-note){position:absolute;box-sizing:border-box;border-radius:8px;padding:10px 12px;' +
+            'background:color-mix(in srgb,var(--wf-note-color,var(--wf-note)) 16%,var(--wf-bg));' +
+            'border:1px solid color-mix(in srgb,var(--wf-note-color,var(--wf-note)) 45%,transparent);overflow:hidden}',
+            ':where(.wf-editable .wf-note){cursor:grab}',
+            ':where(.wf-note.wf-selected){border-color:var(--wf-sel);box-shadow:0 0 0 3px color-mix(in srgb,var(--wf-sel) 30%,transparent)}',
+            ':where(.wf-note-text){white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.45;height:100%;overflow:hidden}',
+            ':where(.wf-editable .wf-note-text:empty)::before{content:"Double-click to write";color:var(--wf-subtext)}',
+            ':where(.wf-note-edit){position:absolute;inset:0;box-sizing:border-box;width:100%;height:100%;padding:10px 12px;' +
+            'border:0;outline:none;resize:none;background:transparent;color:inherit;font:inherit;line-height:1.45;cursor:text}',
+            ':where(.wf-note-resize){position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize;display:none;' +
+            'background:linear-gradient(135deg,transparent 50%,color-mix(in srgb,var(--wf-note-color,var(--wf-note)) 70%,transparent) 50%)}',
+            ':where(.wf-editable .wf-note-resize){display:block}',
+
+            // Palette drag: the ghost node under the cursor, and a connection it would drop into
+            ':where(.wf-ghost){position:fixed;left:0;top:0;z-index:10000;pointer-events:none;transform-origin:0 0;opacity:.9}',
+            ':where(.wf-ghost .wf-node){position:relative;box-shadow:0 8px 24px rgba(0,0,0,.35)}',
+            ':where(.wf-ghost .wf-add){display:none}',
+            ':where(.wf-ghost.wf-ghost-out){opacity:.45}',
+            ':where(g.wf-conn-g.wf-drop .wf-conn){stroke:var(--wf-ok);stroke-width:3}',
 
             ':where(.wf-band){position:absolute;border:1px dashed var(--wf-sel);background:var(--wf-band);pointer-events:none}'
         ].join('');

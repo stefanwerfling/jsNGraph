@@ -124,7 +124,10 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   (`WorkflowStyles.ts`). Editing comfort (W3): "+" on free ports / insert+delete on the hovered connection only
   *request* a node (`addRequest`/`insertRequest` events — the host shows its own picker, then calls
   `addNodeFrom`/`insertNode`); copy/cut/paste use the system clipboard with a JSON `WorkflowFragment`;
-  delete bridges chains (`reconnectOnDelete`). Plan + milestones W1–W6: `docs/workflow-editor.md`.
+  delete bridges chains (`reconnectOnDelete`). W4: host palettes call `beginDrag(type, pointerEvent)` (ghost preview,
+  drop onto a fitting connection inserts; `dropAt` is the programmatic form); sticky notes live in `doc.notes`
+  (behind nodes, share the node id space). Gotcha: presses set pointer capture on the root, so click/dblclick
+  `target` is the root — resolve the element with `elementFromPoint`. Plan + milestones W1–W6: `docs/workflow-editor.md`.
   Example: `examples/workflow.html`.
 
 ## Commands

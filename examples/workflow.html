@@ -27,7 +27,15 @@
     #picker button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0;
         border-radius: 5px; background: transparent; color: var(--text); font-size: 13px; text-align: left; cursor: pointer; }
     #picker button:hover { background: rgba(122,162,255,.15); }
-    #picker .ic { width: 22px; height: 22px; border-radius: 5px; display: grid; place-items: center; font-size: 13px; }
+    #picker .ic, #palette .ic { width: 22px; height: 22px; border-radius: 5px; display: grid; place-items: center; font-size: 13px; flex: none; }
+    #palette { top: 100px; left: 14px; width: 172px; max-height: calc(100% - 170px); overflow: auto; padding: 6px;
+        background: rgba(26,34,54,0.92); border: 1px solid var(--border); border-radius: 10px; }
+    #palette .head { padding: 4px 6px 6px; font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; }
+    #palette .item { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 6px; font-size: 13px;
+        cursor: grab; user-select: none; touch-action: none; }
+    #palette .item:hover { background: rgba(122,162,255,.15); }
+    @media (min-width: 721px) { #editor { left: 200px; } }
+    @media (max-width: 720px) { #palette { display: none; } }
 </style>
 </head>
 <body>
@@ -47,11 +55,7 @@
     <button id="undo">Undo</button>
     <button id="redo">Redo</button>
     <span class="sep"></span>
-    <button data-add="http">+ HTTP</button>
-    <button data-add="if">+ If</button>
-    <button data-add="code">+ Code</button>
-    <button data-add="mail">+ Mail</button>
-    <button data-add="tool">+ Tool</button>
+    <button id="note">+ Note</button>
     <span class="sep"></span>
     <button id="disable">Disable</button>
     <button id="dup">Duplicate</button>
@@ -60,7 +64,9 @@
 
 <div id="log" class="hud">Drag from an output port to an input port.</div>
 <div id="picker"></div>
+<div id="palette" class="hud"><div class="head">Drag onto the canvas</div></div>
 <div id="help" class="hud">
+    drag from the palette (onto a connection to insert) · double-click a note to write<br>
     drag ports to connect · drag a connected input to move it · “+” adds a node<br>
     Shift+drag: select area · Del: delete (re-links the chain) · D: disable<br>
     Ctrl+C / X / V / D: copy, cut, paste, duplicate · Ctrl+Z / Ctrl+Y · wheel: zoom
@@ -104,6 +110,12 @@
             {id: 'nightly', type: 'schedule', x: 0, y: 360, label: 'Nightly'},
             {id: 'report', type: 'code', x: 280, y: 360, label: 'Build report', disabled: true}
         ],
+        notes: [
+            {id: 'note1', x: -20, y: -60, w: 700, h: 280, color: '#5b8def',
+                text: 'Order intake\nEvery order is enriched with the customer record before routing.'},
+            {id: 'note2', x: -20, y: 290, w: 520, h: 150,
+                text: 'Nightly report — disabled until the new template ships.'}
+        ],
         connections: [
             {id: 'c1', from: {node: 'hook', port: 'main'}, to: {node: 'fetch', port: 'main'}},
             {id: 'c2', from: {node: 'fetch', port: 'main'}, to: {node: 'vip', port: 'main'}},
@@ -137,7 +149,7 @@
         $('dup').disabled = editor.readOnly || sel.length === 0;
     };
 
-    editor.on('change', (c) => { log(`change: ${c.kind} ${[...c.nodes, ...c.connections].join(', ')}`); syncButtons(); });
+    editor.on('change', (c) => { log(`change: ${c.kind} ${[...c.nodes, ...c.connections, ...(c.notes ?? [])].join(', ')}`); syncButtons(); });
     editor.on('selectionChange', (s) => syncButtons());
     editor.on('nodeClick', (e) => log(`nodeClick: ${e.id}`));
     editor.on('nodeDblClick', (e) => log(`nodeDblClick: ${e.id} — the host would open its parameter panel here`));
@@ -148,7 +160,8 @@
         editor.setReadOnly(!editor.readOnly);
         $('mode').textContent = editor.readOnly ? 'View only' : 'Edit';
         $('mode').classList.toggle('on', !editor.readOnly);
-        document.querySelectorAll('[data-add]').forEach((b) => { b.disabled = editor.readOnly; });
+        $('note').disabled = editor.readOnly;
+        $('palette').style.opacity = editor.readOnly ? '.4' : '';
         syncButtons();
     };
     let light = false;
@@ -161,21 +174,28 @@
     $('undo').onclick = () => editor.undo();
     $('redo').onclick = () => editor.redo();
     $('disable').onclick = () => {
-        for (const id of editor.getSelection().nodes) {
-            editor.updateNode(id, {disabled: !editor.getNode(id).disabled});
-        }
+        editor.setDisabled(editor.getSelection().nodes);
     };
     $('dup').onclick = () => editor.duplicateSelection();
     $('dump').onclick = () => console.log(JSON.stringify(editor.getDocument(), null, 2)) || log('document logged to the console');
 
-    document.querySelectorAll('[data-add]').forEach((btn) => {
-        btn.onclick = () => {
-            const r = editor.element.getBoundingClientRect();
-            const c = editor.screenToWorld(r.left + r.width / 2, r.top + r.height / 2);
-            const node = editor.addNode({type: btn.dataset.add, x: Math.round((c.x - 100) / 20) * 20, y: Math.round((c.y - 32) / 20) * 20});
-            editor.select([node.id]);
-        };
-    });
+    // Palette: the host renders it; one beginDrag call per item does the rest.
+    for (const t of types) {
+        const item = document.createElement('div');
+        item.className = 'item';
+        item.innerHTML = `<span class="ic" style="color:${t.color};background:${t.color}22">${t.icon ?? ''}</span>`;
+        item.append(t.label);
+        item.addEventListener('pointerdown', (e) => editor.beginDrag(t.type, e));
+        $('palette').appendChild(item);
+    }
+
+    $('note').onclick = () => {
+        const r = editor.element.getBoundingClientRect();
+        const c = editor.screenToWorld(r.left + r.width / 2, r.top + r.height / 2);
+        const note = editor.addNote({x: Math.round((c.x - 120) / 20) * 20, y: Math.round((c.y - 80) / 20) * 20});
+        editor.select([note.id]);
+        editor.editNote(note.id);
+    };
 
     // A minimal node picker — the host's job; the editor only asks for one.
     const picker = $('picker');
