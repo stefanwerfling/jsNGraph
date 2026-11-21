@@ -10,6 +10,8 @@ export interface InteractionHost {
     hitEdge(screenX: number, screenY: number): GraphEdge | null;
     /** Nodes whose centre lies inside the polygon (screen pixels). */
     nodesInPolygon(polygon: ReadonlyArray<Point>): GraphNode[];
+    /** Whether hovering edges matters (tooltip or listener); skips the edge hit-test otherwise. */
+    wantsEdgeHover(): boolean;
 }
 
 export interface InteractionOptions {
@@ -29,6 +31,8 @@ export interface ClickModifiers {
 
 export interface InteractionCallbacks {
     onHover(node: GraphNode | null): void;
+    /** Pointer over an edge (and no node), with the pointer in screen px; null when it leaves. */
+    onEdgeHover(edge: GraphEdge | null, at: Point): void;
     onClick(node: GraphNode | null, edge: GraphEdge | null, clientX: number, clientY: number, modifiers: ClickModifiers): void;
     onDoubleClick(node: GraphNode | null, edge: GraphEdge | null, clientX: number, clientY: number): void;
     /** Return true to suppress the browser's own context menu. */
@@ -62,6 +66,7 @@ const CLICK_SLOP = 4;
 export class InteractionController {
 
     private hovered: GraphNode | null = null;
+    private hoveredEdge: GraphEdge | null = null;
     private gesture: Gesture = {kind: 'none'};
     private downPos: {x: number; y: number} | null = null;
     private moved = false;
@@ -140,6 +145,8 @@ export class InteractionController {
         }
 
         const p = this.toLocal(event);
+
+        this.clearEdgeHover();   // a press starts a gesture; the tooltip would go stale
 
         // Only touch pointers can pinch. Tracking mouse pointers too would leak
         // an entry whenever the button is released outside the canvas.
@@ -261,10 +268,26 @@ export class InteractionController {
 
         if (hit !== this.hovered) {
             this.hovered = hit;
-            this.canvas.style.cursor = hit !== null ? 'pointer' : 'default';
             this.callbacks.onHover(hit);
         }
+
+        // Edges only count where no node is: nodes sit on top of their edges.
+        const edge = hit === null && this.host.wantsEdgeHover() ? this.host.hitEdge(p.x, p.y) : null;
+
+        if (edge !== null || this.hoveredEdge !== null) {
+            this.hoveredEdge = edge;
+            this.callbacks.onEdgeHover(edge, p);    // also while moving along it: the tooltip follows
+        }
+
+        this.canvas.style.cursor = hit !== null || edge !== null ? 'pointer' : 'default';
     };
+
+    private clearEdgeHover(): void {
+        if (this.hoveredEdge !== null) {
+            this.hoveredEdge = null;
+            this.callbacks.onEdgeHover(null, {x: 0, y: 0});
+        }
+    }
 
     private readonly onPointerUp = (event: PointerEvent): void => {
         this.pointers.delete(event.pointerId);
@@ -321,6 +344,8 @@ export class InteractionController {
             this.canvas.style.cursor = 'default';
             this.callbacks.onHover(null);
         }
+
+        this.clearEdgeHover();
     };
 
     private readonly onWheel = (event: WheelEvent): void => {

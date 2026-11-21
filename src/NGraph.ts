@@ -35,6 +35,10 @@ export interface NGraphOptions {
     /** Hover tooltip: true (default, "label · sublabel/load"), false, or a
      *  function returning the text (null = no tooltip for that node). */
     tooltip?: boolean | ((node: GraphNode) => string | null);
+    /** Edge hover tooltip: true (default, "A ↔ B · label/load"), false, or a
+     *  function returning the text (null = no tooltip for that edge). The
+     *  hovered edge is drawn a little wider. */
+    edgeTooltip?: boolean | ((edge: GraphEdge) => string | null);
     /** 'force' (default): springy self-organizing. 'radial': hub-and-ring via
      *  node.ring. 'layered': Sugiyama-style columns via node.ring (0 = left).
      *  'static': no simulation, nodes stay at the x/y the host gives them
@@ -97,6 +101,8 @@ export interface NGraphContextEvent {
 
 export interface NGraphEvents {
     nodeHover: GraphNode | null;
+    /** Pointer entered an edge (no node under it), or null when it left. */
+    edgeHover: GraphEdge | null;
     /** null = click on empty background. */
     nodeClick: GraphNode | null;
     nodeDblClick: GraphNode;
@@ -181,6 +187,7 @@ export class NGraph {
     private readonly loop: RenderLoop;
     private readonly camera: Camera;
     private readonly tooltipText: ((node: GraphNode) => string | null) | null;
+    private readonly edgeTooltipText: ((edge: GraphEdge) => string | null) | null;
     private readonly labelMinZoom: number;
     private readonly edgeMinZoom: number;
     private readonly clusterZoom: number;
@@ -200,6 +207,9 @@ export class NGraph {
     private detailPanelEnabled: boolean;
     private selectedId: string | null = null;
     private hoveredId: string | null = null;
+    private hoveredEdgeId: string | null = null;
+    /** Pointer position (container px) while over an edge; the edge tooltip sits there. */
+    private edgePointer: Point = {x: 0, y: 0};
     private readonly selection = new Set<string>();
     private highlightSet: Set<string> | null = null;
     private dimOthers = true;
@@ -244,6 +254,11 @@ export class NGraph {
             : typeof options.tooltip === 'function'
                 ? options.tooltip
                 : NGraph.defaultTooltip;
+        this.edgeTooltipText = options.edgeTooltip === false
+            ? null
+            : typeof options.edgeTooltip === 'function'
+                ? options.edgeTooltip
+                : (edge) => NGraph.defaultEdgeTooltip(edge, this.styles.edge(edge).directed);
 
         this.root = document.createElement('div');
         this.root.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
@@ -290,10 +305,12 @@ export class NGraph {
                 camera: this.camera,
                 hitNode: (x, y) => this.hitNode(x, y),
                 hitEdge: (x, y) => this.hitEdge(x, y),
-                nodesInPolygon: (polygon) => this.nodesInPolygon(polygon)
+                nodesInPolygon: (polygon) => this.nodesInPolygon(polygon),
+                wantsEdgeHover: () => this.edgeTooltipText !== null || this.events.has('edgeHover')
             },
             {
                 onHover: (node) => this.handleHover(node),
+                onEdgeHover: (edge, at) => this.handleEdgeHover(edge, at),
                 onClick: (node, edge, clientX, clientY, modifiers) => this.handleClick(node, edge, clientX, clientY, modifiers),
                 onDoubleClick: (node) => {
                     if (node !== null) {
@@ -428,6 +445,9 @@ export class NGraph {
 
     public updateEdge(id: string, patch: Partial<NGraphEdgeData>): void {
         this.edges.get(id)?.updateFrom(patch);
+        if (id === this.hoveredEdgeId) {
+            this.updateTooltip();     // live load changes show while hovering
+        }
         this.loop.request();
     }
 
@@ -1055,12 +1075,34 @@ export class NGraph {
         this.loop.request();
     }
 
+    private handleEdgeHover(edge: GraphEdge | null, at: Point): void {
+        const id = edge?.id ?? null;
+
+        this.edgePointer = at;
+
+        if (id !== this.hoveredEdgeId) {
+            this.hoveredEdgeId = id;
+            this.events.emit('edgeHover', edge);
+            this.loop.request();
+        }
+
+        this.updateTooltip();
+    }
+
     private updateTooltip(): void {
         const node = this.hoveredId !== null ? this.nodes.get(this.hoveredId) : undefined;
         const text = node !== undefined && this.tooltipText !== null ? this.tooltipText(node) : null;
 
         if (node === undefined || text === null) {
-            this.tooltip.hide();
+            // No node tooltip: an edge under the pointer may have one.
+            const edge = node === undefined && this.hoveredEdgeId !== null ? this.edges.get(this.hoveredEdgeId) : undefined;
+            const edgeText = edge !== undefined && this.edgeTooltipText !== null ? this.edgeTooltipText(edge) : null;
+
+            if (edgeText === null) {
+                this.tooltip.hide();
+            } else {
+                this.tooltip.show(edgeText, this.edgePointer.x, this.edgePointer.y);
+            }
             return;
         }
 
@@ -1218,6 +1260,7 @@ export class NGraph {
             height: this.height,
             timeMs: timeMs,
             hoveredId: this.hoveredId,
+            hoveredEdgeId: this.hoveredEdgeId,
             selection: this.selection,
             highlight: this.highlightSet,
             dimOthers: this.dimOthers,
@@ -1340,6 +1383,14 @@ export class NGraph {
         const detail = node.sublabel ?? `${Math.round(node.load * 100)}% load`;
 
         return `${node.label} · ${detail}`;
+    }
+
+    /** "Router ↔ Server · 63% load" (→ for directed edges; the edge label replaces the load). */
+    public static defaultEdgeTooltip(edge: GraphEdge, directed = edge.directed === true): string {
+        const arrow = directed ? '→' : '↔';
+        const detail = edge.label ?? `${Math.round(edge.load * 100)}% load`;
+
+        return `${edge.source.label} ${arrow} ${edge.target.label} · ${detail}`;
     }
 
     private static resolveTheme(theme: 'dark' | 'light' | ThemeTokens): ThemeTokens {

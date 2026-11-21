@@ -206,11 +206,13 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   depth, direction)` (`model/GraphQuery.ts`), `select`/`getSelection`/`clearSelection`, ctrl/⌘-click
   toggle, shift+drag lasso, pinch zoom; events `nodeDblClick`, `edgeClick`, `contextMenu`,
   `selectionChange`, `viewportChange`, `nodeDragEnd`, `layoutSettle`. Labels hide below `labelMinZoom`.
+- Edge hover: `edgeTooltip` option (default on, "A ↔ B · label/load", → when directed; function or false),
+  `edgeHover` event, hovered edge drawn wider on top. Nodes win over edges; the edge hit-test only runs when a
+  tooltip or listener wants it (`wantsEdgeHover`), and not when clustered / below `edgeMinZoom`.
 - Example: `examples/knowledge.html`.
 
 ## Known gaps (V1)
 
-- No edge-hover tooltip (only node hover).
 - No built-in toolbar (pause/labels/etc.) — that's presentation-specific, left to the consuming
   app; `examples/index.html` shows a minimal one.
 - Visual match to the yFiles reference demo was done from a textual description (no ability to

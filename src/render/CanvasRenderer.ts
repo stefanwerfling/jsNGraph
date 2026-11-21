@@ -21,6 +21,8 @@ export interface RenderScene {
     height: number;
     timeMs: number;
     hoveredId: string | null;
+    /** Edge under the pointer: drawn on its own, a little wider. */
+    hoveredEdgeId?: string | null;
     selection: ReadonlySet<string>;
     /** Highlighted node ids, or null for no highlight. */
     highlight: ReadonlySet<string> | null;
@@ -208,6 +210,7 @@ export class CanvasRenderer {
         const highlight = scene.highlight;
         let animating = false;
         const zoomedIn = camera.scale >= scene.labelMinZoom;
+        let hovered: {edge: GraphEdge; style: ResolvedEdgeStyle} | null = null;
 
         for (const edge of scene.edges) {
             if (!CanvasRenderer.edgeVisible(edge, view)) {
@@ -218,6 +221,11 @@ export class CanvasRenderer {
             const dimmed = highlight !== null && scene.dimOthers
                 && !(highlight.has(edge.source.id) && highlight.has(edge.target.id));
             const alpha = dimmed ? dimOpacity : 1;
+
+            if (edge.id === scene.hoveredEdgeId) {
+                hovered = {edge, style};
+                continue;
+            }
 
             // Plain straight edges are stroked in batches (one path per look).
             if (scene.edgeStyle === 'line' && style.dash === null && !style.animated
@@ -246,6 +254,15 @@ export class CanvasRenderer {
         }
 
         this.batcher.flush(this.ctx);
+
+        // The hovered edge last, over its neighbours, wider and fully opaque.
+        if (hovered !== null) {
+            const style = {...hovered.style, width: hovered.style.width + 2, opacity: Math.max(hovered.style.opacity, 0.95)};
+
+            if (this.drawEdge(hovered.edge, style, 1, scene, zoomedIn)) {
+                animating = true;
+            }
+        }
 
         const showLabels = scene.showLabels && zoomedIn;
         this.labelQueue = scene.labelCollision ? [] : null;
