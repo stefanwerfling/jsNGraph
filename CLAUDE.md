@@ -129,7 +129,10 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   (behind nodes, share the node id space). Gotcha: presses set pointer capture on the root, so click/dblclick
   `target` is the root — resolve the element with `elementFromPoint`. W5: run status is display-only state kept
   outside the model (`setNodeStatus`/`setConnectionStatus`/`setRunPath`/`clearStatus`), re-applied on every render.
-  Plan + milestones W1–W6: `docs/workflow-editor.md`.
+  W6: `tidyUp()` via pure `WorkflowLayout.ts` (left→right longest-path columns, loops dropped by DFS, barycenter
+  order, sub-nodes under their agent; `test/WorkflowLayout.test.ts`), `WorkflowMinimap.ts` (canvas overview,
+  scale frozen while dragging on it), backward detours avoid other nodes, `setStyleVars` /
+  `WorkflowStyles.varsFromTheme`. Plan + milestones W1–W6: `docs/workflow-editor.md`.
   Example: `examples/workflow.html`.
 
 ## Commands

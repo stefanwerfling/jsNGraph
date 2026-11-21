@@ -3,8 +3,10 @@ import { EventEmitter } from '../util/EventEmitter';
 import { RectArea, RectBoardGeometry, RectPoint } from '../rect/RectBoardGeometry';
 import { RectHistory } from '../rect/RectHistory';
 import { WorkflowGeometry, WorkflowPortPlace } from './WorkflowGeometry';
+import { WorkflowLayout, WorkflowLayoutOptions } from './WorkflowLayout';
+import { WorkflowMinimap } from './WorkflowMinimap';
 import { WorkflowModel } from './WorkflowModel';
-import { WorkflowStyles } from './WorkflowStyles';
+import { WorkflowStyles, WorkflowStyleVar } from './WorkflowStyles';
 import {
     WorkflowChangeKind,
     WorkflowConnection,
@@ -120,6 +122,10 @@ export class WorkflowEditor {
     private readonly nodeStatus = new Map<string, {status: WorkflowNodeStatus; message?: string}>();
     private readonly connStatus = new Map<string, WorkflowConnectionStatus>();
     private runPath: Set<string> | null = null;
+    private minimap: WorkflowMinimap | null = null;
+    private readonly styleVars = new Map<string, string>();
+    /** Frame handle of a running tidy-up animation; input waits for it. */
+    private tween: number | null = null;
     private hoveredConn: string | null = null;
     /** Last pointer position (root-local px) while the pointer is over the editor. */
     private lastPointer: RectPoint | null = null;
@@ -198,7 +204,7 @@ export class WorkflowEditor {
             '<button type="button" data-wf-tool="insert" title="Insert node">+</button>' +
             '<button type="button" data-wf-tool="delete" title="Delete connection">×</button>';
 
-        this.stage.append(this.noteLayer, this.svg, this.labelLayer, this.nodeLayer, this.tools);
+        this.stage.append(this.noteLayer, this.svg, this.nodeLayer, this.labelLayer, this.tools);
         this.root.appendChild(this.stage);
         container.appendChild(this.root);
 
@@ -222,6 +228,10 @@ export class WorkflowEditor {
                 }
             });
             this.resizeObserver.observe(this.root);
+        }
+
+        if (options.minimap === true) {
+            this.setMinimap(true);
         }
 
         const doc = options.document ?? {nodes: [], connections: []};
@@ -631,6 +641,9 @@ export class WorkflowEditor {
 
         ghost.className = 'wf-ghost';
         ghost.dataset.wfTheme = this.root.dataset.wfTheme;
+        for (const [name, value] of this.styleVars) {
+            ghost.style.setProperty(`--wf-${name}`, value);
+        }
         ghost.appendChild(preview.el);
         document.body.appendChild(ghost);
 
@@ -688,7 +701,7 @@ export class WorkflowEditor {
     private isOver(clientX: number, clientY: number): boolean {
         const hit = typeof document.elementFromPoint === 'function' ? document.elementFromPoint(clientX, clientY) : null;
 
-        return hit !== null && this.root.contains(hit);
+        return hit !== null && this.root.contains(hit) && !hit.classList.contains('wf-minimap');
     }
 
     /**
@@ -742,6 +755,158 @@ export class WorkflowEditor {
         this.commit('disconnect', [conn.from.node, conn.to.node], [id]);
 
         return true;
+    }
+
+    // ---- layout, minimap, look -----------------------------------------
+
+    /**
+     * Rearrange the nodes left to right (see {@link WorkflowLayout}) as one
+     * undoable move, animated by default, then frame the result. A note that
+     * fully enclosed nodes is fitted around those nodes again afterwards
+     * (keeping room for its text on top); other notes stay where they are.
+     */
+    public tidyUp(options: WorkflowLayoutOptions & {animate?: boolean} = {}): void {
+        if (this.readOnlyFlag || this.tween !== null) {
+            return;
+        }
+
+        this.cancelGesture();
+
+        const target = WorkflowLayout.compute(this.model, {grid: this.grid, ...options});
+        const from = new Map<string, RectPoint>();
+
+        for (const [id] of target) {
+            const n = this.model.node(id)!;
+            from.set(id, {x: n.x, y: n.y});
+        }
+
+        const moved = [...target].filter(([id, p]) => from.get(id)!.x !== p.x || from.get(id)!.y !== p.y).map(([id]) => id);
+
+        // Notes that framed a group follow it: their new box wraps the group's new boxes.
+        const noteFrom = new Map<string, RectArea>();
+        const noteTo = new Map<string, RectArea>();
+
+        for (const [id, view] of this.noteViews) {
+            const inside = [...this.nodeViews].filter(([, v]) => RectBoardGeometry.contains(view.rect, v.rect));
+            const box = RectBoardGeometry.bounds(inside.map(([nid, v]) => ({...v.rect, ...target.get(nid)!})));
+
+            if (inside.length === 0 || box === null) {
+                continue;
+            }
+
+            const top = inside.reduce((m, [, v]) => Math.min(m, v.rect.y), Infinity) - view.rect.y;
+            const left = inside.reduce((m, [, v]) => Math.min(m, v.rect.x), Infinity) - view.rect.x;
+            const padTop = Math.max(20, Math.min(top, 120));
+            const pad = Math.max(20, Math.min(left, 60));
+
+            noteFrom.set(id, {...view.rect});
+            noteTo.set(id, {
+                x: box.x - pad,
+                y: box.y - padTop,
+                w: RectBoardGeometry.snap(box.w + pad * 2, this.grid),
+                h: RectBoardGeometry.snap(box.h + padTop + pad, this.grid)
+            });
+        }
+
+        if (moved.length === 0) {
+            return;
+        }
+
+        const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+        const apply = (t: number): void => {
+            for (const [id, p] of target) {
+                const o = from.get(id)!;
+                this.model.moveNode(id, lerp(o.x, p.x, t), lerp(o.y, p.y, t));
+                this.positionNode(id);
+            }
+            for (const [id, to] of noteTo) {
+                const o = noteFrom.get(id)!;
+                this.model.updateNote(id, {x: lerp(o.x, to.x, t), y: lerp(o.y, to.y, t), w: lerp(o.w, to.w, t), h: lerp(o.h, to.h, t)});
+                this.positionNote(id);
+            }
+            this.renderConnections();
+        };
+        const finish = (): void => {
+            this.tween = null;
+            apply(1);
+            this.commit('move', moved, [], [...noteTo.keys()]);
+            this.userMoved = false;
+            this.fit(options.animate !== false);
+        };
+
+        if (options.animate === false || typeof requestAnimationFrame === 'undefined') {
+            finish();
+            return;
+        }
+
+        let start: number | null = null;
+        const frame = (now: number): void => {
+            start ??= now;
+            const t = Math.min(1, (now - start) / 350);
+
+            if (t >= 1) {
+                finish();
+                return;
+            }
+            apply(t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+            this.tween = requestAnimationFrame(frame);
+        };
+
+        this.tween = requestAnimationFrame(frame);
+    }
+
+    /** Show or hide the overview map in the bottom-right corner. */
+    public setMinimap(on: boolean): void {
+        if (on && this.minimap === null) {
+            this.minimap = new WorkflowMinimap(this.root, {
+                items: () => [
+                    ...[...this.noteViews].map(([id, v]) => ({
+                        rect: v.rect, kind: 'note' as const, color: this.model.note(id)?.color
+                    })),
+                    ...[...this.nodeViews].map(([id, v]) => ({
+                        rect: v.rect,
+                        kind: 'node' as const,
+                        color: v.type?.color,
+                        selected: this.selected.has(id),
+                        error: this.nodeStatus.get(id)?.status === 'error'
+                    }))
+                ],
+                viewport: () => {
+                    const b = this.camera.viewBounds(this.root.clientWidth, this.root.clientHeight);
+                    return {x: b.minX, y: b.minY, w: b.maxX - b.minX, h: b.maxY - b.minY};
+                },
+                centerOn: (p) => {
+                    this.userMoved = true;
+                    this.camera.setState(this.camera.centerState(p.x, p.y, this.root.clientWidth, this.root.clientHeight));
+                    this.applyCamera();
+                }
+            });
+        } else if (!on && this.minimap !== null) {
+            this.minimap.destroy();
+            this.minimap = null;
+        }
+    }
+
+    public get hasMinimap(): boolean {
+        return this.minimap !== null;
+    }
+
+    /**
+     * Override colours through the `--wf-*` custom properties (names without
+     * the prefix; null removes an override). `WorkflowStyles.varsFromTheme`
+     * turns an NGraph theme into such a map.
+     */
+    public setStyleVars(vars: Partial<Record<WorkflowStyleVar, string | null>>): void {
+        for (const [name, value] of Object.entries(vars)) {
+            if (value === null || value === undefined) {
+                this.root.style.removeProperty(`--wf-${name}`);
+                this.styleVars.delete(name);
+            } else {
+                this.root.style.setProperty(`--wf-${name}`, value);
+                this.styleVars.set(name, value);
+            }
+        }
+        this.minimap?.schedule();
     }
 
     // ---- run status ----------------------------------------------------
@@ -858,6 +1023,7 @@ export class WorkflowEditor {
 
     public setTheme(theme: 'dark' | 'light'): void {
         this.root.dataset.wfTheme = theme;
+        this.minimap?.schedule();
     }
 
     /** The widget's root element (`.wf-root`) — e.g. to set `--wf-*` variables. */
@@ -945,6 +1111,10 @@ export class WorkflowEditor {
         this.cancelGesture();
         this.paletteDrag?.();
         this.finishNoteEdit(false);
+        this.setMinimap(false);
+        if (this.tween !== null) {
+            cancelAnimationFrame(this.tween);
+        }
         if (this.flightFrame !== null) {
             cancelAnimationFrame(this.flightFrame);
         }
@@ -1144,6 +1314,7 @@ export class WorkflowEditor {
         view.el.style.top = `${note.y}px`;
         view.el.style.width = `${note.w}px`;
         view.el.style.height = `${note.h}px`;
+        this.minimap?.schedule();
     }
 
     /** Close the note editor; `keep` stores the text (one undo step) when it changed. */
@@ -1269,6 +1440,8 @@ export class WorkflowEditor {
             }
         }
 
+        const obstacles = [...this.nodeViews.values()].map((v) => v.rect);
+
         for (const conn of this.model.allConnections()) {
             const a = this.nodeViews.get(conn.from.node);
             const b = this.nodeViews.get(conn.to.node);
@@ -1289,7 +1462,7 @@ export class WorkflowEditor {
                 cv = this.createConnView(conn.id);
             }
 
-            const {d, mid} = WorkflowGeometry.connectionPath(pa.place, WorkflowEditor.inset(pb.place), a.rect, b.rect);
+            const {d, mid} = WorkflowGeometry.connectionPath(pa.place, WorkflowEditor.inset(pb.place), a.rect, b.rect, obstacles);
             cv.hit.setAttribute('d', d);
             cv.path.setAttribute('d', d);
             cv.mid = mid;
@@ -1308,6 +1481,7 @@ export class WorkflowEditor {
         }
 
         this.updateTools();
+        this.minimap?.schedule();
     }
 
     /** Tint, item label, travelling dots and run-path dimming of one connection. */
@@ -1413,6 +1587,7 @@ export class WorkflowEditor {
         const step = (this.grid > 0 ? this.grid : 20) * scale;
 
         this.stage.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+        this.minimap?.schedule();
         this.root.style.backgroundSize = `${step}px ${step}px`;
         this.root.style.backgroundPosition = `${offsetX}px ${offsetY}px`;
     }
@@ -1512,6 +1687,7 @@ export class WorkflowEditor {
         this.selected = nodes;
         this.selectedConn = conn;
         this.updateTools();
+        this.minimap?.schedule();
         this.emitSelection();
     }
 
@@ -1536,7 +1712,7 @@ export class WorkflowEditor {
     }
 
     private handleDown(e: PointerEvent): void {
-        if (this.gesture !== null) {
+        if (this.gesture !== null || this.tween !== null) {
             return;
         }
 

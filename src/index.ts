@@ -105,6 +105,11 @@ export { WorkflowModel } from './workflow/WorkflowModel';
 export { WorkflowGeometry, WORKFLOW_CURVE } from './workflow/WorkflowGeometry';
 export type { WorkflowPortPlace, WorkflowPath } from './workflow/WorkflowGeometry';
 export { WorkflowStyles } from './workflow/WorkflowStyles';
+export type { WorkflowStyleVar } from './workflow/WorkflowStyles';
+export { WorkflowLayout } from './workflow/WorkflowLayout';
+export type { WorkflowLayoutOptions } from './workflow/WorkflowLayout';
+export { WorkflowMinimap } from './workflow/WorkflowMinimap';
+export type { WorkflowMinimapItem, WorkflowMinimapHost, WorkflowMinimapFrame } from './workflow/WorkflowMinimap';
 export type {
     WorkflowSide,
     WorkflowPortDir,

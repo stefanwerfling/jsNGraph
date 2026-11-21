@@ -74,7 +74,7 @@ Decisions:
 
 ## Milestones
 
-Status: W1–W5 done (`examples/workflow.html`).
+Status: W1–W6 done (`examples/workflow.html`).
 
 | # | Content |
 |---|---|
@@ -83,7 +83,7 @@ Status: W1–W5 done (`examples/workflow.html`).
 | **W3** | Editing comfort: "+" on free outputs and on free non-left inputs (`addRequest` → host picker → `addNodeFrom`, placed beside the port clear of other nodes; `typesFor` lists compatible types), insert/delete buttons on the hovered connection (`insertRequest` → `insertNode`: right of the source, downstream nodes shift when crowded), copy/cut/paste through the system clipboard as a JSON `WorkflowFragment` (paste lands at the cursor), Ctrl+D duplicate, delete re-links a chain (`reconnectOnDelete`), D toggles disabled (connections of disabled nodes are dashed). Pasted connections go through the same validation, so a host `canConnect` veto also applies to them. |
 | **W4** | Adding from outside: the host renders its palette and calls `beginDrag(type, pointerEvent)` on an item's `pointerdown` — a preview of the real node follows the pointer (mouse/pen/touch; palette needs `touch-action: none`), a connection it fits into lights up (±10 px tolerance), release over the editor calls `dropAt(type, clientX, clientY)` (insert into that connection, else add centred and snapped), Escape cancels. Sticky notes (`doc.notes`, `WorkflowNote`): behind the nodes, move/resize with snap, double-click edits the text (Ctrl+Enter/blur keeps, Escape discards), select (a band must enclose a note), delete, copy/paste, undo; `addNote`/`updateNote`/`editNote`, `remove(ids)` for mixed deletions. Keys and clicks inside text fields (note editor, inputs in a custom node body) are left alone. |
 | **W5** | Run status (display only — not in the document, not undoable, survives re-renders and undo): `setNodeStatus(id, 'idle' \| 'waiting' \| 'running' \| 'success' \| 'error', {message?})` — badge (spinner, ✓, !, …) with the message as tooltip, tinted border, glow while running; `setConnectionStatus(id, {items?, label?, active?, status?})` — item-count pill, SMIL dots travelling the path while active, success/error tint; `setRunPath(nodeIds)` dims everything outside the executed path; `clearStatus()`. Motion is off under `prefers-reduced-motion`. The example's ▶ Run is a host-side simulation feeding this API (Merge waits for both inputs, If splits items, sub-nodes run with their agent). |
-| **W6** | Tidy-up auto-layout (`FlowLayout`), minimap, obstacle-aware routing for backward connections (today the detour only clears its own two nodes and can pass behind others), theme tokens from CSS variables, `examples/workflow.html` polish. |
+| **W6** | `tidyUp()` — `WorkflowLayout` (pure, own file; `FlowLayout` is top-down and bound to `ModelNode`): columns by longest path over flow connections after a DFS drops loop edges, barycenter sweeps order each column by predecessor and output port, sub-nodes (model/tools) in a row under their node, disconnected parts stacked; keeps the old top-left, animated, one undo step; notes that enclosed nodes are refitted around them. Minimap (`minimap: true` / `setMinimap`, `WorkflowMinimap`): canvas overview, click/drag to move the view. Backward detours step below any node in their way (`WorkflowGeometry.clearRun`); item labels sit above nodes. `setStyleVars` overrides `--wf-*`, `WorkflowStyles.varsFromTheme(Theme.dark)` shares NGraph's palette. |
 
 Later / optional: sub-workflows (collapsed groups), connection labels, a
 read-only execution-replay mode.

@@ -148,6 +148,8 @@ export interface WorkflowEditorOptions {
     historySize?: number;
     /** Deleting a node in a chain wires its predecessor to its successors. Default true. */
     reconnectOnDelete?: boolean;
+    /** Show the overview map. Default false. */
+    minimap?: boolean;
 }
 
 /** Clipboard/fragment format of copy, cut and paste. */

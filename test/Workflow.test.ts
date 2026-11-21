@@ -257,6 +257,23 @@ describe('WorkflowGeometry', () => {
         expect(below.mid.y).toBe(182);
     });
 
+    it('routes a backward detour below other nodes in its way', () => {
+        const aRect = {x: 600, y: 0, w: 200, h: 64};
+        const bRect = {x: 0, y: 0, w: 200, h: 64};
+        const a = {x: 800, y: 32, side: 'right' as const};
+        const b = {x: 0, y: 32, side: 'left' as const};
+        const free = G.connectionPath(a, b, aRect, bRect);
+        expect(free.mid.y).toBe(64 + 42);
+
+        // A node sits right where the run would go: step below it, then below the next.
+        const blocker = {x: 300, y: 80, w: 200, h: 64};
+        const below = {x: 250, y: 160, w: 100, h: 40};
+        const routed = G.connectionPath(a, b, aRect, bRect, [blocker, below]);
+        expect(routed.mid.y).toBe(200 + 28);
+
+        expect(G.clearRun(0, 100, 50, [{x: 200, y: 0, w: 50, h: 100}], 28)).toBe(50);   // not in x range
+    });
+
     it('labels item counts', () => {
         expect(G.itemsLabel(0)).toBe('0 items');
         expect(G.itemsLabel(1)).toBe('1 item');

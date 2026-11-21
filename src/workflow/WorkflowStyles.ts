@@ -1,3 +1,10 @@
+import { ThemeTokens } from '../render/Theme';
+
+/** Names of the editor's CSS custom properties, without the `--wf-` prefix. */
+export type WorkflowStyleVar =
+    | 'bg' | 'grid' | 'node-bg' | 'node-border' | 'text' | 'subtext' | 'edge' | 'accent'
+    | 'sel' | 'port-bg' | 'ok' | 'bad' | 'band' | 'note';
+
 /**
  * Default look of the workflow editor, injected once. All rules are
  * zero-specificity `:where()` selectors and every colour is a `--wf-*`
@@ -8,6 +15,28 @@
 export class WorkflowStyles {
 
     private static injected = false;
+
+    /**
+     * `--wf-*` values from an NGraph `ThemeTokens` palette, so a workflow
+     * editor and an NGraph on the same page share one look. Pass the result
+     * to `WorkflowEditor.setStyleVars`.
+     */
+    public static varsFromTheme(t: ThemeTokens): Partial<Record<WorkflowStyleVar, string>> {
+        return {
+            'bg': t.background,
+            'grid': t.gridDot,
+            'node-bg': t.nodeFill,
+            'node-border': t.nodeStroke,
+            'text': t.panelText,
+            'subtext': t.panelSubtext,
+            'edge': t.edgeNeutral ?? t.nodeStroke,
+            'sel': t.nodeSelectedStroke,
+            'port-bg': t.panelBackground,
+            'ok': t.statusOk,
+            'bad': t.statusCritical,
+            'note': t.statusWarning
+        };
+    }
 
     public static ensure(): void {
         if (WorkflowStyles.injected || typeof document === 'undefined') {
@@ -133,6 +162,11 @@ export class WorkflowStyles {
             ':where(.wf-note-resize){position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize;display:none;' +
             'background:linear-gradient(135deg,transparent 50%,color-mix(in srgb,var(--wf-note-color,var(--wf-note)) 70%,transparent) 50%)}',
             ':where(.wf-editable .wf-note-resize){display:block}',
+
+            // Minimap
+            ':where(.wf-minimap){position:absolute;right:12px;bottom:12px;z-index:3;border-radius:8px;cursor:pointer;' +
+            'background:color-mix(in srgb,var(--wf-node-bg) 88%,transparent);border:1px solid var(--wf-node-border);' +
+            'box-shadow:0 4px 14px rgba(0,0,0,.25)}',
 
             // Palette drag: the ghost node under the cursor, and a connection it would drop into
             ':where(.wf-ghost){position:fixed;left:0;top:0;z-index:10000;pointer-events:none;transform-origin:0 0;opacity:.9}',

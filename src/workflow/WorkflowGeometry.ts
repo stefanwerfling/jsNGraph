@@ -89,9 +89,13 @@ export class WorkflowGeometry {
      * cursor while drafting). Forward right→left connections are a cubic
      * curve; when the target lies behind the source, the path leaves the
      * port, detours around both nodes with rounded corners and enters from
-     * the left — a curve would cut straight through the nodes.
+     * the left — a curve would cut straight through the nodes. With
+     * `obstacles`, the detour's horizontal run also steps below any other
+     * node it would cross.
      */
-    public static connectionPath(a: RectAnchorPoint, b: RectAnchorPoint, aRect?: RectArea, bRect?: RectArea): WorkflowPath {
+    public static connectionPath(
+        a: RectAnchorPoint, b: RectAnchorPoint, aRect?: RectArea, bRect?: RectArea, obstacles: RectArea[] = []
+    ): WorkflowPath {
         const stub = WorkflowGeometry.STUB;
         const backward = a.side === 'right' && b.side === 'left' && b.x < a.x + stub * 2
             && aRect !== undefined && bRect !== undefined;
@@ -116,6 +120,8 @@ export class WorkflowGeometry {
         } else {
             yMid = Math.max(aBottom, bBottom) + stub * 1.5;  // overlapping rows: go under both
         }
+
+        yMid = WorkflowGeometry.clearRun(Math.min(x1, x2), Math.max(x1, x2), yMid, obstacles, stub);
 
         const points = [
             {x: a.x, y: a.y}, {x: x1, y: a.y}, {x: x1, y: yMid},
@@ -174,6 +180,25 @@ export class WorkflowGeometry {
         }
 
         return {x, y};
+    }
+
+    /**
+     * A y for a horizontal run from x0 to x1 that crosses none of `boxes`:
+     * while the run would cut through a box, move it below that box.
+     */
+    public static clearRun(x0: number, x1: number, y: number, boxes: RectArea[], clearance: number): number {
+        const margin = 6;
+
+        for (let guard = 0; guard <= boxes.length; guard++) {
+            const hit = boxes.find((r) => r.x < x1 && r.x + r.w > x0 && y > r.y - margin && y < r.y + r.h + margin);
+
+            if (hit === undefined) {
+                return y;
+            }
+            y = hit.y + hit.h + clearance;
+        }
+
+        return y;
     }
 
     /** "1 item" / "3 items" — the text of a connection's item count. */
