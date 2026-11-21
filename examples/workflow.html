@@ -20,6 +20,14 @@
         border: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     #help { bottom: 14px; right: 14px; font-size: 12px; color: var(--text-dim); text-align: right; line-height: 1.5; }
     @media (max-width: 720px) { #help { display: none; } }
+    #picker { position: fixed; z-index: 60; min-width: 190px; max-height: 320px; overflow: auto; padding: 4px;
+        background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0,0,0,.35); display: none; }
+    #picker .head { padding: 6px 8px 4px; font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; }
+    #picker button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0;
+        border-radius: 5px; background: transparent; color: var(--text); font-size: 13px; text-align: left; cursor: pointer; }
+    #picker button:hover { background: rgba(122,162,255,.15); }
+    #picker .ic { width: 22px; height: 22px; border-radius: 5px; display: grid; place-items: center; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -46,13 +54,16 @@
     <button data-add="tool">+ Tool</button>
     <span class="sep"></span>
     <button id="disable">Disable</button>
+    <button id="dup">Duplicate</button>
     <button id="dump">Log JSON</button>
 </div>
 
 <div id="log" class="hud">Drag from an output port to an input port.</div>
+<div id="picker"></div>
 <div id="help" class="hud">
-    drag ports to connect · drag a connected input to move it<br>
-    Shift+drag: select area · Del: delete · Ctrl+Z / Ctrl+Y · wheel: zoom
+    drag ports to connect · drag a connected input to move it · “+” adds a node<br>
+    Shift+drag: select area · Del: delete (re-links the chain) · D: disable<br>
+    Ctrl+C / X / V / D: copy, cut, paste, duplicate · Ctrl+Z / Ctrl+Y · wheel: zoom
 </div>
 
 <script src="../dist/jsngraph.global.js"></script>
@@ -123,6 +134,7 @@
         $('redo').disabled = editor.readOnly || !editor.canRedo;
         const sel = editor.getSelection().nodes;
         $('disable').disabled = editor.readOnly || sel.length === 0;
+        $('dup').disabled = editor.readOnly || sel.length === 0;
     };
 
     editor.on('change', (c) => { log(`change: ${c.kind} ${[...c.nodes, ...c.connections].join(', ')}`); syncButtons(); });
@@ -153,6 +165,7 @@
             editor.updateNode(id, {disabled: !editor.getNode(id).disabled});
         }
     };
+    $('dup').onclick = () => editor.duplicateSelection();
     $('dump').onclick = () => console.log(JSON.stringify(editor.getDocument(), null, 2)) || log('document logged to the console');
 
     document.querySelectorAll('[data-add]').forEach((btn) => {
@@ -163,6 +176,39 @@
             editor.select([node.id]);
         };
     });
+
+    // A minimal node picker — the host's job; the editor only asks for one.
+    const picker = $('picker');
+    const closePicker = () => { picker.style.display = 'none'; };
+    const openPicker = (title, list, event, choose) => {
+        picker.replaceChildren();
+        const head = document.createElement('div');
+        head.className = 'head';
+        head.textContent = list.length > 0 ? title : 'No compatible node types';
+        picker.appendChild(head);
+        for (const t of list) {
+            const b = document.createElement('button');
+            b.innerHTML = `<span class="ic" style="color:${t.color};background:${t.color}22">${t.icon ?? ''}</span>`;
+            b.append(t.label);
+            b.onclick = () => { closePicker(); choose(t.type); editor.element.focus(); };
+            picker.appendChild(b);
+        }
+        picker.style.display = 'block';
+        const w = picker.offsetWidth;
+        const h = picker.offsetHeight;
+        picker.style.left = `${Math.min(event.clientX + 8, innerWidth - w - 8)}px`;
+        picker.style.top = `${Math.min(event.clientY + 8, innerHeight - h - 8)}px`;
+    };
+    // Types that pass straight through a connection: a main input and a main output.
+    const passThrough = types.filter((t) =>
+        (t.inputs ?? []).some((p) => (p.kind ?? 'main') === 'main') && (t.outputs ?? []).some((p) => (p.kind ?? 'main') === 'main'));
+
+    editor.on('addRequest', (e) => openPicker('Add node', editor.typesFor(e.port, e.dir), e.originalEvent,
+        (type) => editor.addNodeFrom(e.port, e.dir, {type})));
+    editor.on('insertRequest', (e) => openPicker('Insert node', passThrough, e.originalEvent,
+        (type) => editor.insertNode(e.connection, {type})));
+    addEventListener('pointerdown', (e) => { if (!picker.contains(e.target)) closePicker(); }, true);
+    addEventListener('keydown', (e) => { if (e.key === 'Escape') closePicker(); });
 
     syncButtons();
     window.editor = editor;

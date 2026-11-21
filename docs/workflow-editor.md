@@ -71,13 +71,13 @@ Decisions:
 
 ## Milestones
 
-Status: W1 and W2 done (`examples/workflow.html`).
+Status: W1–W3 done (`examples/workflow.html`).
 
 | # | Content |
 |---|---|
 | **W1** | Skeleton: `WorkflowEditor`, type registry, DOM nodes with ports, port-to-port curves, pan/zoom/fit, drag with grid snap (Alt bypasses), select (click, Shift/Ctrl toggle, Shift+drag band), read-only mode. |
 | **W2** | Connecting: drag from a port with a live draft curve, valid targets highlighted, drop on a port or a node body (first free compatible port), drag a connected input to pick the connection up again, select/delete connections, undo/redo, keyboard (Delete, Ctrl+Z/Y, Ctrl+A). |
-| **W3** | Editing comfort: "+" on free outputs and on a connection's midpoint (events — the app opens its node picker, then calls `insertNode`), copy/paste/duplicate as JSON fragments, delete-with-reconnect, disable node. |
+| **W3** | Editing comfort: "+" on free outputs and on free non-left inputs (`addRequest` → host picker → `addNodeFrom`, placed beside the port clear of other nodes; `typesFor` lists compatible types), insert/delete buttons on the hovered connection (`insertRequest` → `insertNode`: right of the source, downstream nodes shift when crowded), copy/cut/paste through the system clipboard as a JSON `WorkflowFragment` (paste lands at the cursor), Ctrl+D duplicate, delete re-links a chain (`reconnectOnDelete`), D toggles disabled (connections of disabled nodes are dashed). Pasted connections go through the same validation, so a host `canConnect` veto also applies to them. |
 | **W4** | Adding from outside: `dropAt(type, clientX, clientY)` for a host-rendered node palette; sticky notes. |
 | **W5** | Run status: `setNodeStatus(id, 'idle' \| 'running' \| 'success' \| 'error', {items?, message?})` — status ring, spinner, error badge, item counts on connections, animated dots on active connections, highlight the execution path. |
 | **W6** | Tidy-up auto-layout (`FlowLayout`), minimap, obstacle-aware routing for backward connections (today the detour only clears its own two nodes and can pass behind others), theme tokens from CSS variables, `examples/workflow.html` polish. |

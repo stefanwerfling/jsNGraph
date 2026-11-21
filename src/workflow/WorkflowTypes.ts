@@ -77,6 +77,9 @@ export type WorkflowChangeKind =
     | 'disconnect'
     | 'reconnect'
     | 'remove'
+    | 'disable'
+    | 'paste'
+    | 'insertNode'
     | 'undo'
     | 'redo';
 
@@ -105,6 +108,14 @@ export interface WorkflowEditorOptions {
     fitOnLoad?: boolean;
     /** Undo depth. Default 100. */
     historySize?: number;
+    /** Deleting a node in a chain wires its predecessor to its successors. Default true. */
+    reconnectOnDelete?: boolean;
+}
+
+/** Clipboard/fragment format of copy, cut and paste. */
+export interface WorkflowFragment extends WorkflowDocument {
+    format: 'jsngraph-workflow';
+    version: 1;
 }
 
 export interface WorkflowClickEvent {
@@ -119,6 +130,15 @@ export interface WorkflowEditorEvents extends Record<string, unknown> {
     nodeDblClick: WorkflowClickEvent;
     connectionClick: WorkflowClickEvent;
     backgroundClick: {x: number; y: number; originalEvent: MouseEvent};
+    /**
+     * "+" on a free port was pressed. The host opens its node picker and
+     * answers with `addNodeFrom(port, dir, {type})`. `at` is the port's
+     * position (world coordinates); `originalEvent` has the screen position.
+     */
+    addRequest: {port: WorkflowPortRef; dir: WorkflowPortDir; at: {x: number; y: number}; originalEvent: MouseEvent};
+    /** "+" on a connection was pressed; answer with `insertNode(connection, {type})`.
+     *  `at` is the connection's midpoint (world coordinates). */
+    insertRequest: {connection: string; at: {x: number; y: number}; originalEvent: MouseEvent};
     /** A connection attempt was refused (wrong kind, port full, host veto …). */
     connectRefused: {from: WorkflowPortRef; to: WorkflowPortRef; reason: string};
 }

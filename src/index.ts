@@ -113,6 +113,7 @@ export type {
     WorkflowPortRef,
     WorkflowConnection,
     WorkflowDocument,
+    WorkflowFragment,
     WorkflowCanConnect,
     WorkflowChangeKind,
     WorkflowChange,

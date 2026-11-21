@@ -121,7 +121,11 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   connections, validation incl. host `canConnect`; unknown types/ports are kept, not drawn) and
   `WorkflowGeometry.ts` (pure: node size, port placement, forward curve vs. rounded backward detour)
   are tested in `test/Workflow.test.ts`. Styles are `:where()` rules over `--wf-*` CSS variables
-  (`WorkflowStyles.ts`). Plan + milestones W1–W6: `docs/workflow-editor.md`. Example: `examples/workflow.html`.
+  (`WorkflowStyles.ts`). Editing comfort (W3): "+" on free ports / insert+delete on the hovered connection only
+  *request* a node (`addRequest`/`insertRequest` events — the host shows its own picker, then calls
+  `addNodeFrom`/`insertNode`); copy/cut/paste use the system clipboard with a JSON `WorkflowFragment`;
+  delete bridges chains (`reconnectOnDelete`). Plan + milestones W1–W6: `docs/workflow-editor.md`.
+  Example: `examples/workflow.html`.
 
 ## Commands
 

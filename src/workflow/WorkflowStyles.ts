@@ -79,6 +79,20 @@ export class WorkflowStyles {
             ':where(.wf-conn-draft){fill:none;stroke:var(--wf-sel);stroke-width:2;stroke-dasharray:6 5}',
             ':where(.wf-conn-draft.wf-ok){stroke:var(--wf-ok);stroke-dasharray:none}',
 
+            ':where(g.wf-conn-g.wf-off .wf-conn){stroke-dasharray:5 5;opacity:.5}',
+
+            // "+" on free ports, insert/delete on connections
+            ':where(.wf-add){position:absolute;width:20px;height:20px;margin:-10px 0 0 -10px;padding:0;border-radius:6px;' +
+            'border:1.5px dashed var(--wf-edge);background:var(--wf-bg);color:var(--wf-subtext);font:600 14px/1 system-ui;' +
+            'cursor:pointer;display:grid;place-items:center;opacity:.7}',
+            ':where(.wf-add:hover){opacity:1;border-style:solid;border-color:var(--wf-sel);color:var(--wf-sel)}',
+            ':where(.wf-port.wf-connected + .wf-add),:where(.wf-root:not(.wf-editable) .wf-add),:where(.wf-drafting .wf-add){display:none}',
+            ':where(.wf-conn-tools){position:absolute;display:flex;gap:4px;transform:translate(-50%,-50%);z-index:2}',
+            ':where(.wf-conn-tools button){width:22px;height:22px;padding:0;border-radius:6px;cursor:pointer;' +
+            'border:1px solid var(--wf-node-border);background:var(--wf-node-bg);color:var(--wf-text);font:600 14px/1 system-ui}',
+            ':where(.wf-conn-tools button:hover){border-color:var(--wf-sel);color:var(--wf-sel)}',
+            ':where(.wf-conn-tools button[data-wf-tool="delete"]:hover){border-color:var(--wf-bad);color:var(--wf-bad)}',
+
             ':where(.wf-band){position:absolute;border:1px dashed var(--wf-sel);background:var(--wf-band);pointer-events:none}'
         ].join('');
     }

@@ -56,7 +56,7 @@ describe('WorkflowModel', () => {
         m.connect({node: 't', port: 'main'}, {node: 'if', port: 'main'});
         m.connect({node: 'if', port: 'true'}, {node: 's', port: 'main'});
 
-        expect(m.removeNodes(['if']).length).toBe(2);
+        expect(m.removeNodes(['if'])).toEqual({removed: ['c1', 'c2'], added: []});
         expect(m.allConnections()).toEqual([]);
 
         const doc = {
@@ -79,7 +79,100 @@ describe('WorkflowModel', () => {
     });
 });
 
+describe('WorkflowModel editing helpers', () => {
+    function chain(): WorkflowModel {
+        // t → s1 → s2 → s3, plus s1 → if (s1 fans out to two successors)
+        const m = new WorkflowModel(TYPES);
+        m.addNode({id: 't', type: 'trigger', x: 0, y: 0});
+        for (const id of ['s1', 's2', 's3']) {
+            m.addNode({id, type: 'single', x: 0, y: 0});
+        }
+        m.addNode({id: 'if', type: 'if', x: 0, y: 0});
+        m.connect({node: 't', port: 'main'}, {node: 's1', port: 'main'}, 'a');
+        m.connect({node: 's1', port: 'main'}, {node: 's2', port: 'main'}, 'b');
+        m.connect({node: 's2', port: 'main'}, {node: 's3', port: 'main'}, 'c');
+        m.connect({node: 's1', port: 'main'}, {node: 'if', port: 'main'}, 'd');
+        return m;
+    }
+    const pairs = (m: WorkflowModel): string[] => m.allConnections().map((c) => `${c.from.node}>${c.to.node}`).sort();
+
+    it('bridges a deleted node to all its successors', () => {
+        const m = chain();
+        const r = m.removeNodes(['s1'], true);
+
+        expect(r.removed.sort()).toEqual(['a', 'b', 'd']);
+        expect(r.added.length).toBe(2);
+        expect(pairs(m)).toEqual(['s2>s3', 't>if', 't>s2']);
+    });
+
+    it('bridges across a deleted run and reports only lasting connections', () => {
+        const m = chain();
+        const r = m.removeNodes(['s1', 's2'], true);
+
+        expect(pairs(m)).toEqual(['t>if', 't>s3']);
+        // The temporary t>s2 bridge is neither "removed" nor "added".
+        expect(r.removed.sort()).toEqual(['a', 'b', 'c', 'd']);
+        expect(r.added.length).toBe(2);
+        expect(r.added.every((id) => m.connection(id) !== undefined)).toBe(true);
+    });
+
+    it('does not bridge without reconnect or with several inputs', () => {
+        const m = chain();
+        m.removeNodes(['s2']);
+        expect(pairs(m)).toEqual(['s1>if', 't>s1']);
+
+        const merge = new WorkflowModel([...TYPES, {type: 'm', label: 'M', inputs: [{id: 'main'}], outputs: [{id: 'main'}]}]);
+        merge.addNode({id: 'x', type: 'trigger', x: 0, y: 0});
+        merge.addNode({id: 'y', type: 'trigger', x: 0, y: 0});
+        merge.addNode({id: 'mm', type: 'm', x: 0, y: 0});
+        merge.addNode({id: 'z', type: 'single', x: 0, y: 0});
+        merge.connect({node: 'x', port: 'main'}, {node: 'mm', port: 'main'});
+        merge.connect({node: 'y', port: 'main'}, {node: 'mm', port: 'main'});
+        merge.connect({node: 'mm', port: 'main'}, {node: 'z', port: 'main'});
+        merge.removeNodes(['mm'], true);
+        expect(merge.allConnections()).toEqual([]);
+    });
+
+    it('copies a fragment with its inner connections and pastes it under new ids', () => {
+        const m = chain();
+        const frag = m.fragment(['s1', 's2', 'missing']);
+
+        expect(frag.nodes.map((n) => n.id)).toEqual(['s1', 's2']);
+        expect(frag.connections.map((c) => c.id)).toEqual(['b']);
+
+        const added = m.paste(frag, 40, 40);
+        expect(added.nodes.length).toBe(2);
+        expect(added.nodes.every((id) => !['s1', 's2'].includes(id))).toBe(true);
+        expect(added.connections.length).toBe(1);
+        const c = m.connection(added.connections[0]!)!;
+        expect(added.nodes).toEqual([c.from.node, c.to.node]);
+        expect(m.node(added.nodes[0]!)).toMatchObject({type: 'single', x: 40, y: 40});
+    });
+
+    it('toggles disabled and lists picker types by port kind', () => {
+        const m = chain();
+        expect(m.setDisabled(['s1', 's2'], true)).toEqual(['s1', 's2']);
+        expect(m.setDisabled(['s1', 's3'], true)).toEqual(['s3']);
+
+        const mm = model();
+        expect(mm.typesFor({node: 't', port: 'main'}, 'out').map((t) => t.type)).toEqual(['if', 'single', 'agent']);
+        expect(mm.typesFor({node: 'a', port: 'tool'}, 'in').map((t) => t.type)).toEqual(['tool']);
+        expect(mm.typesFor({node: 't', port: 'nope'}, 'out')).toEqual([]);
+    });
+});
+
 describe('WorkflowGeometry', () => {
+    it('places a new node beside a port, clear of other nodes', () => {
+        const size = {w: 200, h: 64};
+        expect(G.placeNear({x: 300, y: 132, side: 'right'}, size, [], 20)).toEqual({x: 380, y: 100});
+        expect(G.placeNear({x: 100, y: 64, side: 'bottom'}, size, [], 20)).toEqual({x: 0, y: 140});
+
+        // A node sits exactly there: move down by height + 40 until free.
+        const blocker = {x: 380, y: 100, w: 200, h: 64};
+        expect(G.placeNear({x: 300, y: 132, side: 'right'}, size, [blocker], 20)).toEqual({x: 380, y: 200});
+        expect(G.placeNear({x: 300, y: 132, side: 'right'}, size, [blocker, {...blocker, y: 200}], 20)).toEqual({x: 380, y: 300});
+    });
+
     it('sizes nodes for their ports and spreads ports along each side', () => {
         const ifType = TYPES[1]!;
         expect(G.nodeSize(ifType)).toEqual({w: 200, h: 72});

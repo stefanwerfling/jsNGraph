@@ -11,6 +11,7 @@ import {
     WorkflowDocument,
     WorkflowEditorEvents,
     WorkflowEditorOptions,
+    WorkflowFragment,
     WorkflowNodeData,
     WorkflowNodeType,
     WorkflowPortDir,
@@ -39,6 +40,7 @@ interface ConnView {
     g: SVGGElement;
     hit: SVGPathElement;
     path: SVGPathElement;
+    mid: RectPoint;
 }
 
 interface DraftTarget {
@@ -88,6 +90,11 @@ export class WorkflowEditor {
     private readonly history: RectHistory<WorkflowDocument>;
     private readonly grid: number;
     private readonly fitOnLoad: boolean;
+    private readonly reconnectOnDelete: boolean;
+    private readonly tools: HTMLDivElement;
+    private hoveredConn: string | null = null;
+    /** Last pointer position (root-local px) while the pointer is over the editor. */
+    private lastPointer: RectPoint | null = null;
 
     private readonly nodeViews = new Map<string, NodeView>();
     private readonly connViews = new Map<string, ConnView>();
@@ -107,12 +114,22 @@ export class WorkflowEditor {
     private readonly onWheel = (e: WheelEvent): void => this.handleWheel(e);
     private readonly onDbl = (e: MouseEvent): void => this.handleDblClick(e);
     private readonly onKey = (e: KeyboardEvent): void => this.handleKey(e);
+    private readonly onOver = (e: PointerEvent): void => this.handleOver(e);
+    private readonly onLeave = (): void => {
+        this.lastPointer = null;
+        this.hoveredConn = null;
+        this.updateTools();
+    };
+    private readonly onCopy = (e: ClipboardEvent): void => this.handleClipboard(e, 'copy');
+    private readonly onCut = (e: ClipboardEvent): void => this.handleClipboard(e, 'cut');
+    private readonly onPaste = (e: ClipboardEvent): void => this.handleClipboard(e, 'paste');
 
     public constructor(container: HTMLElement, options: WorkflowEditorOptions = {}) {
         WorkflowStyles.ensure();
 
         this.grid = options.grid ?? 20;
         this.fitOnLoad = options.fitOnLoad ?? true;
+        this.reconnectOnDelete = options.reconnectOnDelete ?? true;
         this.readOnlyFlag = options.readOnly ?? false;
         this.camera = new Camera(options.minScale ?? 0.2, options.maxScale ?? 2.5);
         this.model = new WorkflowModel(options.types ?? [], undefined, options.canConnect);
@@ -140,7 +157,14 @@ export class WorkflowEditor {
 
         this.nodeLayer = document.createElement('div');
 
-        this.stage.append(this.svg, this.nodeLayer);
+        this.tools = document.createElement('div');
+        this.tools.className = 'wf-conn-tools';
+        this.tools.style.display = 'none';
+        this.tools.innerHTML =
+            '<button type="button" data-wf-tool="insert" title="Insert node">+</button>' +
+            '<button type="button" data-wf-tool="delete" title="Delete connection">×</button>';
+
+        this.stage.append(this.svg, this.nodeLayer, this.tools);
         this.root.appendChild(this.stage);
         container.appendChild(this.root);
 
@@ -151,6 +175,11 @@ export class WorkflowEditor {
         this.root.addEventListener('wheel', this.onWheel, {passive: false});
         this.root.addEventListener('dblclick', this.onDbl);
         this.root.addEventListener('keydown', this.onKey);
+        this.root.addEventListener('pointerover', this.onOver);
+        this.root.addEventListener('pointerleave', this.onLeave);
+        document.addEventListener('copy', this.onCopy);
+        document.addEventListener('cut', this.onCut);
+        document.addEventListener('paste', this.onPaste);
 
         if (typeof ResizeObserver !== 'undefined') {
             this.resizeObserver = new ResizeObserver(() => {
@@ -232,17 +261,200 @@ export class WorkflowEditor {
         return true;
     }
 
-    /** Remove nodes and their connections. */
-    public removeNodes(ids: Iterable<string>): void {
+    /**
+     * Remove nodes and their connections. With `reconnect` (default: the
+     * `reconnectOnDelete` option) a node in a chain is bridged — its
+     * predecessor gets wired to its successors.
+     */
+    public removeNodes(ids: Iterable<string>, reconnect = this.reconnectOnDelete): void {
         const list = [...ids].filter((id) => this.model.node(id) !== undefined);
 
         if (list.length === 0) {
             return;
         }
 
-        const conns = this.model.removeNodes(list);
+        const {removed, added} = this.model.removeNodes(list, reconnect);
         this.afterRemove(list);
-        this.commit('removeNodes', list, conns);
+        this.commit('removeNodes', list, [...removed, ...added]);
+    }
+
+    /** Set (or with `undefined`, toggle as a group) the disabled flag of nodes. */
+    public setDisabled(ids: Iterable<string>, disabled?: boolean): void {
+        const list = [...ids].filter((id) => this.model.node(id) !== undefined);
+        const value = disabled ?? !list.every((id) => this.model.node(id)!.disabled === true);
+        const changed = this.model.setDisabled(list, value);
+
+        if (changed.length === 0) {
+            return;
+        }
+
+        for (const id of changed) {
+            this.renderNode(this.model.node(id)!);
+        }
+        this.renderConnections();
+        this.commit('disable', changed, []);
+    }
+
+    /**
+     * Add a node attached to a port — the answer to an `addRequest`. Unless
+     * `data` has x/y, the node is placed beside the port, clear of other
+     * nodes; it is wired through its first compatible port.
+     */
+    public addNodeFrom(
+        port: WorkflowPortRef,
+        dir: WorkflowPortDir,
+        data: Omit<WorkflowNodeData, 'id' | 'x' | 'y'> & {id?: string; x?: number; y?: number}
+    ): WorkflowNodeData | null {
+        const place = this.nodeViews.get(port.node)?.ports.get(`${dir}:${port.port}`)?.place;
+
+        if (place === undefined) {
+            return null;
+        }
+
+        const size = WorkflowGeometry.nodeSize(this.model.getType(data.type));
+        const obstacles = [...this.nodeViews.values()].map((v) => v.rect);
+        const pos = data.x !== undefined && data.y !== undefined
+            ? {x: data.x, y: data.y}
+            : WorkflowGeometry.placeNear(place, size, obstacles, this.grid);
+        const node = this.model.addNode({...data, x: pos.x, y: pos.y});
+        const conns: string[] = [];
+        const other = this.model.firstCompatiblePort(port, dir, node.id);
+
+        if (other !== null) {
+            const ref = {node: node.id, port: other};
+            conns.push((dir === 'out' ? this.model.connect(port, ref) : this.model.connect(ref, port)).id);
+        }
+
+        this.renderNode(node);
+        this.renderConnections();
+        this.commit('addNode', [node.id, port.node], conns);
+
+        return structuredClone(node);
+    }
+
+    /**
+     * Put a node into a connection — the answer to an `insertRequest`. Unless
+     * `data` has x/y, the node goes right of the source, level with the
+     * source port; when it would overlap something, every node right of the
+     * source moves over by the new node's width to make room.
+     */
+    public insertNode(
+        connectionId: string,
+        data: Omit<WorkflowNodeData, 'id' | 'x' | 'y'> & {id?: string; x?: number; y?: number}
+    ): WorkflowNodeData | null {
+        const conn = this.model.connection(connectionId);
+        const source = conn === undefined ? undefined : this.nodeViews.get(conn.from.node);
+        const port = source?.ports.get(`out:${conn!.from.port}`)?.place;
+
+        if (conn === undefined || source === undefined || port === undefined) {
+            return null;
+        }
+
+        const size = WorkflowGeometry.nodeSize(this.model.getType(data.type));
+        const sourceRight = source.rect.x + source.rect.w;
+        const x = data.x ?? RectBoardGeometry.snap(sourceRight + 80, this.grid);
+        const y = data.y ?? RectBoardGeometry.snap(port.y - size.h / 2, this.grid);
+        const rect = {x: x - 20, y: y - 20, w: size.w + 40, h: size.h + 40};
+        const moved: string[] = [];
+
+        if ([...this.nodeViews.values()].some((v) => RectBoardGeometry.overlaps(rect, v.rect))) {
+            const shift = RectBoardGeometry.snap(size.w + 80, this.grid);
+
+            for (const [id, v] of this.nodeViews) {
+                if (id !== conn.from.node && v.rect.x >= sourceRight) {
+                    this.model.moveNode(id, v.rect.x + shift, v.rect.y);
+                    this.positionNode(id);
+                    moved.push(id);
+                }
+            }
+        }
+
+        this.model.disconnect(connectionId);
+
+        const node = this.model.addNode({...data, x, y});
+        const conns = [connectionId];
+        const inPort = this.model.firstCompatiblePort(conn.from, 'out', node.id);
+        const outPort = this.model.firstCompatiblePort(conn.to, 'in', node.id);
+
+        if (inPort !== null) {
+            conns.push(this.model.connect(conn.from, {node: node.id, port: inPort}).id);
+        }
+        if (outPort !== null) {
+            conns.push(this.model.connect({node: node.id, port: outPort}, conn.to).id);
+        }
+
+        if (this.selectedConn === connectionId) {
+            this.selectedConn = null;
+        }
+        this.renderNode(node);
+        this.renderConnections();
+        this.setSelection(new Set([node.id]), null);
+        this.commit('insertNode', [node.id, conn.from.node, conn.to.node, ...moved], conns);
+
+        return structuredClone(node);
+    }
+
+    /** Node types a picker should offer for "+" on this port (direction and kind match). */
+    public typesFor(port: WorkflowPortRef, dir: WorkflowPortDir): WorkflowNodeType[] {
+        return this.model.typesFor(port, dir);
+    }
+
+    /** The selected nodes and the connections between them; null when nothing is selected. */
+    public copySelection(): WorkflowFragment | null {
+        if (this.selected.size === 0) {
+            return null;
+        }
+
+        return {format: 'jsngraph-workflow', version: 1, ...this.model.fragment(this.selected)};
+    }
+
+    /**
+     * Add a copied fragment under fresh ids and select it. `at` puts the
+     * fragment's top-left there (world coordinates); without it the copy is
+     * offset from the original until it no longer sits on top of it.
+     */
+    public paste(fragment: WorkflowDocument, at?: RectPoint): string[] {
+        if (this.readOnlyFlag || fragment.nodes.length === 0) {
+            return [];
+        }
+
+        const minX = Math.min(...fragment.nodes.map((n) => n.x));
+        const minY = Math.min(...fragment.nodes.map((n) => n.y));
+        let dx: number;
+        let dy: number;
+
+        if (at !== undefined) {
+            dx = RectBoardGeometry.snap(at.x - minX, this.grid);
+            dy = RectBoardGeometry.snap(at.y - minY, this.grid);
+        } else {
+            const taken = new Set(this.model.allNodes().map((n) => `${n.x},${n.y}`));
+            const first = fragment.nodes[0]!;
+            let k = 1;
+
+            while (k < 50 && taken.has(`${first.x + 40 * k},${first.y + 40 * k}`)) {
+                k++;
+            }
+            dx = 40 * k;
+            dy = 40 * k;
+        }
+
+        const added = this.model.paste(fragment, dx, dy);
+
+        for (const id of added.nodes) {
+            this.renderNode(this.model.node(id)!);
+        }
+        this.renderConnections();
+        this.setSelection(new Set(added.nodes), null);
+        this.commit('paste', added.nodes, added.connections);
+
+        return added.nodes;
+    }
+
+    /** Copy the selection and paste it right next to itself. */
+    public duplicateSelection(): string[] {
+        const fragment = this.copySelection();
+
+        return fragment === null ? [] : this.paste(fragment);
     }
 
     /** Connect an output to an input; null (and `connectRefused`) when invalid. */
@@ -326,6 +538,7 @@ export class WorkflowEditor {
         this.cancelGesture();
         this.readOnlyFlag = readOnly;
         this.root.classList.toggle('wf-editable', !readOnly);
+        this.updateTools();
     }
 
     public setTheme(theme: 'dark' | 'light'): void {
@@ -426,6 +639,11 @@ export class WorkflowEditor {
         this.root.removeEventListener('wheel', this.onWheel);
         this.root.removeEventListener('dblclick', this.onDbl);
         this.root.removeEventListener('keydown', this.onKey);
+        this.root.removeEventListener('pointerover', this.onOver);
+        this.root.removeEventListener('pointerleave', this.onLeave);
+        document.removeEventListener('copy', this.onCopy);
+        document.removeEventListener('cut', this.onCut);
+        document.removeEventListener('paste', this.onPaste);
         this.events.clear();
         this.root.remove();
     }
@@ -484,6 +702,22 @@ export class WorkflowEditor {
             portEl.style.top = `${place.y - rect.y}px`;
             portEl.title = place.port.label ?? place.port.id;
             el.appendChild(portEl);
+
+            // "+" for a free output, and for a free input that is not the main
+            // left-hand one (sockets like a model/tool input at the bottom).
+            if (place.dir === 'out' || place.side !== 'left') {
+                const n = RectBoardGeometry.normal(place.side);
+                const add = document.createElement('button');
+                add.type = 'button';
+                add.className = 'wf-add';
+                add.textContent = '+';
+                add.title = 'Add node';
+                add.dataset.wfAdd = place.port.id;
+                add.dataset.wfDir = place.dir;
+                add.style.left = `${place.x - rect.x + n.x * 36}px`;
+                add.style.top = `${place.y - rect.y + n.y * 36}px`;
+                el.appendChild(add);     // right after its port: CSS hides it once the port is connected
+            }
 
             if (place.port.label !== undefined) {
                 el.appendChild(WorkflowEditor.portLabel(place, rect));
@@ -619,9 +853,12 @@ export class WorkflowEditor {
                 cv = this.createConnView(conn.id);
             }
 
-            const d = WorkflowGeometry.connectionPath(pa.place, WorkflowEditor.inset(pb.place), a.rect, b.rect).d;
+            const {d, mid} = WorkflowGeometry.connectionPath(pa.place, WorkflowEditor.inset(pb.place), a.rect, b.rect);
             cv.hit.setAttribute('d', d);
             cv.path.setAttribute('d', d);
+            cv.mid = mid;
+            cv.g.classList.toggle('wf-off',
+                this.model.node(conn.from.node)?.disabled === true || this.model.node(conn.to.node)?.disabled === true);
             cv.g.classList.toggle('wf-selected', this.selectedConn === conn.id);
         }
 
@@ -631,6 +868,24 @@ export class WorkflowEditor {
                 this.connViews.delete(id);
             }
         }
+
+        this.updateTools();
+    }
+
+    /** Show the insert/delete buttons on the hovered (else the selected) connection. */
+    private updateTools(): void {
+        const id = this.hoveredConn ?? this.selectedConn;
+        const cv = id === null ? undefined : this.connViews.get(id);
+
+        if (this.readOnlyFlag || this.gesture !== null || cv === undefined) {
+            this.tools.style.display = 'none';
+            return;
+        }
+
+        this.tools.dataset.wfFor = id!;
+        this.tools.style.display = '';
+        this.tools.style.left = `${cv.mid.x}px`;
+        this.tools.style.top = `${cv.mid.y}px`;
     }
 
     private createConnView(id: string): ConnView {
@@ -646,7 +901,7 @@ export class WorkflowEditor {
         g.append(hit, path);
         this.connLayer.appendChild(g);
 
-        const cv = {g, hit, path};
+        const cv = {g, hit, path, mid: {x: 0, y: 0}};
         this.connViews.set(id, cv);
 
         return cv;
@@ -752,6 +1007,7 @@ export class WorkflowEditor {
 
         this.selected = nodes;
         this.selectedConn = conn;
+        this.updateTools();
         this.emitSelection();
     }
 
@@ -794,6 +1050,17 @@ export class WorkflowEditor {
         this.root.focus({preventScroll: true});
 
         const target = e.target as Element;
+        const addEl = target.closest<HTMLButtonElement>('[data-wf-add]');
+        const toolEl = target.closest<HTMLButtonElement>('[data-wf-tool]');
+
+        if (addEl !== null || toolEl !== null) {
+            e.stopPropagation();
+            if (!this.readOnlyFlag) {
+                this.pressButton(e, addEl, toolEl);
+            }
+            return;
+        }
+
         const portEl = target.closest<HTMLDivElement>('[data-wf-port]');
         const nodeEl = target.closest<HTMLDivElement>('[data-wf-node]');
         const connEl = target.closest<SVGGElement>('[data-wf-conn]');
@@ -820,6 +1087,103 @@ export class WorkflowEditor {
     private startGesture(e: PointerEvent, gesture: Gesture): void {
         this.gesture = gesture;
         this.root.setPointerCapture(e.pointerId);
+        this.updateTools();
+    }
+
+    private pressButton(e: PointerEvent, addEl: HTMLButtonElement | null, toolEl: HTMLButtonElement | null): void {
+        if (addEl !== null) {
+            const nodeId = addEl.closest<HTMLDivElement>('[data-wf-node]')?.dataset.wfNode;
+            const dir = addEl.dataset.wfDir as WorkflowPortDir;
+            const port = {node: nodeId ?? '', port: addEl.dataset.wfAdd!};
+            const place = this.nodeViews.get(port.node)?.ports.get(`${dir}:${port.port}`)?.place;
+
+            if (place !== undefined) {
+                this.events.emit('addRequest', {port, dir, at: {x: place.x, y: place.y}, originalEvent: e});
+            }
+            return;
+        }
+
+        const id = this.tools.dataset.wfFor;
+        const cv = id === undefined ? undefined : this.connViews.get(id);
+
+        if (id === undefined || cv === undefined) {
+            return;
+        }
+        if (toolEl!.dataset.wfTool === 'delete') {
+            this.hoveredConn = null;
+            this.disconnect(id);
+        } else {
+            this.events.emit('insertRequest', {connection: id, at: {...cv.mid}, originalEvent: e});
+        }
+    }
+
+    private handleOver(e: PointerEvent): void {
+        if (this.gesture !== null) {
+            return;
+        }
+
+        const target = e.target as Element;
+        const conn = target.closest<SVGGElement>('[data-wf-conn]');
+
+        if (conn !== null) {
+            this.hoveredConn = conn.dataset.wfConn!;
+        } else if (target.closest('.wf-conn-tools') === null) {
+            this.hoveredConn = null;
+        }
+
+        this.updateTools();
+    }
+
+    /** Copy/cut/paste while the editor has focus; the clipboard carries a JSON fragment. */
+    private handleClipboard(e: ClipboardEvent, kind: 'copy' | 'cut' | 'paste'): void {
+        const active = document.activeElement;
+
+        if (active === null || !this.root.contains(active) || this.gesture !== null) {
+            return;
+        }
+
+        if (kind === 'paste') {
+            if (this.readOnlyFlag) {
+                return;
+            }
+
+            const fragment = WorkflowEditor.parseFragment(e.clipboardData?.getData('text/plain') ?? '');
+
+            if (fragment !== null) {
+                e.preventDefault();
+                const at = this.lastPointer === null ? undefined : this.camera.toWorld(this.lastPointer.x, this.lastPointer.y);
+                this.paste(fragment, at);
+            }
+            return;
+        }
+
+        const fragment = this.copySelection();
+
+        if (fragment === null || e.clipboardData === null) {
+            return;
+        }
+
+        e.preventDefault();
+        e.clipboardData.setData('text/plain', JSON.stringify(fragment));
+
+        if (kind === 'cut' && !this.readOnlyFlag) {
+            this.removeNodes([...this.selected], false);
+        }
+    }
+
+    /** A clipboard text as a fragment, or null when it is not one of ours. */
+    public static parseFragment(text: string): WorkflowFragment | null {
+        try {
+            const data = JSON.parse(text) as Partial<WorkflowFragment>;
+
+            if (data.format === 'jsngraph-workflow' && Array.isArray(data.nodes) && Array.isArray(data.connections)) {
+                return data as WorkflowFragment;
+            }
+        } catch {
+            // not JSON — someone else's clipboard
+        }
+
+        return null;
     }
 
     private startNodePress(e: PointerEvent, id: string, p: RectPoint): void {
@@ -902,12 +1266,13 @@ export class WorkflowEditor {
 
     private handleMove(e: PointerEvent): void {
         const g = this.gesture;
+        const p = this.local(e);
+
+        this.lastPointer = p;
 
         if (g === null) {
             return;
         }
-
-        const p = this.local(e);
 
         switch (g.kind) {
             case 'pan': {
@@ -1096,6 +1461,7 @@ export class WorkflowEditor {
             this.root.releasePointerCapture(e.pointerId);
         }
         this.root.classList.remove('wf-panning');
+        this.updateTools();
 
         switch (g.kind) {
             case 'pan':
@@ -1276,6 +1642,12 @@ export class WorkflowEditor {
         } else if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) {
             e.preventDefault();
             this.redo();
+        } else if (mod && key === 'd') {
+            e.preventDefault();
+            this.duplicateSelection();
+        } else if (!mod && !e.altKey && key === 'd' && this.selected.size > 0) {
+            e.preventDefault();
+            this.setDisabled(this.selected);
         }
     }
 

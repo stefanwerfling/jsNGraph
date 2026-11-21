@@ -152,22 +152,134 @@ export class WorkflowModel {
         }
     }
 
-    /** Removes nodes and every connection touching them; returns the removed connection ids. */
-    public removeNodes(ids: Iterable<string>): string[] {
-        const gone = new Set(ids);
+    /**
+     * Removes nodes and every connection touching them. With `reconnect`,
+     * a removed node that sat in a chain is bridged: when it had exactly one
+     * incoming connection, its predecessor is wired to each of its successors
+     * (where the rules allow). Nodes are removed one by one, so deleting a
+     * run of chained nodes bridges across the whole run.
+     */
+    public removeNodes(ids: Iterable<string>, reconnect = false): {removed: string[]; added: string[]} {
         const removed: string[] = [];
+        const added: string[] = [];
 
-        for (const c of this.allConnections()) {
-            if (gone.has(c.from.node) || gone.has(c.to.node)) {
+        for (const id of new Set(ids)) {
+            if (!this.nodes.has(id)) {
+                continue;
+            }
+
+            const incoming = this.allConnections().filter((c) => c.to.node === id && c.from.node !== id);
+            const outgoing = this.allConnections().filter((c) => c.from.node === id && c.to.node !== id);
+
+            for (const c of this.connectionsOf(id)) {
                 this.connections.delete(c.id);
-                removed.push(c.id);
+                const at = added.indexOf(c.id);
+
+                if (at >= 0) {
+                    added.splice(at, 1);    // a bridge made earlier in this call is gone again
+                } else {
+                    removed.push(c.id);
+                }
+            }
+            this.nodes.delete(id);
+
+            const source = incoming[0];
+
+            if (!reconnect || incoming.length !== 1 || source === undefined) {
+                continue;
+            }
+
+            for (const out of outgoing) {
+                if (this.validate(source.from, out.to) === null) {
+                    added.push(this.connect(source.from, out.to).id);
+                }
             }
         }
-        for (const id of gone) {
-            this.nodes.delete(id);
+
+        return {removed, added};
+    }
+
+    /** Toggle or set `disabled` on nodes; returns the ids that changed. */
+    public setDisabled(ids: Iterable<string>, disabled: boolean): string[] {
+        const changed: string[] = [];
+
+        for (const id of ids) {
+            const node = this.nodes.get(id);
+
+            if (node !== undefined && (node.disabled === true) !== disabled) {
+                node.disabled = disabled;
+                changed.push(id);
+            }
         }
 
-        return removed;
+        return changed;
+    }
+
+    /** The nodes `ids` and the connections running between them, deep-copied. */
+    public fragment(ids: Iterable<string>): WorkflowDocument {
+        const set = new Set([...ids].filter((id) => this.nodes.has(id)));
+
+        return {
+            nodes: [...set].map((id) => structuredClone(this.nodes.get(id)!)),
+            connections: this.allConnections()
+                .filter((c) => set.has(c.from.node) && set.has(c.to.node))
+                .map((c) => structuredClone(c))
+        };
+    }
+
+    /**
+     * Add a fragment under fresh ids, shifted by (dx, dy). Connections are
+     * kept when both ends came along and the rules still allow them.
+     */
+    public paste(fragment: WorkflowDocument, dx: number, dy: number): {nodes: string[]; connections: string[]} {
+        const idMap = new Map<string, string>();
+        const nodes: string[] = [];
+        const connections: string[] = [];
+
+        for (const n of fragment.nodes) {
+            const node = this.addNode({...n, id: this.nextId('n'), x: n.x + dx, y: n.y + dy});
+            idMap.set(n.id, node.id);
+            nodes.push(node.id);
+        }
+
+        for (const c of fragment.connections) {
+            const from = idMap.get(c.from.node);
+            const to = idMap.get(c.to.node);
+
+            if (from === undefined || to === undefined) {
+                continue;
+            }
+
+            const a = {node: from, port: c.from.port};
+            const b = {node: to, port: c.to.port};
+
+            if (this.validate(a, b) === null) {
+                connections.push(this.connect(a, b).id);
+            }
+        }
+
+        return {nodes, connections};
+    }
+
+    /**
+     * Node types that have at least one port able to meet `anchor` — what a
+     * node picker should offer after "+" on a port. Only direction and kind
+     * are checked; capacity is the new node's own business.
+     */
+    public typesFor(anchor: WorkflowPortRef, anchorDir: WorkflowPortDir): WorkflowNodeType[] {
+        const own = this.port(anchor, anchorDir);
+
+        if (own === undefined) {
+            return [];
+        }
+
+        const kind = own.kind ?? 'main';
+
+        return [...this.types.values()].filter((t) => {
+            const ports = (anchorDir === 'out' ? t.inputs : t.outputs) ?? [];
+
+            return ports.some((p) => (p.kind ?? 'main') === kind);
+        });
     }
 
     /**

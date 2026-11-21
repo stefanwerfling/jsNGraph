@@ -125,6 +125,57 @@ export class WorkflowGeometry {
         return {d: WorkflowGeometry.roundedPath(points, WorkflowGeometry.CORNER), mid: {x: (x1 + x2) / 2, y: yMid}};
     }
 
+    /**
+     * Top-left corner for a new node of `size` attached to the port at
+     * `place`: one gap out along the port's side, centred on the port, then
+     * snapped and pushed along the side (down for left/right ports, right
+     * for top/bottom ports) until it overlaps none of `obstacles`.
+     */
+    public static placeNear(place: RectAnchorPoint, size: {w: number; h: number}, obstacles: RectArea[], grid = 0, gap = 80): RectPoint {
+        let x: number;
+        let y: number;
+
+        switch (place.side) {
+            case 'left':
+                x = place.x - gap - size.w;
+                y = place.y - size.h / 2;
+                break;
+            case 'top':
+                x = place.x - size.w / 2;
+                y = place.y - gap - size.h;
+                break;
+            case 'bottom':
+                x = place.x - size.w / 2;
+                y = place.y + gap;
+                break;
+            default:
+                x = place.x + gap;
+                y = place.y - size.h / 2;
+        }
+
+        x = RectBoardGeometry.snap(x, grid);
+        y = RectBoardGeometry.snap(y, grid);
+
+        const vertical = place.side === 'top' || place.side === 'bottom';
+        const step = vertical ? size.w + 40 : size.h + 40;
+        const pad = 10;
+
+        for (let i = 0; i < 50; i++) {
+            const box = {x: x - pad, y: y - pad, w: size.w + pad * 2, h: size.h + pad * 2};
+
+            if (!obstacles.some((o) => RectBoardGeometry.overlaps(box, o))) {
+                break;
+            }
+            if (vertical) {
+                x = RectBoardGeometry.snap(x + step, grid);
+            } else {
+                y = RectBoardGeometry.snap(y + step, grid);
+            }
+        }
+
+        return {x, y};
+    }
+
     /** Polyline with rounded corners (radius clamped to half of the shorter neighbour segment). */
     public static roundedPath(points: RectPoint[], radius: number): string {
         const first = points[0];
