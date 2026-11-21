@@ -73,7 +73,7 @@
 <div id="picker"></div>
 <div id="palette" class="hud"><div class="head">Drag onto the canvas</div></div>
 <div id="help" class="hud">
-    drag from the palette (onto a connection to insert) · double-click a note to write<br>
+    drag from the palette (onto a connection to insert) · double-click a note or connection to write<br>
     drag ports to connect · drag a connected input to move it · “+” adds a node<br>
     Shift+drag: select area · Del: delete (re-links the chain) · D: disable<br>
     Ctrl+C / X / V / D: copy, cut, paste, duplicate · Ctrl+Z / Ctrl+Y · wheel: zoom
@@ -135,7 +135,7 @@
             {id: 'c9', from: {node: 'merge', port: 'main'}, to: {node: 'send', port: 'main'}},
             {id: 'c10', from: {node: 'nightly', port: 'main'}, to: {node: 'report', port: 'main'}},
             // A loop back: the report feeds the customer lookup again — drawn as a detour.
-            {id: 'c11', from: {node: 'send', port: 'main'}, to: {node: 'fetch', port: 'main'}}
+            {id: 'c11', from: {node: 'send', port: 'main'}, to: {node: 'fetch', port: 'main'}, label: 'retry on bounce'}
         ]
     };
 

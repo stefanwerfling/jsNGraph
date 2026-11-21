@@ -141,6 +141,15 @@ export class WorkflowStyles {
             ':where(.wf-dots circle){fill:var(--wf-ok)}',
             ':where(.wf-conn-label){position:absolute;transform:translate(-50%,-150%);padding:1px 7px;border-radius:9px;white-space:nowrap;' +
             'font:600 10.5px/16px system-ui;color:var(--wf-subtext);background:var(--wf-bg);border:1px solid var(--wf-node-border);pointer-events:none}',
+            // Document label: under the line (the run-status pill sits above it, the tools on it).
+            ':where(.wf-conn-text){position:absolute;transform:translate(-50%,45%);max-width:180px;overflow:hidden;' +
+            'text-overflow:ellipsis;padding:1px 7px;border-radius:5px;white-space:nowrap;font:500 11px/16px system-ui;' +
+            'color:var(--wf-text);background:var(--wf-bg);border:1px solid transparent;cursor:pointer}',
+            ':where(.wf-conn-text.wf-selected){border-color:var(--wf-sel);color:var(--wf-sel)}',
+            ':where(.wf-conn-text.wf-off){opacity:.45}',
+            ':where(.wf-conn-text-edit){position:absolute;transform:translate(-50%,45%);width:160px;z-index:3;' +
+            'padding:1px 7px;border-radius:5px;font:500 11px/16px system-ui;color:var(--wf-text);background:var(--wf-node-bg);' +
+            'border:1px solid var(--wf-sel);outline:none}',
             ':where(.wf-conn-label[data-wf-status="success"]){color:var(--wf-ok);border-color:color-mix(in srgb,var(--wf-ok) 50%,transparent)}',
             ':where(.wf-conn-label[data-wf-status="error"]){color:var(--wf-bad);border-color:color-mix(in srgb,var(--wf-bad) 50%,transparent)}',
             '@keyframes wf-spin{to{transform:rotate(360deg)}}',

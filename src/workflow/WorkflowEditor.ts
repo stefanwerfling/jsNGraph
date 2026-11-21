@@ -63,6 +63,8 @@ interface ConnView {
     mid: RectPoint;
     /** Item-count pill, while the connection has one. */
     label: HTMLDivElement | null;
+    /** The document label under the line, while the connection has one. */
+    text: HTMLDivElement | null;
     /** Travelling dots, while the connection is active. */
     dots: SVGGElement | null;
 }
@@ -117,6 +119,7 @@ export class WorkflowEditor {
     private readonly grid: number;
     private readonly fitOnLoad: boolean;
     private readonly reconnectOnDelete: boolean;
+    private readonly editConnectionLabels: boolean;
     private readonly tools: HTMLDivElement;
     private readonly labelLayer: HTMLDivElement;
     private readonly nodeStatus = new Map<string, {status: WorkflowNodeStatus; message?: string}>();
@@ -136,6 +139,7 @@ export class WorkflowEditor {
     private readonly connViews = new Map<string, ConnView>();
     private readonly noteViews = new Map<string, NoteView>();
     private noteEdit: NoteEdit | null = null;
+    private connEdit: {id: string; input: HTMLInputElement} | null = null;
     /** Cleanup of a running palette drag. */
     private paletteDrag: (() => void) | null = null;
     private selected = new Set<string>();
@@ -170,6 +174,7 @@ export class WorkflowEditor {
         this.grid = options.grid ?? 20;
         this.fitOnLoad = options.fitOnLoad ?? true;
         this.reconnectOnDelete = options.reconnectOnDelete ?? true;
+        this.editConnectionLabels = options.editConnectionLabels ?? true;
         this.readOnlyFlag = options.readOnly ?? false;
         this.camera = new Camera(options.minScale ?? 0.2, options.maxScale ?? 2.5);
         this.model = new WorkflowModel(options.types ?? [], undefined, options.canConnect);
@@ -251,6 +256,7 @@ export class WorkflowEditor {
     /** Replace the whole document; clears undo history and selection. */
     public setDocument(doc: WorkflowDocument, fit = this.fitOnLoad): void {
         this.cancelGesture();
+        this.finishConnEdit(false);
         this.finishNoteEdit(false);
         this.model.load(doc);
         this.history.reset(this.model.toDocument());
@@ -424,7 +430,11 @@ export class WorkflowEditor {
         const outPort = this.model.firstCompatiblePort(conn.to, 'in', node.id);
 
         if (inPort !== null) {
-            conns.push(this.model.connect(conn.from, {node: node.id, port: inPort}).id);
+            const upstream = this.model.connect(conn.from, {node: node.id, port: inPort});
+            if (conn.label !== undefined) {
+                this.model.setConnectionLabel(upstream.id, conn.label);   // the label stays with the branch it named
+            }
+            conns.push(upstream.id);
         }
         if (outPort !== null) {
             conns.push(this.model.connect({node: node.id, port: outPort}, conn.to).id);
@@ -741,6 +751,54 @@ export class WorkflowEditor {
         return structuredClone(conn);
     }
 
+    /** Set or clear (null / blank) a connection's label as one undoable change. */
+    public setConnectionLabel(id: string, label: string | null): boolean {
+        if (!this.model.setConnectionLabel(id, label)) {
+            return false;
+        }
+
+        this.renderConnections();
+        this.commit('updateConnection', [], [id]);
+
+        return true;
+    }
+
+    /** Open a connection's label for editing (what a double-click does). */
+    public editConnectionLabel(id: string): void {
+        const conn = this.model.connection(id);
+        const cv = this.connViews.get(id);
+
+        if (this.readOnlyFlag || conn === undefined || cv === undefined) {
+            return;
+        }
+
+        this.finishConnEdit(true);
+
+        const input = document.createElement('input');
+        input.className = 'wf-conn-text-edit';
+        input.value = conn.label ?? '';
+        input.placeholder = 'Label';
+        input.style.left = `${cv.mid.x}px`;
+        input.style.top = `${cv.mid.y}px`;
+        input.addEventListener('blur', () => this.finishConnEdit(true));
+        input.addEventListener('pointerdown', (e) => e.stopPropagation());
+        input.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            if (e.key === 'Escape' || e.key === 'Enter') {
+                this.finishConnEdit(e.key === 'Enter');
+                this.root.focus({preventScroll: true});
+            }
+        });
+
+        if (cv.text !== null) {
+            cv.text.style.visibility = 'hidden';
+        }
+        this.labelLayer.appendChild(input);
+        this.connEdit = {id, input};
+        input.focus();
+        input.select();
+    }
+
     public disconnect(id: string): boolean {
         const conn = this.model.connection(id);
 
@@ -1036,6 +1094,7 @@ export class WorkflowEditor {
         this.cancelGesture();
         this.paletteDrag?.();
         this.finishNoteEdit(true);
+        this.finishConnEdit(true);
         this.readOnlyFlag = readOnly;
         this.root.classList.toggle('wf-editable', !readOnly);
         this.updateTools();
@@ -1131,6 +1190,7 @@ export class WorkflowEditor {
         this.cancelGesture();
         this.paletteDrag?.();
         this.finishNoteEdit(false);
+        this.finishConnEdit(false);
         this.setMinimap(false);
         if (this.tween !== null) {
             cancelAnimationFrame(this.tween);
@@ -1337,6 +1397,23 @@ export class WorkflowEditor {
         this.minimap?.schedule();
     }
 
+    /** Close the label editor; `keep` stores the text (one undo step) when it changed. */
+    private finishConnEdit(keep: boolean): void {
+        const edit = this.connEdit;
+
+        if (edit === null) {
+            return;
+        }
+
+        this.connEdit = null;     // first: removing the input fires blur → re-entry
+        const text = edit.input.value;
+        edit.input.remove();
+
+        if (!keep || !this.setConnectionLabel(edit.id, text)) {
+            this.renderConnections();
+        }
+    }
+
     /** Close the note editor; `keep` stores the text (one undo step) when it changed. */
     private finishNoteEdit(keep: boolean): void {
         const edit = this.noteEdit;
@@ -1489,19 +1566,50 @@ export class WorkflowEditor {
             cv.g.classList.toggle('wf-off',
                 this.model.node(conn.from.node)?.disabled === true || this.model.node(conn.to.node)?.disabled === true);
             cv.g.classList.toggle('wf-selected', this.selectedConn === conn.id);
+            this.applyConnText(conn, cv);
             this.applyConnStatus(conn.id, cv, d);
         }
 
         for (const [id, cv] of this.connViews) {
             if (!seen.has(id)) {
+                if (this.connEdit?.id === id) {
+                    this.connEdit.input.remove();
+                    this.connEdit = null;
+                }
                 cv.g.remove();
                 cv.label?.remove();
+                cv.text?.remove();
                 this.connViews.delete(id);
             }
         }
 
         this.updateTools();
         this.minimap?.schedule();
+    }
+
+    /** The document label under the line (hidden while it is being edited). */
+    private applyConnText(conn: WorkflowConnection, cv: ConnView): void {
+        if (conn.label === undefined) {
+            cv.text?.remove();
+            cv.text = null;
+            return;
+        }
+
+        if (cv.text === null) {
+            cv.text = document.createElement('div');
+            cv.text.className = 'wf-conn-text';
+            cv.text.dataset.wfConn = conn.id;      // clicks and hovers count as the connection's
+            this.labelLayer.appendChild(cv.text);
+        }
+
+        cv.text.textContent = conn.label;
+        cv.text.title = conn.label;
+        cv.text.style.left = `${cv.mid.x}px`;
+        cv.text.style.top = `${cv.mid.y}px`;
+        cv.text.style.visibility = this.connEdit?.id === conn.id ? 'hidden' : '';
+        cv.text.classList.toggle('wf-selected', this.selectedConn === conn.id);
+        cv.text.classList.toggle('wf-off', cv.g.classList.contains('wf-off'));
+        cv.text.classList.toggle('wf-dim', WorkflowEditor.dimConnection(conn, this.runPath, this.runConnections));
     }
 
     /** Tint, item label, travelling dots and run-path dimming of one connection. */
@@ -1588,7 +1696,7 @@ export class WorkflowEditor {
         g.append(hit, path);
         this.connLayer.appendChild(g);
 
-        const cv: ConnView = {g, hit, path, mid: {x: 0, y: 0}, label: null, dots: null};
+        const cv: ConnView = {g, hit, path, mid: {x: 0, y: 0}, label: null, text: null, dots: null};
         this.connViews.set(id, cv);
 
         return cv;
@@ -1650,6 +1758,7 @@ export class WorkflowEditor {
 
         this.cancelGesture();
         this.finishNoteEdit(false);
+        this.finishConnEdit(false);
         this.model.load(doc);
         this.renderAll();
 
@@ -2370,6 +2479,18 @@ export class WorkflowEditor {
 
         if (nodeEl !== null && target.closest('[data-wf-port]') === null) {
             this.events.emit('nodeDblClick', {id: nodeEl.dataset.wfNode!, originalEvent: e});
+            return;
+        }
+
+        const connId = target.closest('.wf-conn-tools') === null
+            ? target.closest<HTMLElement | SVGElement>('[data-wf-conn]')?.dataset.wfConn
+            : undefined;
+
+        if (connId !== undefined) {
+            this.events.emit('connectionDblClick', {id: connId, originalEvent: e});
+            if (this.editConnectionLabels) {
+                this.editConnectionLabel(connId);
+            }
         }
     }
 

@@ -46,7 +46,7 @@ const DEFAULTS: Required<LayeredLayoutOptions> = {
  * columns (the classic iterative crossing-reduction) so deeper flows settle
  * to a low-crossing arrangement without a full Sugiyama solver.
  * Deterministic, eased settling, dragged (`fixed`) nodes untouched — the
- * n8n/LangGraph-style arrangement for directed flows.
+ * workflow-editor-style arrangement for directed flows.
  */
 export class LayeredLayout {
 

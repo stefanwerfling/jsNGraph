@@ -321,7 +321,11 @@ export class WorkflowModel {
             const b = {node: to, port: c.to.port};
 
             if (this.validate(a, b) === null) {
-                connections.push(this.connect(a, b).id);
+                const conn = this.connect(a, b);
+                if (c.label !== undefined) {
+                    this.setConnectionLabel(conn.id, c.label);
+                }
+                connections.push(conn.id);
             }
         }
 
@@ -450,6 +454,26 @@ export class WorkflowModel {
 
         conn.from = {...from};
         conn.to = {...to};
+    }
+
+    /**
+     * Set or clear (null / blank) a connection's label; the text is trimmed.
+     * False when the connection is unknown or nothing changed.
+     */
+    public setConnectionLabel(id: string, label: string | null): boolean {
+        const conn = this.connections.get(id);
+        const text = label?.trim() ?? '';
+
+        if (conn === undefined || (conn.label ?? '') === text) {
+            return false;
+        }
+        if (text === '') {
+            delete conn.label;
+        } else {
+            conn.label = text;
+        }
+
+        return true;
     }
 
     public disconnect(id: string): boolean {

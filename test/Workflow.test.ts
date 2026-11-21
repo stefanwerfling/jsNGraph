@@ -80,6 +80,39 @@ describe('WorkflowModel', () => {
     });
 });
 
+describe('WorkflowModel connection labels', () => {
+    it('sets, trims, clears and reports no-ops', () => {
+        const m = model();
+        const c = m.connect({node: 'if', port: 'true'}, {node: 's', port: 'main'});
+
+        expect(m.setConnectionLabel(c.id, '  VIP only ')).toBe(true);
+        expect(m.connection(c.id)!.label).toBe('VIP only');
+        expect(m.setConnectionLabel(c.id, 'VIP only')).toBe(false);          // unchanged
+        expect(m.toDocument().connections.find((x) => x.id === c.id)!.label).toBe('VIP only');
+
+        expect(m.setConnectionLabel(c.id, '   ')).toBe(true);                // blank clears
+        expect('label' in m.connection(c.id)!).toBe(false);
+        expect(m.setConnectionLabel(c.id, null)).toBe(false);
+        expect(m.setConnectionLabel('nope', 'x')).toBe(false);
+    });
+
+    it('keeps labels through load, reconnect and copy/paste', () => {
+        const m = model();
+        const c = m.connect({node: 't', port: 'main'}, {node: 'if', port: 'main'});
+        m.setConnectionLabel(c.id, 'orders');
+
+        m.reconnect(c.id, {node: 't', port: 'main'}, {node: 's', port: 'main'});
+        expect(m.connection(c.id)!.label).toBe('orders');
+
+        const copy = new WorkflowModel(TYPES);
+        copy.load(m.toDocument());
+        expect(copy.connection(c.id)!.label).toBe('orders');
+
+        const pasted = m.paste(m.fragment(['t', 's']), 0, 300);
+        expect(m.connection(pasted.connections[0]!)!.label).toBe('orders');
+    });
+});
+
 describe('WorkflowModel editing helpers', () => {
     function chain(): WorkflowModel {
         // t → s1 → s2 → s3, plus s1 → if (s1 fans out to two successors)

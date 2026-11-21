@@ -85,5 +85,10 @@ Status: W1–W6 done (`examples/workflow.html`).
 | **W5** | Run status (display only — not in the document, not undoable, survives re-renders and undo): `setNodeStatus(id, 'idle' \| 'waiting' \| 'running' \| 'success' \| 'error', {message?})` — badge (spinner, ✓, !, …) with the message as tooltip, tinted border, glow while running; `setConnectionStatus(id, {items?, label?, active?, status?})` — item-count pill, SMIL dots travelling the path while active, success/error tint; `setRunPath(nodeIds, connectionIds?)` dims everything outside the executed path (pass the travelled connections, otherwise a connection counts as run when both ends ran — which keeps an untaken loop-back lit); `clearStatus()`. Motion is off under `prefers-reduced-motion`. The example's ▶ Run is a host-side simulation feeding this API (Merge waits for both inputs, If splits items, sub-nodes run with their agent). |
 | **W6** | `tidyUp()` — `WorkflowLayout` (pure, own file; `FlowLayout` is top-down and bound to `ModelNode`): columns by longest path over flow connections after a DFS drops loop edges, barycenter sweeps order each column by predecessor and output port, sub-nodes (model/tools) in a row under their node, disconnected parts stacked; keeps the old top-left, animated, one undo step; notes that enclosed nodes are refitted around them. Minimap (`minimap: true` / `setMinimap`, `WorkflowMinimap`): canvas overview, click/drag to move the view. Backward detours step below any node in their way (`WorkflowGeometry.clearRun`); item labels sit above nodes. `setStyleVars` overrides `--wf-*`, `WorkflowStyles.varsFromTheme(Theme.dark)` shares NGraph's palette. |
 
-Later / optional: sub-workflows (collapsed groups), connection labels, a
-read-only execution-replay mode.
+Connection labels (after W6): `WorkflowConnection.label` is part of the document — drawn under the line
+(the run-status pill sits above it, the hover tools on it), edited by double-clicking the connection or its
+label (`editConnectionLabel`, Enter/blur keeps, Escape cancels; off with `editConnectionLabels: false`), set
+by the host with `setConnectionLabel` (one `updateConnection` change, undoable). Survives reroute, copy/paste,
+and an insert keeps it on the upstream half. `connectionDblClick` event.
+
+Later / optional: sub-workflows (collapsed groups), a read-only execution-replay mode.

@@ -922,7 +922,7 @@ export class CanvasRenderer {
     /**
      * Agent/service card: rounded rect with an icon chip on the left, the
      * label + sublabel INSIDE the node, and a status dot top-right — the
-     * n8n/orchestrator-style node instead of a device circle.
+     * workflow/orchestrator-style node instead of a device circle.
      */
     private drawCardNode(node: GraphNode, style: ResolvedNodeStyle, state: NodeDrawState, timeMs: number): void {
         const {ctx, theme} = this;

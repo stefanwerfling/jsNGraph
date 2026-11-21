@@ -57,6 +57,8 @@ export interface WorkflowConnection {
     id: string;
     from: WorkflowPortRef;
     to: WorkflowPortRef;
+    /** Text shown under the connection ("on timeout", "VIP only" …). Part of the document. */
+    label?: string;
 }
 
 /** A sticky note on the canvas: free text in a resizable box, behind the nodes. */
@@ -116,6 +118,7 @@ export type WorkflowChangeKind =
     | 'insertNode'
     | 'addNote'
     | 'updateNote'
+    | 'updateConnection'
     | 'undo'
     | 'redo';
 
@@ -148,6 +151,8 @@ export interface WorkflowEditorOptions {
     historySize?: number;
     /** Deleting a node in a chain wires its predecessor to its successors. Default true. */
     reconnectOnDelete?: boolean;
+    /** Double-clicking a connection edits its label. Default true. */
+    editConnectionLabels?: boolean;
     /** Show the overview map. Default false. */
     minimap?: boolean;
 }
@@ -169,6 +174,7 @@ export interface WorkflowEditorEvents extends Record<string, unknown> {
     nodeClick: WorkflowClickEvent;
     nodeDblClick: WorkflowClickEvent;
     connectionClick: WorkflowClickEvent;
+    connectionDblClick: WorkflowClickEvent;
     backgroundClick: {x: number; y: number; originalEvent: MouseEvent};
     /**
      * "+" on a free port was pressed. The host opens its node picker and
