@@ -91,4 +91,21 @@ label (`editConnectionLabel`, Enter/blur keeps, Escape cancels; off with `editCo
 by the host with `setConnectionLabel` (one `updateConnection` change, undoable). Survives reroute, copy/paste,
 and an insert keeps it on the upstream half. `connectionDblClick` event.
 
-Later / optional: sub-workflows (collapsed groups), a read-only execution-replay mode.
+Sub-workflows (groups): `doc.groups` (`WorkflowGroup`: `id`, `label?`, `nodes`, `collapsed?`, `color?`) — part of
+the document. Expanded, a dashed frame with a header (collapse button, label, node count) surrounds the members
+and follows them; dragging the header moves the whole group, double-clicking it renames it (`editGroupLabel`).
+Collapsed, the members are hidden and the group is drawn as one stacked node (at the members' top-left) whose
+ports are *proxies*: one per member port with a connection across the border (`WorkflowGroups.proxies`,
+labelled only where a side has several), connections inside are not drawn. Proxy ports are shown, not grabbed —
+open the group to rewire; no insert into a connection whose source is hidden. ▸ / double-click opens it again,
+also in the viewer; collapsing and expanding is one `updateGroup` change (undoable), and opening a group that
+would cover other nodes first moves the nodes right of it right and those under it down. Groups do not nest
+(a node is in one group at most; grouping a group merges it). API: `group(ids?, data?)` (Ctrl+G, the
+selection), `ungroup(id)` (Ctrl+Shift+G), `setGroupCollapsed` / `toggleGroup`, `updateGroup`, `getGroup`,
+`groupOf`; `remove` / Delete on a group removes its nodes, copy/paste and duplicate carry groups along,
+`setDisabled` applies to the members. The selection (`getSelection`, `selectionChange`) has `groups`, a change
+has `groups`. Run status of hidden members shows on the collapsed node (error › running › waiting › success),
+and it stays lit when any member ran. `tidyUp` lays out the drawn picture — a collapsed group is one node —
+via the pure `WorkflowGroups.substitute` (`test/WorkflowGroups.test.ts`).
+
+Later / optional: a read-only execution-replay mode, nested groups.

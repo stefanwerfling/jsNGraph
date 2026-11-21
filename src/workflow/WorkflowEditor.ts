@@ -3,11 +3,13 @@ import { EventEmitter } from '../util/EventEmitter';
 import { RectArea, RectBoardGeometry, RectPoint } from '../rect/RectBoardGeometry';
 import { RectHistory } from '../rect/RectHistory';
 import { WorkflowGeometry, WorkflowPortPlace } from './WorkflowGeometry';
+import { WorkflowGroups } from './WorkflowGroups';
 import { WorkflowLayout, WorkflowLayoutOptions } from './WorkflowLayout';
 import { WorkflowMinimap } from './WorkflowMinimap';
 import { WorkflowModel } from './WorkflowModel';
 import { WorkflowStyles, WorkflowStyleVar } from './WorkflowStyles';
 import {
+    WorkflowChange,
     WorkflowChangeKind,
     WorkflowConnection,
     WorkflowConnectionStatus,
@@ -15,13 +17,15 @@ import {
     WorkflowEditorEvents,
     WorkflowEditorOptions,
     WorkflowFragment,
+    WorkflowGroup,
     WorkflowNodeData,
     WorkflowNodeStatus,
     WorkflowNodeStatusInfo,
     WorkflowNodeType,
     WorkflowNote,
     WorkflowPortDir,
-    WorkflowPortRef
+    WorkflowPortRef,
+    WorkflowSelection
 } from './WorkflowTypes';
 
 /** Node data as a palette or picker hands it in: everything but id/position is optional. */
@@ -46,6 +50,11 @@ interface NodeView {
 }
 
 interface NoteView {
+    el: HTMLDivElement;
+    rect: RectArea;
+}
+
+interface GroupView {
     el: HTMLDivElement;
     rect: RectArea;
 }
@@ -110,6 +119,7 @@ export class WorkflowEditor {
     private readonly draftPath: SVGPathElement;
     private readonly nodeLayer: HTMLDivElement;
     private readonly noteLayer: HTMLDivElement;
+    private readonly groupLayer: HTMLDivElement;
     private readonly arrowId: string;
 
     private readonly model: WorkflowModel;
@@ -138,6 +148,13 @@ export class WorkflowEditor {
     private readonly nodeViews = new Map<string, NodeView>();
     private readonly connViews = new Map<string, ConnView>();
     private readonly noteViews = new Map<string, NoteView>();
+    /** Frames of expanded groups (a collapsed group is a node view under its own id). */
+    private readonly groupViews = new Map<string, GroupView>();
+    /** Hidden node → the collapsed group drawn in its place. */
+    private hiddenBy = new Map<string, string>();
+    /** Port layout of each drawn collapsed group, to notice when its border connections change. */
+    private readonly groupSig = new Map<string, string>();
+    private groupEdit: {id: string; input: HTMLInputElement} | null = null;
     private noteEdit: NoteEdit | null = null;
     private connEdit: {id: string; input: HTMLInputElement} | null = null;
     /** Cleanup of a running palette drag. */
@@ -202,6 +219,7 @@ export class WorkflowEditor {
 
         this.nodeLayer = document.createElement('div');
         this.noteLayer = document.createElement('div');
+        this.groupLayer = document.createElement('div');
         this.labelLayer = document.createElement('div');
 
         this.tools = document.createElement('div');
@@ -211,7 +229,7 @@ export class WorkflowEditor {
             '<button type="button" data-wf-tool="insert" title="Insert node">+</button>' +
             '<button type="button" data-wf-tool="delete" title="Delete connection">×</button>';
 
-        this.stage.append(this.noteLayer, this.svg, this.nodeLayer, this.labelLayer, this.tools);
+        this.stage.append(this.noteLayer, this.groupLayer, this.svg, this.nodeLayer, this.labelLayer, this.tools);
         this.root.appendChild(this.stage);
         container.appendChild(this.root);
 
@@ -258,6 +276,7 @@ export class WorkflowEditor {
         this.cancelGesture();
         this.finishConnEdit(false);
         this.finishNoteEdit(false);
+        this.finishGroupEdit(false);
         this.model.load(doc);
         this.history.reset(this.model.toDocument());
         this.selected.clear();
@@ -333,7 +352,7 @@ export class WorkflowEditor {
 
     /** Set (or with `undefined`, toggle as a group) the disabled flag of nodes. */
     public setDisabled(ids: Iterable<string>, disabled?: boolean): void {
-        const list = [...ids].filter((id) => this.model.node(id) !== undefined);
+        const list = this.model.expandGroups(ids).filter((id) => this.model.node(id) !== undefined);
         const value = disabled ?? !list.every((id) => this.model.node(id)!.disabled === true);
         const changed = this.model.setDisabled(list, value);
 
@@ -499,17 +518,15 @@ export class WorkflowEditor {
 
         const added = this.model.paste(fragment, dx, dy);
 
-        for (const id of added.nodes) {
-            this.renderNode(this.model.node(id)!);
-        }
         for (const id of added.notes) {
             this.renderNote(this.model.note(id)!);
         }
+        this.renderGroups();
         this.renderConnections();
-        this.setSelection(new Set([...added.nodes, ...added.notes]), null);
-        this.commit('paste', added.nodes, added.connections, added.notes);
+        this.select([...added.nodes, ...added.notes, ...added.groups]);
+        this.commit('paste', added.nodes, added.connections, added.notes, added.groups);
 
-        return [...added.nodes, ...added.notes];
+        return [...added.nodes, ...added.notes, ...added.groups];
     }
 
     /** Copy the selection and paste it right next to itself. */
@@ -519,9 +536,12 @@ export class WorkflowEditor {
         return fragment === null ? [] : this.paste(fragment);
     }
 
-    /** Remove nodes and notes in one undo step (nodes re-link chains like `removeNodes`). */
+    /**
+     * Remove nodes, notes and groups (a group goes with its nodes) in one undo
+     * step; nodes re-link chains like `removeNodes`.
+     */
     public remove(ids: Iterable<string>, reconnect = this.reconnectOnDelete): void {
-        const list = [...ids];
+        const list = this.model.expandGroups(ids);
         const nodes = list.filter((id) => this.model.node(id) !== undefined);
         const notes = list.filter((id) => this.model.note(id) !== undefined);
 
@@ -529,10 +549,12 @@ export class WorkflowEditor {
             return;
         }
 
+        const groupsBefore = this.model.allGroups().map((g) => g.id);
         const {removed, added} = this.model.removeNodes(nodes, reconnect);
         this.model.removeNotes(notes);
+        const groups = groupsBefore.filter((id) => this.model.group(id) === undefined);
         this.afterRemove(nodes, notes);
-        this.commit(notes.length > 0 ? 'remove' : 'removeNodes', nodes, [...removed, ...added], notes);
+        this.commit(notes.length > 0 || groups.length > 0 ? 'remove' : 'removeNodes', nodes, [...removed, ...added], notes, groups);
     }
 
     // ---- notes ---------------------------------------------------------
@@ -595,6 +617,188 @@ export class WorkflowEditor {
         this.noteEdit = {id, area, before: note.text};
         area.focus();
         area.setSelectionRange(area.value.length, area.value.length);
+    }
+
+    // ---- groups (sub-workflows) ----------------------------------------
+
+    public getGroup(id: string): WorkflowGroup | undefined {
+        const group = this.model.group(id);
+
+        return group === undefined ? undefined : structuredClone(group);
+    }
+
+    /** Id of the group a node belongs to, or null. */
+    public groupOf(nodeId: string): string | null {
+        return this.model.groupOf(nodeId)?.id ?? null;
+    }
+
+    /**
+     * Frame nodes as a sub-workflow (default: the selected nodes; a selected
+     * group brings its members — groups do not nest, so it is merged into
+     * the new one). One undo step; the new group is selected.
+     */
+    public group(
+        ids: Iterable<string> = this.selected, data: Partial<Omit<WorkflowGroup, 'id' | 'nodes'>> = {}
+    ): WorkflowGroup | null {
+        const list = [...ids];
+        const nodes = this.model.expandGroups(list).filter((id) => this.model.node(id) !== undefined);
+
+        if (this.readOnlyFlag || nodes.length === 0) {
+            return null;
+        }
+
+        const merged = this.model.removeGroups(list.filter((id) => this.model.group(id) !== undefined));
+        const group = this.model.addGroup({...data, nodes});
+
+        this.renderGroups();
+        this.renderConnections();
+        this.setSelection(new Set([group.id]), null);
+        this.commit('group', nodes, [], [], [group.id, ...merged]);
+
+        return structuredClone(group);
+    }
+
+    /** Dissolve a group; its nodes stay (and show again) and get selected. */
+    public ungroup(id: string): boolean {
+        const nodes = this.model.members(id);
+
+        if (this.readOnlyFlag || this.model.removeGroups([id]).length === 0) {
+            return false;
+        }
+
+        this.renderGroups();
+        this.renderConnections();
+        this.setSelection(new Set(nodes), null);
+        this.commit('ungroup', nodes, [], [], [id]);
+
+        return true;
+    }
+
+    /** Patch a group's label or colour. */
+    public updateGroup(id: string, patch: Partial<Pick<WorkflowGroup, 'label' | 'color'>>): boolean {
+        if (this.readOnlyFlag || !this.model.updateGroup(id, patch)) {
+            return false;
+        }
+
+        this.renderGroups();
+        this.renderConnections();
+        this.commit('updateGroup', [], [], [], [id]);
+
+        return true;
+    }
+
+    /**
+     * Collapse a group into one node, or expand it again. Also works in the
+     * viewer — it changes what is shown, so it is part of the document (one
+     * `updateGroup` change, undoable). The selection follows: a selected
+     * member selects the collapsed group.
+     */
+    public setGroupCollapsed(id: string, collapsed: boolean): boolean {
+        const group = this.model.group(id);
+
+        if (group === undefined || (group.collapsed === true) === collapsed) {
+            return false;
+        }
+
+        this.cancelGesture();
+        this.finishGroupEdit(true);
+
+        const members = new Set(this.model.members(id));
+        const hadMember = [...this.selected].some((s) => members.has(s));
+        const box = collapsed ? null : WorkflowGroups.collapsedRect(this.model, group);
+        const moved = box === null ? [] : this.makeRoom(group, box);
+
+        this.model.updateGroup(id, {collapsed});
+        this.renderGroups();
+        this.renderConnections();
+
+        const next = new Set([...this.selected].filter((s) => this.hasItem(s)));
+        if (collapsed && hadMember) {
+            next.add(id);
+        }
+        this.setSelection(next, this.selectedConn !== null && this.connViews.has(this.selectedConn) ? this.selectedConn : null);
+        this.commit('updateGroup', moved, [], [], [id]);
+
+        return true;
+    }
+
+    /**
+     * Before a group opens up: when its frame would cover other nodes, nodes
+     * right of the collapsed node move right and nodes under it move down by
+     * as much as the frame outgrows it. Returns the moved node ids.
+     */
+    private makeRoom(group: WorkflowGroup, box: RectArea): string[] {
+        const frame = WorkflowGroups.frame(WorkflowGroups.memberRects(this.model, group));
+        const members = new Set(this.model.members(group.id));
+        const others = [...this.nodeViews].filter(([id]) => this.model.node(id) !== undefined && !members.has(id));
+        const gap = WorkflowGroups.PAD;
+
+        if (frame === null) {
+            return [];
+        }
+
+        const grown = {x: frame.x - gap, y: frame.y - gap, w: frame.w + gap * 2, h: frame.h + gap * 2};
+
+        if (!others.some(([, v]) => RectBoardGeometry.overlaps(grown, v.rect))) {
+            return [];
+        }
+
+        const dx = RectBoardGeometry.snap(Math.max(0, frame.x + frame.w + gap - (box.x + box.w)), this.grid);
+        const dy = RectBoardGeometry.snap(Math.max(0, frame.y + frame.h + gap - (box.y + box.h)), this.grid);
+        const moved: string[] = [];
+
+        for (const [id, v] of others) {
+            const right = v.rect.x >= box.x + box.w;
+            const below = !right && v.rect.y >= box.y + box.h && v.rect.x < frame.x + frame.w && v.rect.x + v.rect.w > frame.x;
+            const shift = right ? {x: dx, y: 0} : below ? {x: 0, y: dy} : null;
+
+            if (shift !== null && (shift.x !== 0 || shift.y !== 0)) {
+                this.model.moveNode(id, v.rect.x + shift.x, v.rect.y + shift.y);
+                this.positionNode(id);
+                moved.push(id);
+            }
+        }
+
+        return moved;
+    }
+
+    public toggleGroup(id: string): boolean {
+        const group = this.model.group(id);
+
+        return group !== undefined && this.setGroupCollapsed(id, group.collapsed !== true);
+    }
+
+    /** Open a group's label for editing (what a double-click on the frame header does). */
+    public editGroupLabel(id: string): void {
+        const group = this.model.group(id);
+        const rect = this.groupViews.get(id)?.rect ?? this.nodeViews.get(id)?.rect;
+
+        if (this.readOnlyFlag || group === undefined || rect === undefined) {
+            return;
+        }
+
+        this.finishGroupEdit(true);
+
+        const input = document.createElement('input');
+        input.className = 'wf-group-edit';
+        input.value = WorkflowGroups.label(group);
+        input.placeholder = WorkflowGroups.DEFAULT_LABEL;
+        input.style.left = `${rect.x + 36}px`;
+        input.style.top = `${rect.y + 5}px`;
+        input.addEventListener('blur', () => this.finishGroupEdit(true));
+        input.addEventListener('pointerdown', (e) => e.stopPropagation());
+        input.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            if (e.key === 'Escape' || e.key === 'Enter') {
+                this.finishGroupEdit(e.key === 'Enter');
+                this.root.focus({preventScroll: true});
+            }
+        });
+
+        this.labelLayer.appendChild(input);
+        this.groupEdit = {id, input};
+        input.focus();
+        input.select();
     }
 
     // ---- adding from outside --------------------------------------------
@@ -727,7 +931,7 @@ export class WorkflowEditor {
             const hit = document.elementFromPoint(clientX + dx, clientY + dy);
             const id = hit?.closest<SVGGElement>('[data-wf-conn]')?.dataset.wfConn;
 
-            if (id !== undefined && this.root.contains(hit) && this.model.canInsert(type, id)) {
+            if (id !== undefined && this.root.contains(hit) && this.model.canInsert(type, id) && this.canInsertAt(id)) {
                 return id;
             }
         }
@@ -832,9 +1036,26 @@ export class WorkflowEditor {
 
         this.cancelGesture();
 
-        const target = WorkflowLayout.compute(this.model, {grid: this.grid, ...options});
+        // Lay out what is drawn — a collapsed group is one node — then move
+        // the members of a collapsed group along with it.
+        const drawn = WorkflowGroups.substitute(this.model);
+        const viewTarget = WorkflowLayout.compute(drawn, {grid: this.grid, ...options});
+        const target = new Map<string, RectPoint>();
         const from = new Map<string, RectPoint>();
 
+        for (const [id, p] of viewTarget) {
+            if (this.model.node(id) !== undefined) {
+                target.set(id, p);
+                continue;
+            }
+
+            const at = drawn.node(id)!;
+
+            for (const m of this.model.members(id)) {
+                const n = this.model.node(m)!;
+                target.set(m, {x: n.x + p.x - at.x, y: n.y + p.y - at.y});
+            }
+        }
         for (const [id] of target) {
             const n = this.model.node(id)!;
             from.set(id, {x: n.x, y: n.y});
@@ -848,7 +1069,7 @@ export class WorkflowEditor {
 
         for (const [id, view] of this.noteViews) {
             const inside = [...this.nodeViews].filter(([, v]) => RectBoardGeometry.contains(view.rect, v.rect));
-            const box = RectBoardGeometry.bounds(inside.map(([nid, v]) => ({...v.rect, ...target.get(nid)!})));
+            const box = RectBoardGeometry.bounds(inside.map(([nid, v]) => ({...v.rect, ...viewTarget.get(nid)!})));
 
             if (inside.length === 0 || box === null) {
                 continue;
@@ -983,6 +1204,11 @@ export class WorkflowEditor {
             this.nodeStatus.set(id, {status, ...info});
         }
         this.applyNodeStatus(id);
+
+        const group = this.hiddenBy.get(id);
+        if (group !== undefined) {
+            this.applyNodeStatus(group);
+        }
     }
 
     public getNodeStatus(id: string): WorkflowNodeStatus {
@@ -1062,15 +1288,16 @@ export class WorkflowEditor {
 
     // ---- selection -----------------------------------------------------
 
-    public getSelection(): {nodes: string[]; notes: string[]; connection: string | null} {
+    public getSelection(): WorkflowSelection {
         return {
-            nodes: [...this.selected].filter((id) => this.nodeViews.has(id)),
-            notes: [...this.selected].filter((id) => this.noteViews.has(id)),
+            nodes: [...this.selected].filter((id) => this.model.node(id) !== undefined),
+            notes: [...this.selected].filter((id) => this.model.note(id) !== undefined),
+            groups: [...this.selected].filter((id) => this.model.group(id) !== undefined),
             connection: this.selectedConn
         };
     }
 
-    /** Select nodes and/or notes by id. */
+    /** Select nodes, notes and/or groups by id (nodes hidden in a collapsed group are skipped). */
     public select(ids: Iterable<string>): void {
         this.setSelection(new Set([...ids].filter((id) => this.hasItem(id))), null);
     }
@@ -1095,6 +1322,7 @@ export class WorkflowEditor {
         this.paletteDrag?.();
         this.finishNoteEdit(true);
         this.finishConnEdit(true);
+        this.finishGroupEdit(true);
         this.readOnlyFlag = readOnly;
         this.root.classList.toggle('wf-editable', !readOnly);
         this.updateTools();
@@ -1121,7 +1349,9 @@ export class WorkflowEditor {
         }
 
         this.pendingFit = false;
-        const box = RectBoardGeometry.bounds([...this.nodeViews.values(), ...this.noteViews.values()].map((v) => v.rect));
+        const box = RectBoardGeometry.bounds(
+            [...this.nodeViews.values(), ...this.noteViews.values(), ...this.groupViews.values()].map((v) => v.rect)
+        );
 
         if (box === null) {
             this.camera.setState({scale: 1, offsetX: 0, offsetY: 0});
@@ -1191,6 +1421,7 @@ export class WorkflowEditor {
         this.paletteDrag?.();
         this.finishNoteEdit(false);
         this.finishConnEdit(false);
+        this.finishGroupEdit(false);
         this.setMinimap(false);
         if (this.tween !== null) {
             cancelAnimationFrame(this.tween);
@@ -1225,19 +1456,218 @@ export class WorkflowEditor {
         this.connLayer.replaceChildren();
         this.labelLayer.replaceChildren();
         this.connViews.clear();
+        this.groupLayer.replaceChildren();
+        this.groupViews.clear();
+        this.groupSig.clear();
 
         for (const note of this.model.allNotes()) {
             this.renderNote(note);
         }
-        for (const node of this.model.allNodes()) {
-            this.renderNode(node);
-        }
 
+        this.renderGroups();
         this.renderConnections();
     }
 
-    /** (Re)build one node's element. */
+    /**
+     * Sync everything group-related with the model: which nodes are hidden
+     * (members of collapsed groups), node elements for the visible ones, one
+     * node element per collapsed group, and the frames of expanded groups.
+     */
+    private renderGroups(): void {
+        this.hiddenBy = WorkflowGroups.hidden(this.model);
+
+        for (const [id, view] of this.nodeViews) {
+            if (this.model.node(id) === undefined || this.hiddenBy.has(id)) {
+                view.el.remove();             // gone, hidden, or a collapsed group (rebuilt below)
+                this.nodeViews.delete(id);
+            }
+        }
+        this.groupSig.clear();
+
+        for (const node of this.model.allNodes()) {
+            if (!this.hiddenBy.has(node.id) && !this.nodeViews.has(node.id)) {
+                this.renderNode(node);
+            }
+        }
+
+        this.groupLayer.replaceChildren();
+        this.groupViews.clear();
+
+        for (const group of this.model.allGroups()) {
+            if (this.model.members(group.id).length === 0) {
+                continue;
+            }
+            if (group.collapsed === true) {
+                this.renderGroupBox(group);
+            } else {
+                this.renderGroupFrame(group);
+            }
+        }
+    }
+
+    /** A collapsed group as one node: proxy ports for the connections across its border. */
+    private renderGroupBox(group: WorkflowGroup): void {
+        const type = WorkflowGroups.collapsedType(this.model, group);
+        const rect = WorkflowGroups.collapsedRect(this.model, group, type);
+
+        if (rect === null) {
+            return;
+        }
+
+        const count = this.model.members(group.id).length;
+        const data: WorkflowNodeData = {
+            id: group.id, type: type.type, x: rect.x, y: rect.y,
+            label: WorkflowGroups.label(group), sublabel: `${count} node${count === 1 ? '' : 's'}`
+        };
+        const view = this.buildNode(data, type, rect, true);
+        const toggle = document.createElement('button');
+        const old = this.nodeViews.get(group.id);
+
+        view.el.dataset.wfGroup = group.id;
+        view.el.classList.add('wf-group-node');
+        toggle.type = 'button';
+        toggle.className = 'wf-group-toggle';
+        toggle.dataset.wfGroupToggle = group.id;
+        toggle.title = 'Expand';
+        toggle.textContent = '▸';
+        view.el.appendChild(toggle);
+
+        if (old === undefined) {
+            this.nodeLayer.appendChild(view.el);
+        } else {
+            old.el.replaceWith(view.el);
+        }
+
+        this.nodeViews.set(group.id, view);
+        this.groupSig.set(group.id, WorkflowEditor.groupSignature(type));
+        this.applyNodeStatus(group.id);
+    }
+
+    /** The frame around an expanded group: header with collapse button and label. */
+    private renderGroupFrame(group: WorkflowGroup): void {
+        const el = document.createElement('div');
+        const head = document.createElement('div');
+        const toggle = document.createElement('button');
+        const label = document.createElement('span');
+        const count = document.createElement('span');
+        const n = this.model.members(group.id).length;
+
+        el.className = 'wf-group';
+        el.dataset.wfGroupFrame = group.id;
+        el.classList.toggle('wf-selected', this.selected.has(group.id));
+        if (group.color !== undefined) {
+            el.style.setProperty('--wf-group-color', group.color);
+        }
+        head.className = 'wf-group-head';
+        head.dataset.wfGroupHead = group.id;
+        toggle.type = 'button';
+        toggle.className = 'wf-group-toggle';
+        toggle.dataset.wfGroupToggle = group.id;
+        toggle.title = 'Collapse';
+        toggle.textContent = '▾';
+        label.className = 'wf-group-label';
+        label.textContent = WorkflowGroups.label(group);
+        label.style.visibility = this.groupEdit?.id === group.id ? 'hidden' : '';
+        count.className = 'wf-group-count';
+        count.textContent = `${n} node${n === 1 ? '' : 's'}`;
+        head.append(toggle, label, count);
+        el.appendChild(head);
+        this.groupLayer.appendChild(el);
+        this.groupViews.set(group.id, {el, rect: {x: 0, y: 0, w: 0, h: 0}});
+        this.positionGroup(group.id);
+    }
+
+    /** Follow the members: move/resize a frame, move a collapsed group's node. */
+    private positionGroup(id: string): void {
+        const group = this.model.group(id);
+        const frame = this.groupViews.get(id);
+
+        if (group === undefined) {
+            return;
+        }
+        if (frame === undefined) {
+            this.positionNode(id);
+            return;
+        }
+
+        const rect = WorkflowGroups.frame(WorkflowGroups.memberRects(this.model, group));
+
+        if (rect === null) {
+            return;
+        }
+
+        frame.rect = rect;
+        frame.el.style.left = `${rect.x}px`;
+        frame.el.style.top = `${rect.y}px`;
+        frame.el.style.width = `${rect.w}px`;
+        frame.el.style.height = `${rect.h}px`;
+    }
+
+    /**
+     * Before connections are drawn: frames follow their members, and a
+     * collapsed group whose border connections changed gets new ports.
+     */
+    private syncGroups(): void {
+        for (const group of this.model.allGroups()) {
+            if (group.collapsed === true && this.nodeViews.has(group.id)) {
+                const sig = WorkflowEditor.groupSignature(WorkflowGroups.collapsedType(this.model, group));
+
+                if (sig !== this.groupSig.get(group.id)) {
+                    this.renderGroupBox(group);
+                    continue;
+                }
+            }
+            this.positionGroup(group.id);
+        }
+    }
+
+    private static groupSignature(type: WorkflowNodeType): string {
+        return JSON.stringify([type.label, type.color, type.inputs, type.outputs]);
+    }
+
+    /** Top-left of what is drawn for an id: a node, or a collapsed group at its members' corner. */
+    private drawnAt(id: string): RectPoint | undefined {
+        const node = this.model.node(id);
+
+        if (node !== undefined) {
+            return node;
+        }
+
+        const group = this.model.group(id);
+
+        return group?.collapsed === true ? WorkflowGroups.collapsedRect(this.model, group) ?? undefined : undefined;
+    }
+
+    /** Run status of a node — of a collapsed group, the most telling one among its members. */
+    private statusOf(id: string): {status: WorkflowNodeStatus; message?: string} | undefined {
+        if (this.model.group(id) === undefined) {
+            return this.nodeStatus.get(id);
+        }
+
+        const all = this.model.members(id).map((m) => this.nodeStatus.get(m)).filter((s) => s !== undefined);
+
+        for (const status of ['error', 'running', 'waiting', 'success'] as const) {
+            const hit = all.find((s) => s.status === status);
+            if (hit !== undefined) {
+                return status === 'error' ? hit : {status};
+            }
+        }
+
+        return undefined;
+    }
+
+    /** (Re)build one node's element (a hidden node's collapsed group instead). */
     private renderNode(node: WorkflowNodeData): void {
+        const hiddenIn = this.hiddenBy.get(node.id);
+
+        if (hiddenIn !== undefined) {
+            const group = this.model.group(hiddenIn);
+            if (group !== undefined) {
+                this.renderGroupBox(group);
+            }
+            return;
+        }
+
         const type = this.model.getType(node.type);
         const size = WorkflowGeometry.nodeSize(type);
         const view = this.buildNode(node, type, {x: node.x, y: node.y, w: size.w, h: size.h});
@@ -1262,13 +1692,15 @@ export class WorkflowEditor {
             return;
         }
 
-        const st = this.nodeStatus.get(id);
+        const st = this.statusOf(id);
         const status = st?.status ?? 'idle';
+        const runPath = this.runPath;
+        const ran = runPath === null || runPath.has(id) || this.model.members(id).some((m) => runPath.has(m));
 
         for (const s of ['waiting', 'running', 'success', 'error'] as const) {
             el.classList.toggle(`wf-st-${s}`, status === s);
         }
-        el.classList.toggle('wf-dim', this.runPath !== null && !this.runPath.has(id));
+        el.classList.toggle('wf-dim', !ran);
 
         let badge = el.querySelector<HTMLDivElement>(':scope > .wf-badge');
 
@@ -1288,7 +1720,7 @@ export class WorkflowEditor {
     }
 
     /** A node's element with body, ports, "+" buttons and port labels (not yet placed). */
-    private buildNode(node: WorkflowNodeData, type: WorkflowNodeType | undefined, rect: RectArea): NodeView {
+    private buildNode(node: WorkflowNodeData, type: WorkflowNodeType | undefined, rect: RectArea, proxy = false): NodeView {
         const size = {w: rect.w, h: rect.h};
         const el = document.createElement('div');
 
@@ -1318,7 +1750,8 @@ export class WorkflowEditor {
         for (const [key, place] of WorkflowGeometry.placePorts(type, rect)) {
             const portEl = document.createElement('div');
             portEl.className = 'wf-port';
-            portEl.dataset.wfPort = place.port.id;
+            // A collapsed group's ports stand in for member ports: shown, not grabbed.
+            portEl.dataset[proxy ? 'wfProxy' : 'wfPort'] = place.port.id;
             portEl.dataset.wfDir = place.dir;
             portEl.style.left = `${place.x - rect.x}px`;
             portEl.style.top = `${place.y - rect.y}px`;
@@ -1327,7 +1760,7 @@ export class WorkflowEditor {
 
             // "+" for a free output, and for a free input that is not the main
             // left-hand one (sockets like a model/tool input at the bottom).
-            if (place.dir === 'out' || place.side !== 'left') {
+            if (!proxy && (place.dir === 'out' || place.side !== 'left')) {
                 const n = RectBoardGeometry.normal(place.side);
                 const add = document.createElement('button');
                 add.type = 'button';
@@ -1414,6 +1847,27 @@ export class WorkflowEditor {
         }
     }
 
+    /** Close the group label editor; `keep` stores the label (one undo step) when it changed. */
+    private finishGroupEdit(keep: boolean): void {
+        const edit = this.groupEdit;
+
+        if (edit === null) {
+            return;
+        }
+
+        this.groupEdit = null;    // first: removing the input fires blur → re-entry
+        const text = edit.input.value.trim();
+        const group = this.model.group(edit.id);
+        edit.input.remove();
+
+        if (keep && group !== undefined && text !== WorkflowGroups.label(group)) {
+            this.updateGroup(edit.id, {label: text});
+        } else if (group !== undefined) {
+            this.renderGroups();
+            this.renderConnections();
+        }
+    }
+
     /** Close the note editor; `keep` stores the text (one undo step) when it changed. */
     private finishNoteEdit(keep: boolean): void {
         const edit = this.noteEdit;
@@ -1435,11 +1889,11 @@ export class WorkflowEditor {
     }
 
     private hasItem(id: string): boolean {
-        return this.nodeViews.has(id) || this.noteViews.has(id);
+        return this.nodeViews.has(id) || this.noteViews.has(id) || this.groupViews.has(id);
     }
 
     private itemEl(id: string): HTMLElement | undefined {
-        return this.nodeViews.get(id)?.el ?? this.noteViews.get(id)?.el;
+        return this.nodeViews.get(id)?.el ?? this.noteViews.get(id)?.el ?? this.groupViews.get(id)?.el;
     }
 
     private static defaultBody(node: WorkflowNodeData, type: WorkflowNodeType | undefined, body: HTMLElement): void {
@@ -1505,7 +1959,7 @@ export class WorkflowEditor {
     /** Move a node's element to the model position and refresh its port places. */
     private positionNode(id: string): void {
         const view = this.nodeViews.get(id);
-        const node = this.model.node(id);
+        const node = this.drawnAt(id);
 
         if (view === undefined || node === undefined) {
             return;
@@ -1537,13 +1991,21 @@ export class WorkflowEditor {
             }
         }
 
+        this.syncGroups();
+
         const obstacles = [...this.nodeViews.values()].map((v) => v.rect);
 
         for (const conn of this.model.allConnections()) {
-            const a = this.nodeViews.get(conn.from.node);
-            const b = this.nodeViews.get(conn.to.node);
-            const pa = a?.ports.get(`out:${conn.from.port}`);
-            const pb = b?.ports.get(`in:${conn.to.port}`);
+            if (WorkflowGroups.isInternal(conn, this.hiddenBy)) {
+                continue;   // inside a collapsed group
+            }
+
+            const from = WorkflowGroups.drawnEnd(conn.from, this.hiddenBy);
+            const to = WorkflowGroups.drawnEnd(conn.to, this.hiddenBy);
+            const a = this.nodeViews.get(from.node);
+            const b = this.nodeViews.get(to.node);
+            const pa = a?.ports.get(`out:${from.port}`);
+            const pb = b?.ports.get(`in:${to.port}`);
 
             if (a === undefined || b === undefined || pa === undefined || pb === undefined) {
                 continue;   // kept in the document, just not drawable
@@ -1678,9 +2140,17 @@ export class WorkflowEditor {
         }
 
         this.tools.dataset.wfFor = id!;
+        this.tools.classList.toggle('wf-no-insert', !this.canInsertAt(id!));
         this.tools.style.display = '';
         this.tools.style.left = `${cv.mid.x}px`;
         this.tools.style.top = `${cv.mid.y}px`;
+    }
+
+    /** A node can be inserted into a connection only while its source node is shown. */
+    private canInsertAt(connectionId: string): boolean {
+        const conn = this.model.connection(connectionId);
+
+        return conn !== undefined && !this.hiddenBy.has(conn.from.node);
     }
 
     private createConnView(id: string): ConnView {
@@ -1744,11 +2214,17 @@ export class WorkflowEditor {
 
     // ---- state helpers -------------------------------------------------
 
-    private commit(kind: WorkflowChangeKind, nodes: string[], connections: string[], notes: string[] = []): void {
+    private commit(kind: WorkflowChangeKind, nodes: string[], connections: string[], notes: string[] = [], groups: string[] = []): void {
+        const change: WorkflowChange = {kind, nodes: [...new Set(nodes)], connections};
+
+        if (notes.length > 0) {
+            change.notes = notes;
+        }
+        if (groups.length > 0) {
+            change.groups = [...new Set(groups)];
+        }
         this.history.record(this.model.toDocument());
-        this.events.emit('change', notes.length > 0
-            ? {kind, nodes: [...new Set(nodes)], connections, notes}
-            : {kind, nodes: [...new Set(nodes)], connections});
+        this.events.emit('change', change);
     }
 
     private restore(doc: WorkflowDocument | undefined, kind: 'undo' | 'redo'): boolean {
@@ -1759,6 +2235,7 @@ export class WorkflowEditor {
         this.cancelGesture();
         this.finishNoteEdit(false);
         this.finishConnEdit(false);
+        this.finishGroupEdit(false);
         this.model.load(doc);
         this.renderAll();
 
@@ -1784,6 +2261,7 @@ export class WorkflowEditor {
             this.noteViews.delete(id);
         }
 
+        this.renderGroups();
         this.renderConnections();
 
         const nodes = new Set([...this.selected].filter((id) => this.hasItem(id)));
@@ -1872,6 +2350,21 @@ export class WorkflowEditor {
             if (!this.readOnlyFlag) {
                 this.pressButton(e, addEl, toolEl);
             }
+            return;
+        }
+
+        const toggleEl = target.closest<HTMLButtonElement>('[data-wf-group-toggle]');
+
+        if (toggleEl !== null) {
+            e.stopPropagation();
+            this.toggleGroup(toggleEl.dataset.wfGroupToggle!);   // also in the viewer
+            return;
+        }
+
+        const headEl = target.closest<HTMLDivElement>('[data-wf-group-head]');
+
+        if (headEl !== null) {
+            this.startNodePress(e, headEl.dataset.wfGroupHead!, p);
             return;
         }
 
@@ -2031,14 +2524,26 @@ export class WorkflowEditor {
 
         if (this.selected.has(id)) {
             for (const sid of this.selected) {
-                const n = this.model.node(sid) ?? this.model.note(sid);
+                const n = this.model.node(sid) ?? this.model.note(sid) ?? this.groupCorner(sid);
                 if (n !== undefined) {
                     origins.set(sid, {x: n.x, y: n.y});
+                }
+                // A group moves with its members.
+                for (const m of this.model.group(sid) === undefined ? [] : this.model.members(sid)) {
+                    const node = this.model.node(m)!;
+                    origins.set(m, {x: node.x, y: node.y});
                 }
             }
         }
 
         this.startGesture(e, {kind: 'node', id, startX: p.x, startY: p.y, origins, moved: false, collapseOnClick});
+    }
+
+    /** A group's handle for dragging: the top-left of its frame or collapsed node. */
+    private groupCorner(id: string): RectPoint | undefined {
+        const rect = this.groupViews.get(id)?.rect ?? (this.model.group(id) === undefined ? undefined : this.nodeViews.get(id)?.rect);
+
+        return rect === undefined ? undefined : {x: rect.x, y: rect.y};
     }
 
     private startDraft(e: PointerEvent, nodeId: string, portId: string, dir: WorkflowPortDir): void {
@@ -2322,12 +2827,13 @@ export class WorkflowEditor {
             case 'node':
                 if (g.moved) {
                     const ids = [...g.origins.keys()];
-                    this.commit('move', ids.filter((id) => this.nodeViews.has(id)), [], ids.filter((id) => this.noteViews.has(id)));
+                    this.commit('move', ids.filter((id) => this.model.node(id) !== undefined), [],
+                        ids.filter((id) => this.model.note(id) !== undefined), ids.filter((id) => this.model.group(id) !== undefined));
                 } else if (e.type === 'pointerup') {
                     if (g.collapseOnClick) {
                         this.setSelection(new Set([g.id]), null);
                     }
-                    if (this.nodeViews.has(g.id)) {
+                    if (this.model.node(g.id) !== undefined) {
                         this.events.emit('nodeClick', {id: g.id, originalEvent: e});
                     }
                 }
@@ -2474,6 +2980,23 @@ export class WorkflowEditor {
             this.editNote(noteEl.dataset.wfNote!);
             return;
         }
+        if (target.closest('[data-wf-group-toggle]') !== null) {
+            return;     // two quick clicks on the button already toggled twice
+        }
+
+        const headId = target.closest<HTMLDivElement>('[data-wf-group-head]')?.dataset.wfGroupHead;
+
+        if (headId !== undefined) {
+            this.editGroupLabel(headId);
+            return;
+        }
+
+        const boxId = target.closest<HTMLDivElement>('[data-wf-group]')?.dataset.wfGroup;
+
+        if (boxId !== undefined) {
+            this.setGroupCollapsed(boxId, false);
+            return;
+        }
 
         const nodeEl = target.closest<HTMLDivElement>('[data-wf-node]');
 
@@ -2527,6 +3050,21 @@ export class WorkflowEditor {
         } else if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) {
             e.preventDefault();
             this.redo();
+        } else if (mod && key === 'g' && !e.shiftKey) {
+            e.preventDefault();
+            this.group();
+        } else if (mod && key === 'g') {
+            e.preventDefault();
+            const groups = new Set(this.getSelection().groups);
+            if (groups.size === 0) {
+                this.getSelection().nodes.forEach((id) => {
+                    const g = this.groupOf(id);
+                    if (g !== null) {
+                        groups.add(g);
+                    }
+                });
+            }
+            groups.forEach((id) => this.ungroup(id));
         } else if (mod && key === 'd') {
             e.preventDefault();
             this.duplicateSelection();

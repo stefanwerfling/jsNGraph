@@ -172,6 +172,33 @@ export class WorkflowStyles {
             'background:linear-gradient(135deg,transparent 50%,color-mix(in srgb,var(--wf-note-color,var(--wf-note)) 70%,transparent) 50%)}',
             ':where(.wf-editable .wf-note-resize){display:block}',
 
+            // Groups (sub-workflows): a frame with a header when expanded, a stacked card when collapsed
+            ':where(.wf-group){position:absolute;box-sizing:border-box;border-radius:12px;pointer-events:none;' +
+            'border:1.5px dashed color-mix(in srgb,var(--wf-group-color,var(--wf-sel)) 55%,transparent);' +
+            'background:color-mix(in srgb,var(--wf-group-color,var(--wf-sel)) 6%,transparent)}',
+            ':where(.wf-group.wf-selected){border-style:solid;border-color:var(--wf-sel);' +
+            'box-shadow:0 0 0 3px color-mix(in srgb,var(--wf-sel) 22%,transparent)}',
+            ':where(.wf-group-head){position:absolute;left:0;top:0;right:0;height:32px;box-sizing:border-box;padding:0 10px 0 6px;' +
+            'display:flex;align-items:center;gap:6px;pointer-events:auto;cursor:default;' +
+            'color:color-mix(in srgb,var(--wf-group-color,var(--wf-sel)) 75%,var(--wf-text))}',
+            ':where(.wf-editable .wf-group-head){cursor:grab}',
+            ':where(.wf-group-label){font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}',
+            ':where(.wf-group-count){font-size:11px;color:var(--wf-subtext);white-space:nowrap}',
+            ':where(.wf-group-toggle){flex:none;width:22px;height:22px;padding:0;border-radius:6px;cursor:pointer;display:grid;' +
+            'place-items:center;font:600 12px/1 system-ui;color:inherit;background:transparent;border:1px solid transparent}',
+            ':where(.wf-group-toggle:hover){border-color:var(--wf-node-border);background:var(--wf-node-bg)}',
+            ':where(.wf-group-edit){position:absolute;width:180px;height:22px;box-sizing:border-box;z-index:3;padding:0 7px;' +
+            'border-radius:5px;font:600 13px/20px system-ui;color:var(--wf-text);background:var(--wf-node-bg);' +
+            'border:1px solid var(--wf-sel);outline:none}',
+            ':where(.wf-node.wf-group-node){--wf-node-color:var(--wf-group-color,var(--wf-sel));border-color:' +
+            'color-mix(in srgb,var(--wf-node-color) 55%,var(--wf-node-border));box-shadow:5px 5px 0 -1.5px var(--wf-node-bg),' +
+            '5px 5px 0 0 color-mix(in srgb,var(--wf-node-color) 40%,var(--wf-node-border)),0 2px 8px rgba(0,0,0,.18)}',
+            ':where(.wf-node.wf-group-node.wf-selected){border-color:var(--wf-sel)}',
+            ':where(.wf-group-node .wf-group-toggle){position:absolute;top:4px;right:4px;color:var(--wf-subtext)}',
+            ':where(.wf-group-node .wf-port),:where(.wf-editable .wf-group-node .wf-port){cursor:inherit;transform:none}',
+            ':where(.wf-editable .wf-group-node .wf-port:hover){transform:none;background:var(--wf-edge);border-color:var(--wf-edge)}',
+            ':where(.wf-conn-tools.wf-no-insert [data-wf-tool="insert"]){display:none}',
+
             // Minimap
             ':where(.wf-minimap){position:absolute;right:12px;bottom:12px;z-index:3;border-radius:8px;cursor:pointer;' +
             'background:color-mix(in srgb,var(--wf-node-bg) 88%,transparent);border:1px solid var(--wf-node-border);' +

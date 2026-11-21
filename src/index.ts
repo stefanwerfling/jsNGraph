@@ -110,6 +110,8 @@ export { WorkflowLayout } from './workflow/WorkflowLayout';
 export type { WorkflowLayoutOptions } from './workflow/WorkflowLayout';
 export { WorkflowMinimap } from './workflow/WorkflowMinimap';
 export type { WorkflowMinimapItem, WorkflowMinimapHost, WorkflowMinimapFrame } from './workflow/WorkflowMinimap';
+export { WorkflowGroups } from './workflow/WorkflowGroups';
+export type { WorkflowGroupProxy } from './workflow/WorkflowGroups';
 export type {
     WorkflowSide,
     WorkflowPortDir,
@@ -121,6 +123,8 @@ export type {
     WorkflowDocument,
     WorkflowFragment,
     WorkflowNote,
+    WorkflowGroup,
+    WorkflowSelection,
     WorkflowNodeStatus,
     WorkflowNodeStatusInfo,
     WorkflowConnectionStatus,

@@ -59,6 +59,8 @@
     <button id="redo">Redo</button>
     <span class="sep"></span>
     <button id="note">+ Note</button>
+    <button id="group">Group</button>
+    <button id="ungroup">Ungroup</button>
     <span class="sep"></span>
     <button id="run">▶ Run</button>
     <button id="fail">Fail mail: off</button>
@@ -76,6 +78,7 @@
     drag from the palette (onto a connection to insert) · double-click a note or connection to write<br>
     drag ports to connect · drag a connected input to move it · “+” adds a node<br>
     Shift+drag: select area · Del: delete (re-links the chain) · D: disable<br>
+    Ctrl+G: group into a sub-workflow · Ctrl+Shift+G: ungroup · double-click a collapsed group to open it<br>
     Ctrl+C / X / V / D: copy, cut, paste, duplicate · Ctrl+Z / Ctrl+Y · wheel: zoom
 </div>
 
@@ -136,6 +139,10 @@
             {id: 'c10', from: {node: 'nightly', port: 'main'}, to: {node: 'report', port: 'main'}},
             // A loop back: the report feeds the customer lookup again — drawn as a detour.
             {id: 'c11', from: {node: 'send', port: 'main'}, to: {node: 'fetch', port: 'main'}, label: 'retry on bounce'}
+        ],
+        // A sub-workflow: the AI part, collapsed into one node (▸ or double-click opens it).
+        groups: [
+            {id: 'ai', label: 'AI reply', nodes: ['agent', 'llm', 'crm'], collapsed: true, color: '#9a7be0'}
         ]
     };
 
@@ -152,12 +159,18 @@
     const syncButtons = () => {
         $('undo').disabled = editor.readOnly || !editor.canUndo;
         $('redo').disabled = editor.readOnly || !editor.canRedo;
-        const sel = editor.getSelection().nodes;
-        $('disable').disabled = editor.readOnly || sel.length === 0;
-        $('dup').disabled = editor.readOnly || sel.length === 0;
+        const s = editor.getSelection();
+        const any = s.nodes.length + s.groups.length;
+        $('disable').disabled = editor.readOnly || any === 0;
+        $('dup').disabled = editor.readOnly || any === 0;
+        $('group').disabled = editor.readOnly || any === 0;
+        $('ungroup').disabled = editor.readOnly || s.groups.length === 0;
     };
 
-    editor.on('change', (c) => { log(`change: ${c.kind} ${[...c.nodes, ...c.connections, ...(c.notes ?? [])].join(', ')}`); syncButtons(); });
+    editor.on('change', (c) => {
+        log(`change: ${c.kind} ${[...c.nodes, ...c.connections, ...(c.notes ?? []), ...(c.groups ?? [])].join(', ')}`);
+        syncButtons();
+    });
     editor.on('selectionChange', (s) => syncButtons());
     editor.on('nodeClick', (e) => log(`nodeClick: ${e.id}`));
     editor.on('nodeDblClick', (e) => log(`nodeDblClick: ${e.id} — the host would open its parameter panel here`));
@@ -182,6 +195,8 @@
     };
     $('fit').onclick = () => editor.fit();
     $('tidy').onclick = () => editor.tidyUp();
+    $('group').onclick = () => { editor.group(); editor.element.focus(); };
+    $('ungroup').onclick = () => { editor.getSelection().groups.forEach((id) => editor.ungroup(id)); editor.element.focus(); };
     $('mini').onclick = () => {
         editor.setMinimap(!editor.hasMinimap);
         $('mini').classList.toggle('on', editor.hasMinimap);
@@ -201,7 +216,8 @@
     $('undo').onclick = () => editor.undo();
     $('redo').onclick = () => editor.redo();
     $('disable').onclick = () => {
-        editor.setDisabled(editor.getSelection().nodes);
+        const s = editor.getSelection();
+        editor.setDisabled([...s.nodes, ...s.groups]);
     };
     $('dup').onclick = () => editor.duplicateSelection();
     $('dump').onclick = () => console.log(JSON.stringify(editor.getDocument(), null, 2)) || log('document logged to the console');

@@ -2,6 +2,7 @@ import {
     WorkflowCanConnect,
     WorkflowConnection,
     WorkflowDocument,
+    WorkflowGroup,
     WorkflowNodeData,
     WorkflowNodeType,
     WorkflowNote,
@@ -25,6 +26,7 @@ export class WorkflowModel {
     private nodes = new Map<string, WorkflowNodeData>();
     private connections = new Map<string, WorkflowConnection>();
     private notes = new Map<string, WorkflowNote>();
+    private groups = new Map<string, WorkflowGroup>();
     private idCounter = 0;
 
     public constructor(
@@ -54,6 +56,10 @@ export class WorkflowModel {
         return this.types.get(type);
     }
 
+    public allTypes(): WorkflowNodeType[] {
+        return [...this.types.values()];
+    }
+
     /** Ports of `nodeId` in direction `dir` (empty for unknown nodes/types). */
     public ports(nodeId: string, dir: WorkflowPortDir): WorkflowPortSpec[] {
         const node = this.nodes.get(nodeId);
@@ -72,6 +78,7 @@ export class WorkflowModel {
         this.nodes = new Map(doc.nodes.map((n) => [n.id, structuredClone(n)]));
         this.connections = new Map(doc.connections.map((c) => [c.id, structuredClone(c)]));
         this.notes = new Map((doc.notes ?? []).map((n) => [n.id, structuredClone(n)]));
+        this.groups = new Map((doc.groups ?? []).map((g) => [g.id, structuredClone(g)]));
     }
 
     /** Deep copy of the current document. */
@@ -83,6 +90,9 @@ export class WorkflowModel {
 
         if (this.notes.size > 0) {
             doc.notes = [...this.notes.values()].map((n) => structuredClone(n));
+        }
+        if (this.groups.size > 0) {
+            doc.groups = [...this.groups.values()].map((g) => structuredClone(g));
         }
 
         return doc;
@@ -114,14 +124,14 @@ export class WorkflowModel {
         });
     }
 
-    /** A fresh id with `prefix` that is not taken by any node or connection. */
+    /** A fresh id with `prefix` that is not taken by any node, connection, note or group. */
     public nextId(prefix: string): string {
         let id: string;
 
         do {
             this.idCounter++;
             id = prefix + this.idCounter;
-        } while (this.nodes.has(id) || this.connections.has(id) || this.notes.has(id));
+        } while (this.nodes.has(id) || this.connections.has(id) || this.notes.has(id) || this.groups.has(id));
 
         return id;
     }
@@ -130,7 +140,7 @@ export class WorkflowModel {
     public addNode(data: Omit<WorkflowNodeData, 'id'> & {id?: string}): WorkflowNodeData {
         const id = data.id !== undefined && data.id.length > 0 ? data.id : this.nextId('n');
 
-        if (this.nodes.has(id) || this.notes.has(id)) {
+        if (this.nodes.has(id) || this.notes.has(id) || this.groups.has(id)) {
             throw new Error(`Workflow node id '${id}' already exists`);
         }
 
@@ -191,6 +201,7 @@ export class WorkflowModel {
                 }
             }
             this.nodes.delete(id);
+            this.dropFromGroups(id);
 
             const source = incoming[0];
 
@@ -222,7 +233,7 @@ export class WorkflowModel {
     public addNote(data: Partial<WorkflowNote> & {x: number; y: number}): WorkflowNote {
         const id = data.id !== undefined && data.id.length > 0 ? data.id : this.nextId('note');
 
-        if (this.notes.has(id) || this.nodes.has(id)) {
+        if (this.notes.has(id) || this.nodes.has(id) || this.groups.has(id)) {
             throw new Error(`Workflow note id '${id}' already exists`);
         }
 
@@ -248,6 +259,105 @@ export class WorkflowModel {
         return [...new Set(ids)].filter((id) => this.notes.delete(id));
     }
 
+    // ---- groups --------------------------------------------------------
+
+    public group(id: string): WorkflowGroup | undefined {
+        return this.groups.get(id);
+    }
+
+    public allGroups(): WorkflowGroup[] {
+        return [...this.groups.values()];
+    }
+
+    /** The group a node belongs to, if any. */
+    public groupOf(nodeId: string): WorkflowGroup | undefined {
+        return this.allGroups().find((g) => g.nodes.includes(nodeId));
+    }
+
+    /** Member ids of a group that exist as nodes (a loaded document may name missing ones). */
+    public members(groupId: string): string[] {
+        return (this.groups.get(groupId)?.nodes ?? []).filter((id) => this.nodes.has(id));
+    }
+
+    /**
+     * Group existing nodes (id generated when empty). Groups do not nest: the
+     * nodes leave any group they were in, and a group left empty is removed.
+     * Throws on a duplicate id or when none of the nodes exist.
+     */
+    public addGroup(data: Partial<WorkflowGroup> & {nodes: string[]}): WorkflowGroup {
+        const id = data.id !== undefined && data.id.length > 0 ? data.id : this.nextId('g');
+        const nodes = [...new Set(data.nodes)].filter((n) => this.nodes.has(n));
+
+        if (this.groups.has(id) || this.nodes.has(id) || this.notes.has(id)) {
+            throw new Error(`Workflow group id '${id}' already exists`);
+        }
+        if (nodes.length === 0) {
+            throw new Error('A workflow group needs at least one node');
+        }
+
+        for (const n of nodes) {
+            this.dropFromGroups(n);
+        }
+
+        const group: WorkflowGroup = {...structuredClone(data), id, nodes};
+        this.groups.set(id, group);
+
+        return group;
+    }
+
+    /** Patch label, colour or collapsed state; a blank label goes back to the default. */
+    public updateGroup(id: string, patch: Partial<Omit<WorkflowGroup, 'id' | 'nodes'>>): boolean {
+        const group = this.groups.get(id);
+
+        if (group === undefined) {
+            return false;
+        }
+
+        Object.assign(group, structuredClone(patch), {id, nodes: group.nodes});
+        if (group.label !== undefined && group.label.trim() === '') {
+            delete group.label;
+        } else if (group.label !== undefined) {
+            group.label = group.label.trim();
+        }
+        if (group.collapsed === false) {
+            delete group.collapsed;
+        }
+
+        return true;
+    }
+
+    /** Dissolve groups (their nodes stay); returns the ids that existed. */
+    public removeGroups(ids: Iterable<string>): string[] {
+        return [...new Set(ids)].filter((id) => this.groups.delete(id));
+    }
+
+    /** `ids` with every group id replaced by its member nodes. */
+    public expandGroups(ids: Iterable<string>): string[] {
+        const out = new Set<string>();
+
+        for (const id of ids) {
+            if (this.groups.has(id)) {
+                this.members(id).forEach((m) => out.add(m));
+            } else {
+                out.add(id);
+            }
+        }
+
+        return [...out];
+    }
+
+    private dropFromGroups(nodeId: string): void {
+        for (const g of this.allGroups()) {
+            if (!g.nodes.includes(nodeId)) {
+                continue;
+            }
+            g.nodes = g.nodes.filter((n) => n !== nodeId);
+            if (!g.nodes.some((n) => this.nodes.has(n))) {
+                this.groups.delete(g.id);
+            }
+        }
+    }
+
     /** Toggle or set `disabled` on nodes; returns the ids that changed. */
     public setDisabled(ids: Iterable<string>, disabled: boolean): string[] {
         const changed: string[] = [];
@@ -271,10 +381,14 @@ export class WorkflowModel {
         return this.allConnections().filter((c) => set.has(c.from.node) && set.has(c.to.node));
     }
 
-    /** The nodes and notes `ids` and the connections running between those nodes, deep-copied. */
+    /**
+     * The nodes, notes and groups `ids` (a group brings its members) and the
+     * connections running between those nodes, deep-copied.
+     */
     public fragment(ids: Iterable<string>): WorkflowDocument {
         ids = [...ids];
-        const set = new Set([...ids].filter((id) => this.nodes.has(id)));
+        const groupIds = [...new Set(ids)].filter((id) => this.groups.has(id));
+        const set = new Set(this.expandGroups(ids).filter((id) => this.nodes.has(id)));
 
         const frag: WorkflowDocument = {
             nodes: [...set].map((id) => structuredClone(this.nodes.get(id)!)),
@@ -285,6 +399,13 @@ export class WorkflowModel {
         if (notes.length > 0) {
             frag.notes = notes;
         }
+        if (groupIds.length > 0) {
+            frag.groups = groupIds.map((id) => {
+                const g = structuredClone(this.groups.get(id)!);
+                g.nodes = g.nodes.filter((n) => set.has(n));
+                return g;
+            });
+        }
 
         return frag;
     }
@@ -293,11 +414,14 @@ export class WorkflowModel {
      * Add a fragment under fresh ids, shifted by (dx, dy). Connections are
      * kept when both ends came along and the rules still allow them.
      */
-    public paste(fragment: WorkflowDocument, dx: number, dy: number): {nodes: string[]; connections: string[]; notes: string[]} {
+    public paste(
+        fragment: WorkflowDocument, dx: number, dy: number
+    ): {nodes: string[]; connections: string[]; notes: string[]; groups: string[]} {
         const idMap = new Map<string, string>();
         const nodes: string[] = [];
         const connections: string[] = [];
         const notes: string[] = [];
+        const groups: string[] = [];
 
         for (const n of fragment.notes ?? []) {
             notes.push(this.addNote({...n, id: this.nextId('note'), x: n.x + dx, y: n.y + dy}).id);
@@ -329,7 +453,15 @@ export class WorkflowModel {
             }
         }
 
-        return {nodes, connections, notes};
+        for (const g of fragment.groups ?? []) {
+            const members = g.nodes.map((n) => idMap.get(n)).filter((n): n is string => n !== undefined);
+
+            if (members.length > 0) {
+                groups.push(this.addGroup({...g, id: this.nextId('g'), nodes: members}).id);
+            }
+        }
+
+        return {nodes, connections, notes, groups};
     }
 
     /**

@@ -73,11 +73,30 @@ export interface WorkflowNote {
     color?: string;
 }
 
+/**
+ * A sub-workflow: nodes framed together under a label. Expanded, a frame
+ * with a header surrounds them; collapsed, they are drawn as one node whose
+ * ports are the connections crossing the group's border. Groups do not nest;
+ * a node belongs to at most one group.
+ */
+export interface WorkflowGroup {
+    id: string;
+    /** Header / node title. Default 'Group'. */
+    label?: string;
+    /** Member node ids. */
+    nodes: string[];
+    collapsed?: boolean;
+    /** Tint (any CSS colour). Default: the selection blue. */
+    color?: string;
+}
+
 export interface WorkflowDocument {
     nodes: WorkflowNodeData[];
     connections: WorkflowConnection[];
     /** Omitted when there are none. */
     notes?: WorkflowNote[];
+    /** Omitted when there are none. */
+    groups?: WorkflowGroup[];
 }
 
 /** Run state of a node, shown as a badge and a tinted border. Not part of the document. */
@@ -119,6 +138,9 @@ export type WorkflowChangeKind =
     | 'addNote'
     | 'updateNote'
     | 'updateConnection'
+    | 'group'
+    | 'ungroup'
+    | 'updateGroup'
     | 'undo'
     | 'redo';
 
@@ -131,6 +153,8 @@ export interface WorkflowChange {
     connections: string[];
     /** Note ids touched, when any. */
     notes?: string[];
+    /** Group ids touched, when any. */
+    groups?: string[];
 }
 
 export interface WorkflowEditorOptions {
@@ -163,6 +187,13 @@ export interface WorkflowFragment extends WorkflowDocument {
     version: 1;
 }
 
+export interface WorkflowSelection {
+    nodes: string[];
+    notes: string[];
+    groups: string[];
+    connection: string | null;
+}
+
 export interface WorkflowClickEvent {
     id: string;
     originalEvent: MouseEvent;
@@ -170,7 +201,7 @@ export interface WorkflowClickEvent {
 
 export interface WorkflowEditorEvents extends Record<string, unknown> {
     change: WorkflowChange;
-    selectionChange: {nodes: string[]; notes: string[]; connection: string | null};
+    selectionChange: WorkflowSelection;
     nodeClick: WorkflowClickEvent;
     nodeDblClick: WorkflowClickEvent;
     connectionClick: WorkflowClickEvent;

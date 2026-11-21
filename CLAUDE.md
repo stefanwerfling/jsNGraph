@@ -136,7 +136,11 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   order, sub-nodes under their agent; `test/WorkflowLayout.test.ts`), `WorkflowMinimap.ts` (canvas overview,
   scale frozen while dragging on it), backward detours avoid other nodes, `setStyleVars` /
   `WorkflowStyles.varsFromTheme`. Connection labels: `WorkflowConnection.label` (document data, under the line),
-  double-click to edit, `setConnectionLabel`. Plan + milestones W1–W6: `docs/workflow-editor.md`.
+  double-click to edit, `setConnectionLabel`. Sub-workflows: `doc.groups` (`WorkflowGroup`), frame + header when
+  expanded, one node with proxy ports (member ports with traffic across the border) when collapsed; pure part in
+  `WorkflowGroups.ts` (`proxies`, `frame`, `substitute` = the model as drawn, used by `tidyUp`); groups don't nest;
+  Ctrl+G / Ctrl+Shift+G; collapse is an undoable document change, also allowed read-only.
+  Plan + milestones W1–W6: `docs/workflow-editor.md`.
   Example: `examples/workflow.html`.
 
 ## Commands
