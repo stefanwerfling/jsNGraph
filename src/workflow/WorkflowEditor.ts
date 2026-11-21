@@ -122,6 +122,8 @@ export class WorkflowEditor {
     private readonly nodeStatus = new Map<string, {status: WorkflowNodeStatus; message?: string}>();
     private readonly connStatus = new Map<string, WorkflowConnectionStatus>();
     private runPath: Set<string> | null = null;
+    /** Connections the run actually travelled; null = derive from runPath's nodes. */
+    private runConnections: Set<string> | null = null;
     private minimap: WorkflowMinimap | null = null;
     private readonly styleVars = new Map<string, string>();
     /** Frame handle of a running tidy-up animation; input waits for it. */
@@ -945,16 +947,34 @@ export class WorkflowEditor {
     }
 
     /**
-     * Dim everything outside an executed path: nodes not in `nodeIds` and
-     * connections not running between two of them. null shows all again.
+     * Dim everything outside an executed path: nodes not in `nodeIds`, and
+     * connections not in `connectionIds`. Without `connectionIds`, a
+     * connection counts as run when both its ends are in `nodeIds` — which
+     * also keeps an untaken loop-back between two run nodes lit, so a host
+     * that knows the travelled connections should pass them. null shows all again.
      */
-    public setRunPath(nodeIds: Iterable<string> | null): void {
+    public setRunPath(nodeIds: Iterable<string> | null, connectionIds?: Iterable<string>): void {
         this.runPath = nodeIds === null ? null : new Set(nodeIds);
+        this.runConnections = nodeIds === null || connectionIds === undefined ? null : new Set(connectionIds);
 
         for (const id of this.nodeViews.keys()) {
             this.applyNodeStatus(id);
         }
         this.renderConnections();
+    }
+
+    /** Whether a connection is outside the run path (see {@link setRunPath}). */
+    public static dimConnection(
+        conn: WorkflowConnection | undefined, nodes: ReadonlySet<string> | null, connections: ReadonlySet<string> | null
+    ): boolean {
+        if (nodes === null || conn === undefined) {
+            return false;
+        }
+        if (connections !== null) {
+            return !connections.has(conn.id);
+        }
+
+        return !(nodes.has(conn.from.node) && nodes.has(conn.to.node));
     }
 
     /** Clear every node and connection status and the run path. */
@@ -1492,8 +1512,7 @@ export class WorkflowEditor {
 
         cv.g.classList.toggle('wf-st-success', st?.status === 'success');
         cv.g.classList.toggle('wf-st-error', st?.status === 'error');
-        cv.g.classList.toggle('wf-dim', this.runPath !== null && conn !== undefined
-            && !(this.runPath.has(conn.from.node) && this.runPath.has(conn.to.node)));
+        cv.g.classList.toggle('wf-dim', WorkflowEditor.dimConnection(conn, this.runPath, this.runConnections));
 
         if (text === undefined) {
             cv.label?.remove();

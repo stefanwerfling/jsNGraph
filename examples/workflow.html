@@ -363,7 +363,7 @@
             const n = connItems.get(id);
             editor.setConnectionStatus(id, n === undefined ? {status: 'success'} : {items: n, status: 'success'});
         }
-        editor.setRunPath(executed);
+        editor.setRunPath(executed, touched);   // the untaken loop-back stays dimmed
         log(`run finished: ${executed.size} nodes${failMail ? ' — Send mail failed (hover its badge)' : ''}`);
         running = false;
         $('run').disabled = false;

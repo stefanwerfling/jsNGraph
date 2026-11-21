@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { WorkflowEditor } from '../src/workflow/WorkflowEditor';
 import { WorkflowModel } from '../src/workflow/WorkflowModel';
 import { WorkflowGeometry as G } from '../src/workflow/WorkflowGeometry';
 import { WorkflowNodeType } from '../src/workflow/WorkflowTypes';
@@ -285,5 +286,26 @@ describe('WorkflowGeometry', () => {
             .toBe('M 0 0 L 90 0 Q 100 0 100 10 L 100 100');
         expect(G.roundedPath([{x: 0, y: 0}, {x: 4, y: 0}, {x: 4, y: 100}], 10))
             .toBe('M 0 0 L 2 0 Q 4 0 4 2 L 4 100');
+    });
+});
+
+describe('WorkflowEditor.dimConnection', () => {
+    const loop = {id: 'back', from: {node: 'b', port: 'main'}, to: {node: 'a', port: 'main'}};
+    const fwd = {id: 'fwd', from: {node: 'a', port: 'main'}, to: {node: 'b', port: 'main'}};
+    const nodes = new Set(['a', 'b']);
+
+    it('without a run path nothing is dimmed', () => {
+        expect(WorkflowEditor.dimConnection(loop, null, null)).toBe(false);
+    });
+
+    it('falls back to "both ends ran", which keeps an untaken loop lit', () => {
+        expect(WorkflowEditor.dimConnection(loop, nodes, null)).toBe(false);
+        expect(WorkflowEditor.dimConnection(fwd, new Set(['a']), null)).toBe(true);
+    });
+
+    it('with travelled connections, only those stay lit', () => {
+        const travelled = new Set(['fwd']);
+        expect(WorkflowEditor.dimConnection(fwd, nodes, travelled)).toBe(false);
+        expect(WorkflowEditor.dimConnection(loop, nodes, travelled)).toBe(true);
     });
 });
