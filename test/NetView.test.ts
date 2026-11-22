@@ -148,6 +148,14 @@ describe('NetHugin', () => {
         expert_usage: {experts: 16, blocks: [{block: 1, k: 2, top_by_count: [{expert: 3, tokens: 2}], picks_at_position: [{expert: 3, weight: 0.6}]}]}
     };
 
+    it('prefers the model section of a trace output', () => {
+        const fromTrace = NetHugin.model({...outputs, model: {architecture: 'qwen35moe', d_model: 16, blocks: 3, heads: 8, kv_heads: 2,
+            experts: 0, experts_per_token: 0, block_kinds: ['linear', 'linear', 'full']}});
+
+        expect(fromTrace).toMatchObject({architecture: 'qwen35moe', hidden: 16, blocks: 3, heads: 8, kvHeads: 2, experts: 16, blockKinds: ['linear', 'linear', 'full']});
+        expect(NetHugin.model({model: {d_model: 4, blocks: 2, heads: 2, experts: 0}}).experts).toBeUndefined();
+    });
+
     it('reads the model sizes from the tool outputs', () => {
         expect(NetHugin.model(outputs)).toMatchObject({hidden: 8, blocks: 2, heads: 4, kvHeads: 2, experts: 16, expertsPerToken: 2});
         expect(NetHugin.model(outputs, {heads: 32}).heads).toBe(32);

@@ -160,7 +160,8 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   top-1 under each column, measurement strip (p(answer) line, Δ residual bars, appears/settles marks).
   A trace lays the active path (strongest bins block→block, `pathWidth`²curves per gap) over it; sweep +
   flow dots. Pure parts: `NetCompress` (bins, normalize, strongest, focus, `measure`), `NetLayout`
-  (geometry, `hit`), `NetHugin` (Hugin forward-tool outputs → model + trace); `test/NetView.test.ts`.
+  (geometry, `hit`), `NetHugin` (Hugin's `trace` tool JSON — or the single forward tools combined — → model +
+  trace); `test/NetView.test.ts`.
   Cells/curves are batched per colour×alpha bucket (34 → 9 ms/frame for 40 blocks × 256 experts).
   Example: `examples/netview.html` (simulated traces, drop a Hugin JSON for a real one).
 

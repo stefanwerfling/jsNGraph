@@ -202,12 +202,11 @@
         $('theme').textContent = light ? 'Dark' : 'Light';
     };
 
-    // Real data: one JSON object {prompt, tokenize, logit_lens, activations, attention_pattern: [...], expert_usage}
-    // collected from Hugin's forward tools for the same text.
+    // Real data: the JSON of Hugin's `trace` tool for one text (or the single tools' outputs combined).
     async function loadFile(file) {
         try {
             const outputs = JSON.parse(await file.text());
-            show(outputs, outputs.model ?? {});
+            show(outputs, {});
             $('note').textContent = `${file.name} · ${view.getModel().blocks} blocks`;
         } catch (err) {
             $('note').textContent = `could not read ${file.name}: ${err.message}`;

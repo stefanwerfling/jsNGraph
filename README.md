@@ -294,9 +294,10 @@ view.on('blockClick', (e) => console.log(e?.block, e?.data));
   (1 − entropy / ln context), expert picks at the traced token over the prompt's expert load;
   under all columns the final answer's lens probability and the residual update per block,
   with "answer appears" / "answer settles" marks. A click opens the block's details.
-- `NetHugin.model(outputs)` / `NetHugin.trace(outputs)` read the outputs of Hugin's forward
-  tools (`logit_lens`, `activations` with `values: true`, `attention_pattern` per block,
-  `expert_usage`, `tokenize`) for the same text.
+- `NetHugin.model(outputs)` / `NetHugin.trace(outputs)` read the JSON of Hugin's `trace` tool
+  (one forward: tokens, lens, residuals, attention of every block, routing, model sizes) — or
+  the single forward tools' outputs (`logit_lens`, `activations` with `values: true`,
+  `attention_pattern` per block, `expert_usage`, `tokenize`) for the same text, combined.
 - A renderer only: it runs no model. Cells and curves are batched by colour, so a 40-block MoE
   with 256 experts draws in about 9 ms.
 - Demo: `examples/netview.html` (simulated traces; drop a Hugin JSON on it for a real one).

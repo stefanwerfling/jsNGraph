@@ -5,7 +5,12 @@ type Json = any;
 
 /**
  * Outputs of the Hugin forward tools for one prompt, as returned by its MCP
- * server — every field optional; the trace gets what is there.
+ * server — every field optional; the trace gets what is there. Hugin's
+ * `trace` tool returns all of it from one forward, in exactly this shape:
+ *
+ *     trace             {text}                    everything below + model
+ *
+ * or the single tools, combined by the caller:
  *
  *     logit_lens        {text, top_k}
  *     activations       {text, values: true}     (or without values: top_dims only)
@@ -15,6 +20,10 @@ type Json = any;
  */
 export interface HuginOutputs {
     prompt?: string;
+    /** Sizes from `trace`: architecture, d_model, blocks, heads, kv_heads, experts, experts_per_token, block_kinds. */
+    model?: Json;
+    /** What `trace` could not capture (e.g. attention stages of an architecture). */
+    notes?: string[];
     model_info?: Json;
     tokenize?: Json;
     next_token?: Json;
@@ -36,18 +45,26 @@ export class NetHugin {
             ...(out.attention_pattern ?? []).map((a: Json) => a.block)
         ].filter((b) => typeof b === 'number');
         const attention = out.attention_pattern?.[0];
-
-        return {
-            name: out.model_info?.path?.split('/').pop(),
-            architecture: out.model_info?.architecture,
-            hidden: out.activations?.d_model ?? 0,
-            blocks: blockIds.length === 0 ? 0 : Math.max(...blockIds) + 1,
-            heads: attention?.heads ?? 0,
-            kvHeads: attention?.kv_heads,
-            experts: out.expert_usage?.experts,
-            expertsPerToken: out.expert_usage?.blocks?.[0]?.k,
-            ...override
+        const m = out.model ?? {};
+        const model: NetModel = {
+            hidden: m.d_model ?? out.activations?.d_model ?? 0,
+            blocks: m.blocks ?? (blockIds.length === 0 ? 0 : Math.max(...blockIds) + 1),
+            heads: m.heads ?? attention?.heads ?? 0
         };
+        const name = m.name ?? out.model_info?.path?.split('/').pop();
+        const architecture = m.architecture ?? out.model_info?.architecture;
+        const kvHeads = m.kv_heads ?? attention?.kv_heads;
+        const experts = m.experts || out.expert_usage?.experts;
+        const perToken = m.experts_per_token || out.expert_usage?.blocks?.[0]?.k;
+
+        if (name !== undefined) model.name = name;
+        if (architecture !== undefined) model.architecture = architecture;
+        if (kvHeads !== undefined) model.kvHeads = kvHeads;
+        if (experts) model.experts = experts;
+        if (perToken) model.expertsPerToken = perToken;
+        if (Array.isArray(m.block_kinds)) model.blockKinds = m.block_kinds.map(String);
+
+        return {...model, ...override};
     }
 
     public static trace(out: HuginOutputs): NetTrace {
