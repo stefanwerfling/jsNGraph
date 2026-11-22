@@ -13,6 +13,7 @@ import { Effects, NGraphOverlay, OverlayContext, PulseOptions, RippleOptions, Tr
 import { EdgeStyler, NodeStyler, StyleResolver } from './render/StyleResolver';
 import { Theme, ThemeTokens } from './render/Theme';
 import { ClickModifiers, InteractionController } from './interaction/InteractionController';
+import { HitCandidate, MIN_HIT_RADIUS_PX, pickHit } from './interaction/HitPick';
 import { Tooltip } from './ui/Tooltip';
 import { NodePanel } from './ui/NodePanel';
 import { EventEmitter } from './util/EventEmitter';
@@ -942,7 +943,7 @@ export class NGraph {
         return this.spatial;
     }
 
-    /** Topmost node under a screen point. Tiny dots get a minimum 6 px target. */
+    /** The node under a screen point; small dots get a padded target (pickHit). */
     private hitNode(screenX: number, screenY: number): GraphNode | null {
         if (this.isClustered()) {
             return null;
@@ -950,30 +951,20 @@ export class NGraph {
 
         const index = this.spatialIndex();
         const world = this.camera.toWorld(screenX, screenY);
-        const minTarget = 6 / this.camera.scale;
-        let best: {node: GraphNode; order: number} | null = null;
+        const minTarget = MIN_HIT_RADIUS_PX / this.camera.scale;
+        const candidates: HitCandidate<GraphNode>[] = [];
 
         for (const candidate of index.queryRadius(world.x, world.y, Math.max(this.spatialExtent, minTarget) + 1)) {
             const {node, order} = candidate.payload;
             const style = this.styles.node(node);
-            const dx = world.x - node.x;
-            const dy = world.y - node.y;
-            let inside: boolean;
-
-            if (style.shape === 'card') {
-                const size = CanvasRenderer.cardSize(node);
-                inside = Math.abs(dx) <= size.w / 2 && Math.abs(dy) <= size.h / 2;
-            } else {
-                const r = Math.max(style.radius, minTarget);
-                inside = dx * dx + dy * dy <= r * r;
-            }
-
-            if (inside && (best === null || order > best.order)) {
-                best = candidate.payload;
-            }
+            const size = style.shape === 'card' ? CanvasRenderer.cardSize(node) : null;
+            candidates.push({
+                item: node, x: node.x, y: node.y, order: order,
+                shape: size !== null ? {kind: 'box', w: size.w, h: size.h} : {kind: 'circle', radius: style.radius}
+            });
         }
 
-        return best?.node ?? null;
+        return pickHit(candidates, world.x, world.y, minTarget);
     }
 
     /** Nearest edge within ~6 screen px of the point. */
