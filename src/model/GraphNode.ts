@@ -1,4 +1,4 @@
-import { NGraphNodeData, NodeKind, NodeShape, NodeStatus } from './NGraphTypes';
+import { NGraphNodeData, NodeBadge, NodeKind, NodeShape, NodeStatus } from './NGraphTypes';
 
 /**
  * Runtime node: the data a caller provided, plus the physics state the
@@ -18,6 +18,9 @@ export class GraphNode {
     public image: string | null;
     public badge: string | null;
     public badgeColor: string | null;
+    public badges: NodeBadge[] | null;
+    public fill: string | null;
+    public iconColor: string | null;
     public ring: number;
     public shape: NodeShape;
     public color: string | null;
@@ -44,6 +47,9 @@ export class GraphNode {
         this.image = data.image !== undefined && data.image !== '' ? data.image : null;
         this.badge = GraphNode.badgeText(data.badge);
         this.badgeColor = data.badgeColor ?? null;
+        this.badges = data.badges ?? null;
+        this.fill = data.fill ?? null;
+        this.iconColor = data.iconColor ?? null;
         this.ring = data.ring ?? 1;
         this.shape = data.shape ?? 'circle';
         this.color = data.color ?? null;
@@ -101,6 +107,18 @@ export class GraphNode {
 
         if (patch.badgeColor !== undefined) {
             this.badgeColor = patch.badgeColor;
+        }
+
+        if (patch.badges !== undefined) {
+            this.badges = patch.badges;
+        }
+
+        if (patch.fill !== undefined) {
+            this.fill = patch.fill;
+        }
+
+        if (patch.iconColor !== undefined) {
+            this.iconColor = patch.iconColor;
         }
 
         if (patch.ring !== undefined) {

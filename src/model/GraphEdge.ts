@@ -20,6 +20,13 @@ export class GraphEdge {
     public label: string | null;
     public color: string | null;
     public width: number | null;
+    /**
+     * Lane among edges between the same two nodes (set by EdgeLanes): 0 for a
+     * single edge, else ±0.5, ±1, … — the renderer bends lane ≠ 0 apart.
+     */
+    public lane = 0;
+    /** Number of edges between this edge's two nodes (1 = no parallels). */
+    public bundle = 1;
     /** Phase offset (0..1) so multiple animated edges don't pulse in lockstep. */
     public readonly dashPhase: number = Math.random();
 

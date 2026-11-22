@@ -10,6 +10,9 @@ export type {
     NGraphNodeData,
     NGraphEdgeData,
     NodeKind,
+    NodeIconDrawer,
+    NodeBadge,
+    BadgePosition,
     NodeShape,
     NodeStatus,
     NodeStyle,
@@ -23,6 +26,7 @@ export type {
 export type { GraphNode } from './model/GraphNode';
 export type { GraphEdge } from './model/GraphEdge';
 export { GraphQuery } from './model/GraphQuery';
+export { EdgeLanes } from './model/EdgeLanes';
 export type { NeighborDirection } from './model/GraphQuery';
 export { EdgeKindPresets, StyleResolver } from './render/StyleResolver';
 export type { NodeStyler, EdgeStyler, ResolvedNodeStyle, ResolvedEdgeStyle, LabelStyle } from './render/StyleResolver';

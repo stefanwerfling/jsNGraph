@@ -8,7 +8,39 @@ export type NodeStatus = 'ok' | 'warning' | 'critical' | 'down';
  */
 export type NodeShape = 'circle' | 'card' | 'dot';
 
-export type NodeKind = 'pc' | 'laptop' | 'tablet' | 'server' | 'database' | 'router' | 'agent' | 'gateway' | 'generic';
+export type NodeKind = 'pc' | 'laptop' | 'tablet' | 'server' | 'database' | 'router' | 'agent' | 'gateway' | 'generic'
+    | 'person' | 'company' | 'location' | 'web' | 'phone' | 'group';
+
+/**
+ * A custom glyph: draw centred at (0, 0) within `size` in `color` (the
+ * context is already translated, saved and restored around the call).
+ */
+export type NodeIconDrawer = (ctx: CanvasRenderingContext2D, size: number, color: string) => void;
+
+/** Corner of a node a badge sits on. */
+export type BadgePosition = 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
+
+/**
+ * A small marker on a node's rim: a count/text pill, a glyph in a disc, or a
+ * picture (a flag, a logo). Exactly one of text / icon / image is drawn
+ * (image wins over icon, icon over text).
+ */
+export interface NodeBadge {
+    text?: string | number;
+    icon?: NodeKind | NodeIconDrawer;
+    /** Picture URL; drawn as a small rectangle (flag) or disc, see `shape`. */
+    image?: string;
+    /** For image badges: 'rect' (default, 4:3 — flags) or 'circle'. */
+    shape?: 'rect' | 'circle';
+    /** Default 'top-right'. */
+    position?: BadgePosition;
+    /** Fill of a text/icon badge. Default the theme's ok/green (text) or the node stroke (icon). */
+    color?: string;
+    /** Glyph/text colour. Default white. */
+    iconColor?: string;
+    /** Height in world px. Default scales with the node (min 12). */
+    size?: number;
+}
 
 /**
  * Input shape for a node, as passed to NGraph.setData / addNode / updateNode.
@@ -38,6 +70,13 @@ export interface NGraphNodeData {
     badge?: number | string;
     /** Badge fill (any CSS color). Default the theme's ok/green. */
     badgeColor?: string;
+    /** More rim markers (flags, small glyphs, counts) — see NodeBadge. */
+    badges?: NodeBadge[];
+    /** Body fill of a 'circle'/'card' (any CSS color): the solid-disc look with a
+     *  light glyph. Without `color` the outline takes the same colour. */
+    fill?: string;
+    /** Glyph colour inside the node. Default the theme's icon colour. */
+    iconColor?: string;
     /** Radial layout only: ring index — 0 = center hub, 1..n = outer rings. Default 1. */
     ring?: number;
     /** 'circle' (classic device dot, default), 'card' — a rounded rectangle
@@ -77,7 +116,8 @@ export interface NGraphEdgeData {
     directed?: boolean;
     /** Dashed stroke: true for the default dash, or an explicit dash pattern. */
     dashed?: boolean | number[];
-    /** Text drawn at the middle of the edge (when zoomed in far enough). */
+    /** Text drawn at the middle of the edge (when zoomed in far enough);
+     *  '\n' breaks it into lines. */
     label?: string;
     /** Stroke color (any CSS color) — overrides kind style and load coloring. */
     color?: string;
@@ -110,10 +150,15 @@ export interface NodeStyle {
     /** Main color: the fill of a 'dot', the outline of 'circle'/'card'. */
     color?: string;
     radius?: number;
-    /** Glyph inside circle/card, or null for none. */
-    icon?: NodeKind | null;
+    /** Glyph inside circle/card — a built-in kind or your own drawer — or null for none. */
+    icon?: NodeKind | NodeIconDrawer | null;
+    /** Body fill of circle/card. */
+    fill?: string;
+    iconColor?: string;
     label?: string;
     labelColor?: string;
+    /** Label font size in world px. Default 11, growing with big nodes. */
+    labelSize?: number;
     /** Pill behind the label (any CSS color); null = none. Default from the
      *  `labelStyle` option. */
     labelBackground?: string | null;
@@ -122,6 +167,8 @@ export interface NodeStyle {
     /** Badge text (see NGraphNodeData.badge); null = none. */
     badge?: number | string | null;
     badgeColor?: string;
+    /** Rim markers, replacing the node's own `badges`; null = none. */
+    badges?: NodeBadge[] | null;
     /** 0..1 */
     opacity?: number;
     /** Extra ring around a dot/circle (heat, recency, a badge); null = none. */
@@ -135,6 +182,8 @@ export interface NodeRing {
     width?: number;
     /** 0..1, default 1. */
     opacity?: number;
+    /** Space between the node body and the ring, world px. Default 1. */
+    gap?: number;
 }
 
 /** Per-edge visual override returned by NGraphOptions.styleEdge. */

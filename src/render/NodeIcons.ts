@@ -1,4 +1,4 @@
-import { NodeKind } from '../model/NGraphTypes';
+import { NodeIconDrawer, NodeKind } from '../model/NGraphTypes';
 
 /**
  * Hand-drawn device glyphs (no icon font/image assets, keeps the lib
@@ -7,7 +7,7 @@ import { NodeKind } from '../model/NGraphTypes';
  */
 export class NodeIcons {
 
-    public static draw(ctx: CanvasRenderingContext2D, kind: NodeKind, size: number, color: string): void {
+    public static draw(ctx: CanvasRenderingContext2D, kind: NodeKind | NodeIconDrawer, size: number, color: string): void {
         ctx.save();
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
@@ -15,7 +15,31 @@ export class NodeIcons {
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
 
+        if (typeof kind === 'function') {
+            kind(ctx, size, color);
+            ctx.restore();
+            return;
+        }
+
         switch (kind) {
+            case 'person':
+                NodeIcons.person(ctx, size);
+                break;
+            case 'company':
+                NodeIcons.company(ctx, size);
+                break;
+            case 'location':
+                NodeIcons.location(ctx, size);
+                break;
+            case 'web':
+                NodeIcons.web(ctx, size);
+                break;
+            case 'phone':
+                NodeIcons.phone(ctx, size);
+                break;
+            case 'group':
+                NodeIcons.group(ctx, size);
+                break;
             case 'server':
                 NodeIcons.server(ctx, size);
                 break;
@@ -44,6 +68,104 @@ export class NodeIcons {
                 NodeIcons.generic(ctx, size);
         }
 
+        ctx.restore();
+    }
+
+    /** Head + shoulders outline. */
+    private static person(ctx: CanvasRenderingContext2D, s: number): void {
+        ctx.beginPath();
+        ctx.arc(0, -s * 0.15, s * 0.16, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, s * 0.36, s * 0.3, Math.PI, 0);
+        ctx.closePath();
+        ctx.stroke();
+    }
+
+    /** Office building: block with a window grid and a door. */
+    private static company(ctx: CanvasRenderingContext2D, s: number): void {
+        const w = s * 0.56;
+        const h = s * 0.7;
+        const win = s * 0.08;
+
+        ctx.strokeRect(-w / 2, -h / 2, w, h);
+
+        for (let row = 0; row < 3; row++) {
+            for (let col = 0; col < 3; col++) {
+                ctx.fillRect(-w / 2 + w * (0.17 + col * 0.27) - win / 2, -h / 2 + h * (0.15 + row * 0.2), win, win);
+            }
+        }
+
+        ctx.fillRect(-s * 0.06, h / 2 - s * 0.16, s * 0.12, s * 0.16);
+    }
+
+    /** Map pin with a hole. */
+    private static location(ctx: CanvasRenderingContext2D, s: number): void {
+        const cy = -s * 0.1;
+        const r = s * 0.22;
+
+        ctx.beginPath();
+        ctx.arc(0, cy, r, Math.PI * 0.8, Math.PI * 0.2);
+        ctx.lineTo(0, s * 0.38);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, cy, s * 0.08, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    /** Globe: outline, one meridian, equator and two parallels. */
+    private static web(ctx: CanvasRenderingContext2D, s: number): void {
+        const r = s * 0.36;
+        const chord = Math.sqrt(r * r - (r / 2) * (r / 2));
+
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.moveTo(0, -r);
+        ctx.ellipse(0, 0, r * 0.42, r, 0, -Math.PI / 2, Math.PI * 1.5);
+        ctx.moveTo(-r, 0);
+        ctx.lineTo(r, 0);
+        ctx.moveTo(-chord, -r / 2);
+        ctx.lineTo(chord, -r / 2);
+        ctx.moveTo(-chord, r / 2);
+        ctx.lineTo(chord, r / 2);
+        ctx.stroke();
+    }
+
+    /** Telephone handset: a thick arc bulging down-left with ear/mouth pieces. */
+    private static phone(ctx: CanvasRenderingContext2D, s: number): void {
+        const r = s * 0.27;
+        const from = Math.PI * 0.35;
+        const to = Math.PI * 1.15;
+
+        ctx.save();
+        ctx.lineWidth = s * 0.13;
+        ctx.beginPath();
+        ctx.arc(s * 0.06, -s * 0.06, r, from, to);
+        ctx.stroke();
+
+        for (const a of [from, to]) {
+            ctx.beginPath();
+            ctx.arc(s * 0.06 + Math.cos(a) * r, -s * 0.06 + Math.sin(a) * r, s * 0.1, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.restore();
+    }
+
+    /** Three people, the front one larger. */
+    private static group(ctx: CanvasRenderingContext2D, s: number): void {
+        for (const dx of [-0.24, 0.24]) {
+            ctx.save();
+            ctx.translate(s * dx, -s * 0.04);
+            ctx.lineWidth = Math.max(1, s * 0.07);
+            NodeIcons.person(ctx, s * 0.62);
+            ctx.restore();
+        }
+
+        ctx.save();
+        ctx.translate(0, s * 0.04);
+        NodeIcons.person(ctx, s * 0.82);
         ctx.restore();
     }
 

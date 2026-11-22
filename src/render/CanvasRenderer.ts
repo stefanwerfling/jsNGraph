@@ -9,6 +9,7 @@ import { ImageCache } from './ImageCache';
 import { NGraphOverlay, OverlayContext } from './Effects';
 import { LabelPlacer } from './LabelPlacer';
 import { NodeIcons } from './NodeIcons';
+import { NodeIconDrawer, NodeKind } from '../model/NGraphTypes';
 import { ResolvedEdgeStyle, ResolvedNodeStyle, StyleResolver } from './StyleResolver';
 import { ThemeTokens } from './Theme';
 
@@ -114,6 +115,9 @@ export class CanvasRenderer {
 
     /** Plain dots smaller than this radius on screen are drawn as batched squares (LOD). */
     public static readonly DOT_DETAIL_PX = 2;
+
+    /** Distance between two parallel edges at their middle, world px. */
+    public static readonly LANE_SPACING = 26;
 
     /** Horizontal padding of a label pill, world px. */
     public static readonly PILL_PAD_X = 7;
@@ -237,7 +241,7 @@ export class CanvasRenderer {
             }
 
             // Plain straight edges are stroked in batches (one path per look).
-            if (scene.edgeStyle === 'line' && style.dash === null && !style.animated
+            if (scene.edgeStyle === 'line' && edge.lane === 0 && style.dash === null && !style.animated
                 && (style.label === null || style.label.length === 0 || !zoomedIn)) {
                 const {start, end} = CanvasRenderer.lineEnds(edge, style.directed);
                 const arrow = 5 + style.width * 1.6;
@@ -292,7 +296,7 @@ export class CanvasRenderer {
             const alpha = (dimmed ? dimOpacity : 1) * style.opacity;
 
             // WebGL: every plain dot is one instance; only its label stays on the canvas.
-            if (bulk !== null && style.shape === 'dot' && style.ring === null && style.badge === null && !hovered && !selected && !highlighted) {
+            if (bulk !== null && style.shape === 'dot' && style.ring === null && style.badge === null && style.badges.length === 0 && !hovered && !selected && !highlighted) {
                 bulk.disc(node.x, node.y, style.radius, style.fill, style.stroke, alpha);
 
                 if (showLabels && style.radius * camera.scale >= CanvasRenderer.DOT_DETAIL_PX) {
@@ -306,7 +310,7 @@ export class CanvasRenderer {
 
             // LOD: a plain dot under ~2 px on screen is one square in a batch.
             if (style.shape === 'dot' && style.radius * camera.scale < CanvasRenderer.DOT_DETAIL_PX
-                && style.ring === null && style.badge === null && !hovered && !selected && !highlighted) {
+                && style.ring === null && style.badge === null && style.badges.length === 0 && !hovered && !selected && !highlighted) {
                 // At least ~1.2 px wide, so a zoomed-out cloud stays visible.
                 this.batchDot(node.x, node.y, Math.max(style.radius, 0.6 / camera.scale), style.fill, alpha);
                 continue;
@@ -469,8 +473,60 @@ export class CanvasRenderer {
         const p0 = {x: source.x + dir * sHalf, y: source.y};
         const p3 = {x: target.x - dir * tHalf, y: target.y};
         const bend = Math.max(30, Math.abs(p3.x - p0.x) / 2);
+        // Parallel edges: the middle of the S-curve shifts sideways per lane.
+        const shift = edge.lane * CanvasRenderer.LANE_SPACING * 1.4 * (edge.source.id < edge.target.id ? 1 : -1);
 
-        return [p0, {x: p0.x + dir * bend, y: p0.y}, {x: p3.x - dir * bend, y: p3.y}, p3];
+        return [p0, {x: p0.x + dir * bend, y: p0.y + shift}, {x: p3.x - dir * bend, y: p3.y + shift}, p3];
+    }
+
+    /**
+     * The path an edge takes, as a cubic, or null for a plain straight line:
+     * the workflow curve in 'curve' mode, else a bow for an edge on a lane
+     * ≠ 0 (parallel edges, see EdgeLanes). A directed bow ends at the target's
+     * rim so the arrowhead stays visible.
+     */
+    public static edgeCurve(edge: GraphEdge, edgeStyle: 'line' | 'curve', directed: boolean): Cubic | null {
+        if (edgeStyle === 'curve') {
+            return CanvasRenderer.curvePoints(edge);
+        }
+
+        if (edge.lane === 0) {
+            return null;
+        }
+
+        const {source, target} = edge;
+        const dx = target.x - source.x;
+        const dy = target.y - source.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist < 1) {
+            return null;
+        }
+
+        // Apex offset from the straight line; the quadratic control point sits at twice that.
+        const offset = edge.lane * Math.min(CanvasRenderer.LANE_SPACING, dist * 0.2);
+        const c = {x: (source.x + target.x) / 2 - (dy / dist) * offset * 2, y: (source.y + target.y) / 2 + (dx / dist) * offset * 2};
+        const p0 = {x: source.x, y: source.y};
+        let p3 = {x: target.x, y: target.y};
+
+        if (directed) {
+            const rim = target.shape === 'card' ? CanvasRenderer.cardSize(target).h / 2 : target.radius + 2;
+            const cx = c.x - target.x;
+            const cy = c.y - target.y;
+            const cd = Math.hypot(cx, cy);
+
+            if (cd > rim) {
+                p3 = {x: target.x + (cx / cd) * rim, y: target.y + (cy / cd) * rim};
+            }
+        }
+
+        // Quadratic (p0, c, p3) as a cubic, so labels/dots/arrows share one path type.
+        return [
+            p0,
+            {x: p0.x + (c.x - p0.x) * 2 / 3, y: p0.y + (c.y - p0.y) * 2 / 3},
+            {x: p3.x + (c.x - p3.x) * 2 / 3, y: p3.y + (c.y - p3.y) * 2 / 3},
+            p3
+        ];
     }
 
     public static cubicPoint(p: Cubic, u: number): Point {
@@ -523,7 +579,7 @@ export class CanvasRenderer {
     private drawEdge(edge: GraphEdge, style: ResolvedEdgeStyle, alpha: number, scene: RenderScene,
         showLabel: boolean): boolean {
         const {ctx} = this;
-        const curve = scene.edgeStyle === 'curve' ? CanvasRenderer.curvePoints(edge) : null;
+        const curve = CanvasRenderer.edgeCurve(edge, scene.edgeStyle, style.directed);
         const {start, end} = CanvasRenderer.lineEnds(edge, style.directed);
 
         ctx.save();
@@ -612,15 +668,30 @@ export class CanvasRenderer {
     private drawEdgeLabel(text: string, at: Point): void {
         const {ctx, theme} = this;
 
+        const lines = text.split('\n');
+        const lineH = 11;
+
         ctx.font = '9.5px system-ui, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        const w = ctx.measureText(text).width + 8;
+
+        let w = 0;
+
+        for (const line of lines) {
+            w = Math.max(w, ctx.measureText(line).width + 8);
+        }
+
+        const h = lines.length * lineH + 3;
+        const top = at.y - h / 2;
 
         ctx.fillStyle = Color.withAlpha(theme.background, 0.85);
-        ctx.fillRect(at.x - w / 2, at.y - 7, w, 14);
+        ctx.fillRect(at.x - w / 2, top, w, h);
         ctx.fillStyle = theme.edgeLabel ?? theme.nodeLabel;
-        ctx.fillText(text, at.x, at.y);
+
+        for (let i = 0; i < lines.length; i++) {
+            ctx.fillText(lines[i] as string, at.x, top + 1.5 + lineH * (i + 0.5));
+        }
+
         ctx.textBaseline = 'alphabetic';
     }
 
@@ -697,9 +768,7 @@ export class CanvasRenderer {
         ctx.strokeStyle = style.stroke;
         ctx.stroke();
 
-        if (style.badge !== null) {
-            this.drawBadge(node.x + r * 0.72, node.y - r * 0.72, style.badge, style.badgeColor);
-        }
+        this.drawBadges(node.x, node.y, r * 0.72, r * 0.72, r, style);
 
         // Dense graphs: labels of hovered/selected dots stay readable even when the rest are off.
         if (state.showLabel || state.hovered || state.selected) {
@@ -772,7 +841,7 @@ export class CanvasRenderer {
         const base = ctx.globalAlpha;
 
         ctx.beginPath();
-        ctx.arc(x, y, r + 1 + ring.width / 2, 0, Math.PI * 2);
+        ctx.arc(x, y, r + ring.gap + ring.width / 2, 0, Math.PI * 2);
         ctx.strokeStyle = ring.color;
         ctx.globalAlpha = base * ring.opacity;
         ctx.lineWidth = ring.width;
@@ -830,9 +899,12 @@ export class CanvasRenderer {
                 this.labelWidths.set(text, w);
             }
 
+            const k = item.style.labelSize / 11;
             const pad = item.style.labelBackground !== null ? CanvasRenderer.PILL_PAD_X : 0;
-            const top = camera.toScreen(item.node.x - w / 2 - pad, item.node.y + item.offsetY - 10);
-            const lines = item.node.sublabel !== null ? 24 : 13;
+
+            w *= k;
+            const top = camera.toScreen(item.node.x - w / 2 - pad, item.node.y + item.offsetY - 10 * k);
+            const lines = (item.node.sublabel !== null ? 13 : 0) + 13 * k;
             const fits = this.placer.tryPlace({x: top.x, y: top.y, w: (w + 2 * pad) * camera.scale, h: lines * camera.scale});
 
             if (!fits && !item.forced) {
@@ -912,7 +984,7 @@ export class CanvasRenderer {
         ctx.stroke();
 
         if (style.icon !== null && image === null) {
-            NodeIcons.draw(ctx, style.icon, r * 1.15, theme.nodeIcon);
+            NodeIcons.draw(ctx, style.icon, r * 1.15, style.iconColor);
         }
 
         // Down overlay (stop sign)
@@ -922,12 +994,12 @@ export class CanvasRenderer {
 
         ctx.restore();
 
-        if (style.badge !== null) {
-            this.drawBadge(node.x + r * 0.72, node.y - r * 0.72, style.badge, style.badgeColor);
-        }
+        this.drawBadges(node.x, node.y, r * 0.72, r * 0.72, r, style);
 
         if (state.showLabel) {
-            this.labelOrQueue(node, style, r + 14, state);
+            const ringExtra = style.ring !== null ? style.ring.gap + style.ring.width : 0;
+
+            this.labelOrQueue(node, style, r + ringExtra + style.labelSize + 3, state);
         }
     }
 
@@ -938,24 +1010,28 @@ export class CanvasRenderer {
      */
     private drawLabel(node: GraphNode, style: ResolvedNodeStyle, offsetY: number, strong = false): void {
         const {ctx, theme} = this;
+
         // A pill sits a little lower, clear of status/highlight rings.
         const y = node.y + offsetY + (style.labelBackground !== null ? 4 : 0);
 
         ctx.save();
         ctx.textAlign = 'center';
 
+        const size = style.labelSize;
+        const weight = style.labelBackground !== null || size >= 12.5 ? '600 ' : '';
+
         if (style.labelBackground !== null) {
-            ctx.font = '600 11px system-ui, sans-serif';
+            ctx.font = `${weight}${size}px system-ui, sans-serif`;
 
             const w = ctx.measureText(style.label).width + 2 * CanvasRenderer.PILL_PAD_X;
-            const h = node.sublabel !== null ? 28 : 16;
+            const h = (node.sublabel !== null ? 12 : 0) + size + 5;
 
-            CanvasRenderer.roundRectPath(ctx, node.x - w / 2, y - 12, w, h, 8);
+            CanvasRenderer.roundRectPath(ctx, node.x - w / 2, y - size - 1, w, h, Math.min(8, h / 2));
             ctx.fillStyle = strong ? style.labelColor : style.labelBackground;
             ctx.fill();
             ctx.fillStyle = strong ? theme.background : style.labelColor;
         } else {
-            ctx.font = '11px system-ui, sans-serif';
+            ctx.font = `${weight}${size}px system-ui, sans-serif`;
             ctx.fillStyle = style.labelColor;
         }
 
@@ -964,7 +1040,7 @@ export class CanvasRenderer {
         if (node.sublabel !== null) {
             ctx.globalAlpha *= 0.75;
             ctx.font = '9.5px system-ui, sans-serif';
-            ctx.fillText(node.sublabel, node.x, y + 12);
+            ctx.fillText(node.sublabel, node.x, y + Math.max(12, size + 1));
         }
 
         ctx.restore();
@@ -1027,7 +1103,7 @@ export class CanvasRenderer {
         } else if (style.icon !== null) {
             ctx.save();
             ctx.translate(-w / 2 + 8 + chip / 2, 0);
-            NodeIcons.draw(ctx, style.icon, chip * 0.72, theme.nodeIcon);
+            NodeIcons.draw(ctx, style.icon, chip * 0.72, style.iconColor);
             ctx.restore();
         }
 
@@ -1053,20 +1129,44 @@ export class CanvasRenderer {
 
         ctx.restore();
 
+        this.drawBadges(node.x, node.y, w / 2 - 2, h / 2 - 2, h / 2, style);
+    }
+
+    /**
+     * All rim markers of a node: `badge` (count, top-right) plus `badges`.
+     * (cx, cy) is the node centre, (ox, oy) the corner offset, `r` the size
+     * the default badge height scales with.
+     */
+    private drawBadges(cx: number, cy: number, ox: number, oy: number, r: number, style: ResolvedNodeStyle): void {
         if (style.badge !== null) {
-            this.drawBadge(node.x + w / 2 - 2, node.y - h / 2 + 2, style.badge, style.badgeColor);
+            this.drawTextBadge(cx + ox, cy - oy, style.badge, style.badgeColor, '#ffffff', 15);
+        }
+
+        for (const badge of style.badges) {
+            const pos = badge.position ?? 'top-right';
+            const x = cx + (pos.endsWith('right') ? ox : -ox);
+            const y = cy + (pos.startsWith('top') ? -oy : oy);
+            const size = badge.size ?? Math.max(12, r * 0.42);
+            const image = badge.image !== undefined ? this.images.get(badge.image) : null;
+
+            if (image !== null) {
+                this.drawImageBadge(x, y, image, badge.shape ?? 'rect', size);
+            } else if (badge.icon !== undefined) {
+                this.drawIconBadge(x, y, badge.icon, badge.color ?? style.stroke, badge.iconColor ?? '#ffffff', size);
+            } else if (badge.text !== undefined && badge.text !== '') {
+                this.drawTextBadge(x, y, String(badge.text), badge.color ?? style.badgeColor, badge.iconColor ?? '#ffffff', size);
+            }
         }
     }
 
     /** Count bubble centred at (x, y): a pill that grows with the text, ringed in the background colour. */
-    private drawBadge(x: number, y: number, text: string, color: string): void {
+    private drawTextBadge(x: number, y: number, text: string, color: string, textColor: string, h: number): void {
         const {ctx, theme} = this;
 
         ctx.save();
-        ctx.font = '700 9.5px system-ui, sans-serif';
+        ctx.font = `700 ${(h * 0.63).toFixed(1)}px system-ui, sans-serif`;
 
-        const h = 15;
-        const w = Math.max(h, ctx.measureText(text).width + 8);
+        const w = Math.max(h, ctx.measureText(text).width + h * 0.53);
 
         CanvasRenderer.roundRectPath(ctx, x - w / 2, y - h / 2, w, h, h / 2);
         ctx.fillStyle = color;
@@ -1074,10 +1174,51 @@ export class CanvasRenderer {
         ctx.lineWidth = 2;
         ctx.strokeStyle = theme.background;
         ctx.stroke();
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = textColor;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(text, x, y + 0.5);
+        ctx.restore();
+    }
+
+    private drawIconBadge(x: number, y: number, icon: NodeKind | NodeIconDrawer, color: string, iconColor: string, size: number): void {
+        const {ctx, theme} = this;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = theme.background;
+        ctx.stroke();
+        ctx.translate(x, y);
+        NodeIcons.draw(ctx, icon, size * 0.7, iconColor);
+        ctx.restore();
+    }
+
+    /** A picture badge: 4:3 rectangle (flags) or a disc, with a thin background-coloured frame. */
+    private drawImageBadge(x: number, y: number, image: HTMLImageElement, shape: 'rect' | 'circle', size: number): void {
+        const {ctx, theme} = this;
+        const h = size * 0.85;
+        const w = shape === 'rect' ? h * 4 / 3 : h;
+
+        ctx.save();
+
+        if (shape === 'rect') {
+            CanvasRenderer.roundRectPath(ctx, x - w / 2, y - h / 2, w, h, 2);
+        } else {
+            ctx.beginPath();
+            ctx.arc(x, y, h / 2, 0, Math.PI * 2);
+        }
+
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = theme.background;
+        ctx.stroke();
+        ctx.save();
+        ctx.clip();
+        CanvasRenderer.drawCover(ctx, image, x - w / 2, y - h / 2, w, h);
+        ctx.restore();
         ctx.restore();
     }
 

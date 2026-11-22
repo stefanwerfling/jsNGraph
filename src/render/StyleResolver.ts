@@ -1,6 +1,6 @@
 import { GraphEdge } from '../model/GraphEdge';
 import { GraphNode } from '../model/GraphNode';
-import { EdgeKindStyle, EdgeStyle, NodeKind, NodeRing, NodeShape, NodeStyle } from '../model/NGraphTypes';
+import { EdgeKindStyle, EdgeStyle, NodeBadge, NodeIconDrawer, NodeKind, NodeRing, NodeShape, NodeStyle } from '../model/NGraphTypes';
 import { Color } from '../util/Color';
 import { Theme, ThemeTokens } from './Theme';
 
@@ -11,14 +11,18 @@ export interface ResolvedNodeStyle {
     /** Outline color. */
     stroke: string;
     radius: number;
-    icon: NodeKind | null;
+    icon: NodeKind | NodeIconDrawer | null;
+    iconColor: string;
     label: string;
     labelColor: string;
+    /** Label font size, world px. */
+    labelSize: number;
     /** Pill behind the label, or null for plain text. */
     labelBackground: string | null;
     image: string | null;
     badge: string | null;
     badgeColor: string;
+    badges: ReadonlyArray<NodeBadge>;
     opacity: number;
     ring: Required<NodeRing> | null;
 }
@@ -105,6 +109,10 @@ export class StyleResolver {
             : null);
         const labelBackground = this.labelStyle === 'pill' ? Color.withAlpha(theme.background, 0.72) : null;
         const badgeColor = node.badgeColor ?? theme.statusOk;
+        const badges: ReadonlyArray<NodeBadge> = node.badges ?? [];
+        const iconColor = node.iconColor ?? theme.nodeIcon;
+        // Big nodes get a bigger label: 11 px up to the default radius, then +0.15 px per px, max 16.
+        const labelSize = Math.min(16, 11 + Math.max(0, node.radius - 22) * 0.15);
         const base: ResolvedNodeStyle = node.shape === 'dot'
             ? {
                 shape: 'dot',
@@ -112,27 +120,33 @@ export class StyleResolver {
                 stroke: theme.background,
                 radius: node.radius,
                 icon: null,
+                iconColor: iconColor,
                 label: node.label,
                 labelColor: theme.nodeLabel,
+                labelSize: labelSize,
                 labelBackground: labelBackground,
                 image: null,
                 badge: node.badge,
                 badgeColor: badgeColor,
+                badges: badges,
                 opacity: 1,
                 ring: null
             }
             : {
                 shape: node.shape,
-                fill: theme.nodeFill,
-                stroke: accent ?? theme.nodeStroke,
+                fill: node.fill ?? theme.nodeFill,
+                stroke: accent ?? node.fill ?? theme.nodeStroke,
                 radius: node.radius,
                 icon: node.kind,
+                iconColor: iconColor,
                 label: node.label,
                 labelColor: theme.nodeLabel,
+                labelSize: labelSize,
                 labelBackground: labelBackground,
                 image: node.image,
                 badge: node.badge,
                 badgeColor: badgeColor,
+                badges: badges,
                 opacity: 1,
                 ring: null
             };
@@ -147,20 +161,28 @@ export class StyleResolver {
 
         return {
             shape: shape,
-            fill: color !== undefined && shape === 'dot' ? color : base.fill,
+            fill: color !== undefined && shape === 'dot' ? color : override.fill ?? base.fill,
             stroke: color !== undefined && shape !== 'dot' ? color : base.stroke,
             radius: override.radius ?? base.radius,
             icon: override.icon !== undefined ? override.icon : shape === 'dot' ? null : base.icon,
+            iconColor: override.iconColor ?? base.iconColor,
             label: override.label ?? base.label,
             labelColor: override.labelColor ?? base.labelColor,
+            labelSize: override.labelSize ?? base.labelSize,
             labelBackground: override.labelBackground !== undefined ? override.labelBackground : base.labelBackground,
             image: override.image !== undefined ? override.image : shape === 'dot' ? null : base.image,
             badge: override.badge !== undefined ? GraphNode.badgeText(override.badge) : base.badge,
             badgeColor: override.badgeColor ?? base.badgeColor,
+            badges: override.badges === undefined ? base.badges : override.badges ?? [],
             opacity: StyleResolver.unit(override.opacity ?? base.opacity),
             ring: override.ring === undefined || override.ring === null
                 ? base.ring
-                : {color: override.ring.color, width: override.ring.width ?? 2, opacity: StyleResolver.unit(override.ring.opacity ?? 1)}
+                : {
+                    color: override.ring.color,
+                    width: override.ring.width ?? 2,
+                    opacity: StyleResolver.unit(override.ring.opacity ?? 1),
+                    gap: override.ring.gap ?? 1
+                }
         };
     }
 

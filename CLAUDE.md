@@ -249,6 +249,21 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
 - `LayeredLayout` `direction: 'down'`: layers as rows top→bottom (`ring` = row).
 - Example: `examples/team.html` (generated initial avatars, quiet neutral mesh, conversation lights an edge).
 
+## Ownership look (OSINT / company-network style)
+
+- Node `fill` + `iconColor` (solid disc, light glyph; outline follows the fill unless `color` is set); new kinds
+  `person`, `company`, `location`, `web`, `phone`, `group`; `NodeStyle.icon` also takes a `NodeIconDrawer` function.
+- `badges: NodeBadge[]` on any corner (`position`), each a text pill, a glyph disc or an image (flag: 4:3 rect,
+  or `shape: 'circle'`); images go through the same `ImageCache`. `NodeRing.gap` (white space before a risk ring).
+  Label size grows with big nodes (`labelSize`, bold from 12.5 px); label offset accounts for the ring.
+- Parallel edges: `model/EdgeLanes.ts` (pure, `test/EdgeLanes.test.ts`) gives each edge of a same-pair bundle a lane
+  (both directions count, reversed edges negated) and `bundle` size; `CanvasRenderer.edgeCurve` bows lane ≠ 0 into a
+  quadratic-as-cubic (directed ones end at the rim), shared by drawing, labels, dots and edge hit-testing; lane ≠ 0
+  edges are never batched/sent to WebGL. ForceLayout divides spring force by `bundle`, so a bundle is one spring.
+- Edge labels: `\n` breaks lines.
+- Example: `examples/ownership.html` (fictional; seeds company positions and leaves next to their neighbour —
+  random starts left leaves on the wrong side of the hub).
+
 ## Known gaps (V1)
 
 - No built-in toolbar (pause/labels/etc.) — that's presentation-specific, left to the consuming

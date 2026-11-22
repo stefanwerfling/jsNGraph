@@ -117,6 +117,6 @@ describe('NodeStyle.ring', () => {
         expect(new StyleResolver(Theme.dark).node(node).ring).toBeNull();
 
         const styled = new StyleResolver(Theme.dark, {}, () => ({ring: {color: '#ffd166', opacity: 3}})).node(node);
-        expect(styled.ring).toEqual({color: '#ffd166', width: 2, opacity: 1});
+        expect(styled.ring).toEqual({color: '#ffd166', width: 2, opacity: 1, gap: 1});
     });
 });

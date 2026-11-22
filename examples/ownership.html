@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — ownership network</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    body { background: #ffffff; }
+    .legend {
+        position: absolute; right: 16px; bottom: 16px; z-index: 5;
+        background: rgba(255, 255, 255, 0.92); color: #22303c;
+        border: 1px solid #d9e0e6; border-radius: 8px; padding: 10px 12px;
+        font: 12px system-ui, sans-serif; line-height: 1.7;
+    }
+    .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: -2px; margin-right: 6px; }
+    .legend .risk { background: #fff; box-shadow: inset 0 0 0 3px #d62f2f; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="monitoring.html">Monitoring</a>
+    <a href="layered.html">Layered flow</a>
+    <a href="radial.html">Radial</a>
+    <a href="team.html">Team</a>
+    <a href="ownership.html" class="active">Ownership</a>
+    <a href="knowledge.html">Knowledge</a>
+    <a href="kinds.html">Node gallery</a>
+    <a href="api.html">API playground</a>
+</nav>
+
+<div class="toolbar tl">
+    <button id="toggle-risk">Risk rings</button>
+    <button id="toggle-labels">Edge labels</button>
+    <button id="relayout">Re-layout</button>
+</div>
+
+<div class="legend">
+    <div><i style="background:#1f4e9c"></i>Company</div>
+    <div><i style="background:#0f4c5c"></i>Person</div>
+    <div><i style="background:#7b2d8b"></i>Address / web</div>
+    <div><i class="risk"></i>Risk flag (sanctions, PEP)</div>
+</div>
+
+<div id="graph" class="graph-stage"></div>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+    // A fictional ownership / OSINT network: companies, people and their
+    // registered details. Shows filled nodes with light glyphs (fill +
+    // iconColor), the person/company/location/web/phone/group icons, red risk
+    // rings (NodeStyle.ring), corner badges (flags as images, small glyphs),
+    // two-line edge labels and parallel edges fanned out into lanes.
+
+    /** Tiny tricolour flag as a data: URL (no image assets). */
+    function flag(colors, vertical) {
+        const c = document.createElement('canvas');
+        c.width = 24; c.height = 18;
+        const ctx = c.getContext('2d');
+        colors.forEach((col, i) => {
+            ctx.fillStyle = col;
+            if (vertical) ctx.fillRect(i * 8, 0, 8, 18);
+            else ctx.fillRect(0, i * 6, 24, 6);
+        });
+        return c.toDataURL('image/png');
+    }
+    const FLAGS = {
+        de: flag(['#000000', '#dd0000', '#ffce00']),
+        nl: flag(['#ae1c28', '#ffffff', '#21468b']),
+        at: flag(['#c8102e', '#ffffff', '#c8102e']),
+        fr: flag(['#0055a4', '#ffffff', '#ef4135'], true),
+        it: flag(['#009246', '#ffffff', '#ce2b37'], true)
+    };
+    const flagBadge = (code) => ({image: FLAGS[code], position: 'bottom-left'});
+
+    const COMPANY = '#1f4e9c', PERSON = '#0f4c5c', PLACE = '#7b2d8b', PHONE = '#c2255c';
+    const company = (id, label, size, country, risk) =>
+        ({id, label, kind: 'company', fill: COMPANY, iconColor: '#fff', size, badges: [flagBadge(country)],
+          meta: {type: 'Company', country: country.toUpperCase(), risk: risk ? 'flagged' : 'none'}});
+    const person = (id, label, size, country, risk, extra = []) =>
+        ({id, label, kind: 'person', fill: PERSON, iconColor: '#fff', size,
+          badges: country ? [flagBadge(country), ...extra] : extra,
+          meta: {type: 'Person', nationality: country ? country.toUpperCase() : 'unknown', risk: risk ? 'PEP / sanctions hit' : 'none'}});
+    const place = (id, label, kind, fill, size = 20, country) =>
+        ({id, label, kind, fill, iconColor: '#fff', size, badges: country ? [flagBadge(country)] : [], meta: {type: kind}});
+
+    const nodes = [
+        company('holding', 'Northwind Holding AG', 44, 'de', true),
+        company('logistics', 'Northwind Logistik GmbH', 26, 'de', true),
+        company('bv', 'Nordlicht Beteiligungen B.V.', 26, 'nl', false),
+        company('trading', 'Westhafen Trading S.A.R.L.', 40, 'fr', true),
+
+        person('weber', 'Jana Weber', 34, 'at', true, [{icon: 'group', position: 'bottom-right', color: PERSON}]),
+        person('richter', 'Tom Richter', 34, 'de', true, [{icon: 'group', position: 'bottom-right', color: PERSON}]),
+        person('novak', 'Pavel Novak', 30, 'it', true),
+        person('hoffmann', 'Lena Hoffmann', 28, 'de', false, [{icon: 'web', position: 'bottom-right', color: '#c13584'}]),
+        person('brandt', 'Ole Brandt', 30, 'nl', true),
+        person('klein', 'Sara Klein', 18, null, false),
+        person('dubois', 'Marc Dubois', 18, 'fr', false),
+        person('yilmaz', 'Elif Yilmaz', 16, null, false),
+        person('lang', 'Paul Lang', 16, 'de', false),
+        person('berg', 'Nina Berg', 16, null, false),
+
+        place('country', 'Deutschland', 'location', PLACE, 14),
+        place('addr1', 'Hafenstraße 12, Hamburg', 'location', PLACE, 18, 'de'),
+        place('addr2', 'Rue du Port 4, Marseille', 'location', PLACE, 30, 'fr'),
+        place('web', 'www.westhafen.example', 'web', '#3b2d6b', 16),
+        place('phone', '+33 4 91 00 00 00', 'phone', PHONE, 16),
+        {id: 'group', label: 'New group', kind: 'group', fill: '#eef1f4', iconColor: '#22303c', color: '#22303c', size: 16}
+    ];
+
+    // Start the four companies roughly where they belong (holding in the
+    // middle); everything else finds its place around them.
+    const stage = document.getElementById('graph').getBoundingClientRect();
+    const cx = stage.width / 2, cy = stage.height / 2;
+    const start = {holding: [0, -30], logistics: [-300, 90], bv: [300, 40], trading: [140, 280]};
+    for (const n of nodes) {
+        const at = start[n.id];
+        if (at) { n.x = cx + at[0]; n.y = cy + at[1]; }
+    }
+
+    const pct = (role, p) => `${role}\n${p}%`;
+    const edges = [
+        ['weber', 'holding', pct('Shareholder (direct)', '28.64')],
+        ['richter', 'holding', pct('Shareholder (direct)', '9.65')],
+        ['novak', 'holding', pct('Shareholder (direct)', '19.32')],
+        ['brandt', 'holding', pct('Shareholder (direct)', '2.78')],
+        ['klein', 'holding', pct('Shareholder (direct)', '0.07')],
+        ['yilmaz', 'holding', pct('Shareholder (direct)', '0.01')],
+        ['hoffmann', 'weber', 'Social media account'],
+        ['holding', 'country', 'Address'],
+
+        // three relations between the holding and the logistics arm → three lanes
+        ['logistics', 'holding', pct('Shareholder (direct)', '3.01')],
+        ['logistics', 'holding', pct('Subsidiary', '3.01')],
+        ['holding', 'logistics', pct('Shareholder (direct)', '3.01')],
+        ['lang', 'logistics', 'Secretary'],
+        ['berg', 'logistics', 'Director'],
+        ['berg', 'logistics', 'Director (previous)'],
+        ['brandt', 'logistics', pct('Shareholder (direct)', '100.00')],
+        ['brandt', 'logistics', 'Director'],
+
+        ['bv', 'holding', pct('Shareholder (direct)', '90.00')],
+        ['bv', 'holding', 'Ultimate beneficial owner of'],
+        ['bv', 'holding', pct('Subsidiary', '90.00')],
+        ['bv', 'web', 'Registered website'],
+        ['bv', 'addr1', 'Registered address'],
+        ['bv', 'phone', 'Registered phone number'],
+
+        // four relations holding ↔ trading
+        ['holding', 'trading', pct('Subsidiary', '57.59')],
+        ['bv', 'trading', pct('Shareholder (direct)', '61.11')],
+        ['bv', 'trading', pct('Subsidiary', '61.11')],
+        ['bv', 'trading', 'Shareholder'],
+        ['trading', 'addr2', 'Registered address'],
+        ['dubois', 'trading', 'Vice president'],
+        ['novak', 'logistics', pct('Shareholder (direct)', '3.01')]
+    ].map(([source, target, label], i) => ({id: 'e' + i, source, target, label, kind: 'rel'}));
+    edges.push({id: 'g1', source: 'holding', target: 'group', kind: 'pending'});
+    edges.push({id: 'g2', source: 'group', target: 'trading', kind: 'pending'});
+
+    // Every other node starts next to its first placed neighbour, pushed
+    // outward from the middle — the force layout then only has to tidy up.
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    for (let pass = 0; pass < 3; pass++) {
+        for (const n of nodes) {
+            if (n.x !== undefined) continue;
+            const e = edges.find((e) => (e.source === n.id && byId.get(e.target).x !== undefined)
+                || (e.target === n.id && byId.get(e.source).x !== undefined));
+            if (!e) continue;
+            const anchor = byId.get(e.source === n.id ? e.target : e.source);
+            const a = Math.atan2(anchor.y - cy, anchor.x - cx) + (Math.random() - 0.5) * 1.6;
+            n.x = anchor.x + Math.cos(a) * 180;
+            n.y = anchor.y + Math.sin(a) * 180;
+        }
+    }
+
+    let showRisk = true;
+    let edgeLabels = true;
+    const theme = {...JSNGraph.Theme.light, background: '#ffffff', nodeLabel: '#1b2630', edgeNeutral: '#6b7780', edgeLabel: '#33414c'};
+
+    const graph = new JSNGraph.NGraph(document.getElementById('graph'), {
+        theme,
+        grid: false,
+        panZoom: true,
+        labelMinZoom: 0.35,
+        layout: {springLength: 260, springStrength: 0.035, repulsion: 90000, alphaDecay: 0.012},
+        edgeKinds: {
+            rel: {tone: 'neutral', directed: true, width: 1, animated: false},
+            pending: {tone: 'neutral', directed: true, dashed: [5, 4], width: 1, animated: false}
+        },
+        // the risk flag lives in the data; the ring is pure styling
+        styleNode: (n) => showRisk && n.meta && /flagged|PEP/.test(n.meta.risk)
+            ? {ring: {color: '#d62f2f', width: Math.max(4, n.radius * 0.18), gap: 3}}
+            : null,
+        styleEdge: () => edgeLabels ? null : {label: null}
+    });
+    graph.setData(nodes, edges);
+    // frame the picture once the layout has settled (again after a re-layout)
+    let fitPending = true;
+    graph.on('layoutSettle', () => {
+        if (fitPending) graph.fit({padding: 40, animate: true});
+        fitPending = false;
+    });
+
+    // the stylers read these flags; redraw() repaints without touching the layout
+    document.getElementById('toggle-risk').addEventListener('click', () => {
+        showRisk = !showRisk;
+        graph.redraw();
+    });
+    document.getElementById('toggle-labels').addEventListener('click', () => {
+        edgeLabels = !edgeLabels;
+        graph.redraw();
+    });
+    document.getElementById('relayout').addEventListener('click', () => {
+        fitPending = true;
+        graph.setData(nodes, edges);
+    });
+</script>
+</body>
+</html>

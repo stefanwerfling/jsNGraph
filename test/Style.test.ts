@@ -89,6 +89,25 @@ describe('StyleResolver', () => {
         expect(pill.node(avatar).badge).toBeNull();
     });
 
+    it('fill, icon colour, badges and label size: data first, callback wins', () => {
+        const styles = new StyleResolver(Theme.light, {}, (n) => n.id === 'b' ? {badges: null, labelSize: 14, iconColor: '#000'} : null);
+        const flag = {image: 'de.png', position: 'bottom-left' as const};
+        const a = styles.node(node('a', {fill: '#0b4aa2', iconColor: '#fff', badges: [flag]}));
+
+        expect(a.fill).toBe('#0b4aa2');
+        expect(a.stroke).toBe('#0b4aa2');
+        expect(a.iconColor).toBe('#fff');
+        expect(a.badges).toEqual([flag]);
+        expect(a.labelSize).toBe(11);
+        expect(styles.node(node('big', {size: 42})).labelSize).toBeGreaterThan(13);
+
+        const b = styles.node(node('b', {badges: [flag]}));
+
+        expect(b.badges).toEqual([]);
+        expect(b.labelSize).toBe(14);
+        expect(b.iconColor).toBe('#000');
+    });
+
     it('updateNode patches image and badge; empty values clear them', () => {
         const n = node('a', {image: 'a.png', badge: '3'});
 

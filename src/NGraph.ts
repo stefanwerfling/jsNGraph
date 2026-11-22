@@ -4,6 +4,7 @@ import { LayeredLayoutOptions, LayeredLayout } from './layout/LayeredLayout';
 import { StaticLayout } from './layout/StaticLayout';
 import { GraphEdge } from './model/GraphEdge';
 import { GraphNode } from './model/GraphNode';
+import { EdgeLanes } from './model/EdgeLanes';
 import { GraphQuery, NeighborDirection } from './model/GraphQuery';
 import { EdgeKindStyle, NGraphCluster, NGraphClusterEdge, NGraphEdgeData, NGraphHull, NGraphNodeData } from './model/NGraphTypes';
 import { CanvasRenderer, RenderCluster, RenderClusters, RenderHull } from './render/CanvasRenderer';
@@ -929,6 +930,8 @@ export class NGraph {
             this.visibleEdges = [...this.edges.values()].filter((e) => visible.has(e.source) && visible.has(e.target));
         }
 
+        EdgeLanes.assign(this.visibleEdges);
+
         this.structureDirty = false;
         this.spatial = null;
         this.clusterCache = null;
@@ -990,8 +993,9 @@ export class NGraph {
         for (const edge of this.visibleEdges) {
             let dist: number;
 
-            if (this.edgeStyle === 'curve') {
-                const curve = CanvasRenderer.curvePoints(edge);
+            const curve = CanvasRenderer.edgeCurve(edge, this.edgeStyle, false);
+
+            if (curve !== null) {
                 let prev = curve[0];
                 dist = Infinity;
 

@@ -133,7 +133,8 @@ export class ForceLayout {
             const dy = edge.target.y - edge.source.y;
             const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
             const stretch = dist - springLength;
-            const force = stretch * springStrength;
+            // A bundle of parallel edges is one spring, not n (see EdgeLanes).
+            const force = stretch * springStrength / edge.bundle;
             const fx = (dx / dist) * force;
             const fy = (dy / dist) * force;
 
