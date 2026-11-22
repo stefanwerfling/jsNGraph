@@ -21,7 +21,8 @@ export type {
     NGraphCluster,
     NGraphClusterEdge,
     EdgeStyle,
-    EdgeKindStyle
+    EdgeKindStyle,
+    LabelPosition
 } from './model/NGraphTypes';
 export type { GraphNode } from './model/GraphNode';
 export type { GraphEdge } from './model/GraphEdge';
@@ -29,7 +30,9 @@ export { GraphQuery } from './model/GraphQuery';
 export { EdgeLanes } from './model/EdgeLanes';
 export type { NeighborDirection } from './model/GraphQuery';
 export { EdgeKindPresets, StyleResolver } from './render/StyleResolver';
-export type { NodeStyler, EdgeStyler, ResolvedNodeStyle, ResolvedEdgeStyle, LabelStyle } from './render/StyleResolver';
+export type { NodeStyler, EdgeStyler, ResolvedNodeStyle, ResolvedEdgeStyle, LabelStyle, EdgeColorMode, StyleDefaults } from './render/StyleResolver';
+export { ColumnHeaders } from './render/ColumnHeaders';
+export type { ColumnHeaderOptions, ColumnSpan } from './render/ColumnHeaders';
 export { Camera } from './view/Camera';
 export { Effects } from './render/Effects';
 export type { NGraphOverlay, OverlayContext, PulseOptions, TrailOptions, RippleOptions } from './render/Effects';
@@ -43,6 +46,6 @@ export type { Bounds, Point } from './util/Geometry';
 export { Color } from './util/Color';
 export type { ForceLayoutOptions } from './layout/ForceLayout';
 export type { RadialLayoutOptions } from './layout/RadialLayout';
-export type { LayeredLayoutOptions } from './layout/LayeredLayout';
+export type { LayeredLayoutOptions, LayeredColumn } from './layout/LayeredLayout';
 export { Theme } from './render/Theme';
 export type { ThemeTokens, CssVarSource, CssVarThemeOptions } from './render/Theme';

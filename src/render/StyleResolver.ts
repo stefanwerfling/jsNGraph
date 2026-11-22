@@ -1,6 +1,6 @@
 import { GraphEdge } from '../model/GraphEdge';
 import { GraphNode } from '../model/GraphNode';
-import { EdgeKindStyle, EdgeStyle, NodeBadge, NodeIconDrawer, NodeKind, NodeRing, NodeShape, NodeStyle } from '../model/NGraphTypes';
+import { EdgeKindStyle, EdgeStyle, LabelPosition, NodeBadge, NodeIconDrawer, NodeKind, NodeRing, NodeShape, NodeStyle } from '../model/NGraphTypes';
 import { Color } from '../util/Color';
 import { Theme, ThemeTokens } from './Theme';
 
@@ -25,6 +25,9 @@ export interface ResolvedNodeStyle {
     badges: ReadonlyArray<NodeBadge>;
     opacity: number;
     ring: Required<NodeRing> | null;
+    /** Halo width in world px (0 = none). */
+    glow: number;
+    labelPosition: LabelPosition;
 }
 
 /** 'plain' text labels (default) or 'pill': a rounded backdrop behind each label. */
@@ -38,6 +41,19 @@ export interface ResolvedEdgeStyle {
     label: string | null;
     opacity: number;
     animated: boolean;
+    /** Halo width in world px (0 = none). */
+    glow: number;
+}
+
+/** Edge colour source: 'load' (traffic colours, default) or the accent of the source / target node. */
+export type EdgeColorMode = 'load' | 'source' | 'target';
+
+/** Defaults the whole graph shares (NGraph options); per-node/edge styles win. */
+export interface StyleDefaults {
+    nodeGlow: number;
+    edgeGlow: number;
+    labelPosition: LabelPosition;
+    edgeColor: EdgeColorMode;
 }
 
 export type NodeStyler = (node: GraphNode) => NodeStyle | null | undefined;
@@ -77,8 +93,24 @@ export class StyleResolver {
         private edgeKinds: Readonly<Record<string, EdgeKindStyle>> = {},
         private nodeStyler: NodeStyler | null = null,
         private edgeStyler: EdgeStyler | null = null,
-        private labelStyle: LabelStyle = 'plain'
+        private labelStyle: LabelStyle = 'plain',
+        private defaults: StyleDefaults = {nodeGlow: 0, edgeGlow: 0, labelPosition: 'below', edgeColor: 'load'}
     ) {
+    }
+
+    public setDefaults(defaults: Partial<StyleDefaults>): void {
+        this.defaults = {...this.defaults, ...defaults};
+    }
+
+    public get styleDefaults(): Readonly<StyleDefaults> {
+        return this.defaults;
+    }
+
+    /** A node's own accent (colour, else its group's palette colour, else its fill), or null. */
+    public accent(node: GraphNode): string | null {
+        return node.color ?? (node.group !== null
+            ? Color.fromPalette(node.group, this.theme.palette ?? Theme.palette)
+            : node.fill);
     }
 
     public setLabelStyle(labelStyle: LabelStyle): void {
@@ -130,7 +162,9 @@ export class StyleResolver {
                 badgeColor: badgeColor,
                 badges: badges,
                 opacity: 1,
-                ring: null
+                ring: null,
+                glow: this.defaults.nodeGlow,
+                labelPosition: this.defaults.labelPosition
             }
             : {
                 shape: node.shape,
@@ -148,7 +182,9 @@ export class StyleResolver {
                 badgeColor: badgeColor,
                 badges: badges,
                 opacity: 1,
-                ring: null
+                ring: null,
+                glow: this.defaults.nodeGlow,
+                labelPosition: this.defaults.labelPosition
             };
         const override = this.nodeStyler?.(node);
 
@@ -182,7 +218,9 @@ export class StyleResolver {
                     width: override.ring.width ?? 2,
                     opacity: StyleResolver.unit(override.ring.opacity ?? 1),
                     gap: override.ring.gap ?? 1
-                }
+                },
+            glow: Math.max(0, override.glow ?? base.glow),
+            labelPosition: override.labelPosition ?? base.labelPosition
         };
     }
 
@@ -190,7 +228,10 @@ export class StyleResolver {
         const theme = this.theme;
         const kind: EdgeKindStyle = edge.kind !== null ? this.edgeKinds[edge.kind] ?? {} : {};
         const tone = kind.tone ?? 'load';
-        const color = edge.color ?? kind.color ?? (tone === 'neutral'
+        const endpoint = this.defaults.edgeColor === 'source'
+            ? this.accent(edge.source)
+            : this.defaults.edgeColor === 'target' ? this.accent(edge.target) : null;
+        const color = edge.color ?? kind.color ?? endpoint ?? (tone === 'neutral'
             ? theme.edgeNeutral ?? theme.nodeStroke
             : StyleResolver.loadColor(edge.load, theme));
         const base: ResolvedEdgeStyle = {
@@ -200,7 +241,8 @@ export class StyleResolver {
             directed: edge.directed ?? kind.directed ?? false,
             label: edge.label,
             opacity: 0.85,
-            animated: edge.animatedExplicit ? edge.animated : kind.animated ?? edge.animated
+            animated: edge.animatedExplicit ? edge.animated : kind.animated ?? edge.animated,
+            glow: this.defaults.edgeGlow
         };
         const override = this.edgeStyler?.(edge);
 
@@ -215,7 +257,8 @@ export class StyleResolver {
             directed: override.directed ?? base.directed,
             label: override.label !== undefined ? override.label : base.label,
             opacity: StyleResolver.unit(override.opacity ?? base.opacity),
-            animated: base.animated
+            animated: base.animated,
+            glow: Math.max(0, override.glow ?? base.glow)
         };
     }
 

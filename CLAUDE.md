@@ -293,6 +293,24 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
 - Example: `examples/ownership.html` (fictional; seeds company positions and leaves next to their neighbour —
   random starts left leaves on the wrong side of the hub).
 
+## Flow look (multi-column neon flows)
+
+- `glow` option `{nodes, edges}` / `NodeStyle.glow` / `EdgeStyle.glow` (world px): nodes get a radial halo in their
+  accent (stronger when hovered/highlighted), edges two wider translucent strokes under them — also in the batched and
+  WebGL paths, so it stays cheap for many edges.
+- `labelPosition` option / `NodeStyle.labelPosition`: 'below' | 'right' | 'left' | 'above' (`CanvasRenderer.labelAnchor`,
+  shared by drawing and label collision).
+- `edgeColor: 'source' | 'target'`: an edge takes its endpoint's accent (color → group colour → fill), so branches keep
+  their colour. `setLook({glow, labelPosition, edgeColor})` changes all three later.
+- `LayeredLayout`: `grid: {ring: subColumns}` (+ `gridGap`) packs a layer row by row (a bit matrix); grid width of the
+  outer layers is kept inside the margins. `columns` = where each layer landed (ring, pos, halfWidth, count).
+- `columnHeaders` option / `setColumnHeaders` (layered, direction 'right' only): `ColumnHeaders` overlay — screen-space
+  title band ("STREAMS (3)") over everything, separators under the edges, spans split halfway between columns.
+- `GraphQuery.lineage` / `NGraph.lineage(id)`: everything up- and downstream (unlike `neighborhood(…, Infinity)` it
+  does not spill into sibling branches) — highlight it on hover for the "light the path" effect.
+- Tests: `test/FlowLook.test.ts`. Example: `examples/flow.html` (two tabs: streams → channels → frames → groups →
+  bit grid, and a 3 → 50 → 5 stages → bits → 1 fan-out; side KPIs/sparklines, live bit flips).
+
 ## Known gaps (V1)
 
 - No built-in toolbar (pause/labels/etc.) — that's presentation-specific, left to the consuming

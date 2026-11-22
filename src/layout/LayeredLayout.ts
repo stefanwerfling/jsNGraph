@@ -33,6 +33,27 @@ export interface LayeredLayoutOptions {
      * row gap), the nodes of one layer over the width (marginX, min/maxSpacing).
      */
     direction?: 'right' | 'down';
+    /**
+     * Layers drawn as a grid instead of one long line: layer → number of
+     * sub-columns (sub-rows with 'down'). The members fill it row by row in
+     * their crossing-reduced order, e.g. `{5: 6}` packs 216 "bit" nodes as
+     * 36 rows × 6. Default: none.
+     */
+    grid?: Record<number, number>;
+    /** Distance between the sub-columns of a grid layer. Default: the layer's own row spacing. */
+    gridGap?: number;
+}
+
+/** Where one layer ended up (for column headers and separators). */
+export interface LayeredColumn {
+    /** The layer index (node.ring). */
+    ring: number;
+    /** Layer position on the layer axis (x for 'right', y for 'down'), world px. */
+    pos: number;
+    /** Half the layer's own extent on that axis (grid layers are wider), world px. */
+    halfWidth: number;
+    /** Members in the layer. */
+    count: number;
 }
 
 const DEFAULTS: Required<LayeredLayoutOptions> = {
@@ -43,7 +64,9 @@ const DEFAULTS: Required<LayeredLayoutOptions> = {
     sweeps: 4,
     minSpacing: 0,
     minColumnGap: 0,
-    direction: 'right'
+    direction: 'right',
+    grid: {},
+    gridGap: 0
 };
 
 /**
@@ -59,9 +82,19 @@ const DEFAULTS: Required<LayeredLayoutOptions> = {
 export class LayeredLayout {
 
     private readonly options: Required<LayeredLayoutOptions>;
+    private placed: LayeredColumn[] = [];
 
     public constructor(options: LayeredLayoutOptions = {}) {
         this.options = {...DEFAULTS, ...options};
+    }
+
+    /** The layers as of the last tick, ordered by ring. */
+    public get columns(): ReadonlyArray<LayeredColumn> {
+        return this.placed;
+    }
+
+    public get direction(): 'right' | 'down' {
+        return this.options.direction;
     }
 
     /** Interface parity with ForceLayout: slot layouts converge on their own. */
@@ -150,15 +183,43 @@ export class LayeredLayout {
             }
         }
 
+        // Grid layers are wider than one line: their shape first, so the
+        // outer ones can be kept inside the margins.
+        const shapes = new Map<number, {sub: number; rows: number; spacing: number; subGap: number}>();
+
+        for (const ring of orderedRings) {
+            const count = (columns.get(ring) ?? []).length;
+            const sub = Math.max(1, Math.min(count, Math.floor(this.options.grid[ring] ?? 1)));
+            const rows = Math.ceil(count / sub);
+            const spacing = rows <= 1
+                ? 0
+                : Math.max(minSpacing, Math.min(maxSpacing, (crossExtent - 2 * crossMargin) / (rows - 1)));
+            const subGap = sub <= 1 ? 0 : this.options.gridGap > 0 ? this.options.gridGap : Math.max(8, spacing);
+
+            shapes.set(ring, {sub, rows, spacing, subGap});
+        }
+
+        const half = (ring: number | undefined): number => {
+            const shape = ring === undefined ? undefined : shapes.get(ring);
+
+            return shape === undefined ? 0 : (shape.sub - 1) * shape.subGap / 2;
+        };
+        // Ring 0 sits at the start edge only when it exists; the last layer is always maxRing.
+        const firstHalf = orderedRings[0] === 0 ? half(0) : 0;
+        const lastHalf = half(orderedRings[orderedRings.length - 1]);
+
         // Columns spread over the width, centred; never closer than minColumnGap.
-        const columnGap = maxRing === 0 ? 0 : Math.max(minColumnGap, (layerExtent - 2 * layerMargin) / maxRing);
+        const columnGap = maxRing === 0 ? 0 : Math.max(minColumnGap, (layerExtent - 2 * layerMargin - firstHalf - lastHalf) / maxRing);
+        const shift = (firstHalf - lastHalf) / 2;
+
+        this.placed = [];
 
         for (const ring of orderedRings) {
             const members = columns.get(ring) ?? [];
-            const layerPos = layerExtent / 2 + (ring - maxRing / 2) * columnGap;
-            const spacing = members.length <= 1
-                ? 0
-                : Math.max(minSpacing, Math.min(maxSpacing, (crossExtent - 2 * crossMargin) / (members.length - 1)));
+            const layerPos = layerExtent / 2 + shift + (ring - maxRing / 2) * columnGap;
+            const {sub, rows, spacing, subGap} = shapes.get(ring)!;
+
+            this.placed.push({ring, pos: layerPos, halfWidth: (sub - 1) * subGap / 2, count: members.length});
 
             for (let i = 0; i < members.length; i++) {
                 const node = members[i];
@@ -167,9 +228,12 @@ export class LayeredLayout {
                     continue;
                 }
 
-                const crossPos = crossExtent / 2 + (i - (members.length - 1) / 2) * spacing;
-                const tx = down ? crossPos : layerPos;
-                const ty = down ? layerPos : crossPos;
+                const row = Math.floor(i / sub);
+                const col = i % sub;
+                const crossPos = crossExtent / 2 + (row - (rows - 1) / 2) * spacing;
+                const shift = (col - (sub - 1) / 2) * subGap;
+                const tx = down ? crossPos : layerPos + shift;
+                const ty = down ? layerPos + shift : crossPos;
 
                 node.x += (tx - node.x) * easing;
                 node.y += (ty - node.y) * easing;

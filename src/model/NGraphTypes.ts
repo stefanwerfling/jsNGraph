@@ -17,6 +17,9 @@ export type NodeKind = 'pc' | 'laptop' | 'tablet' | 'server' | 'database' | 'rou
  */
 export type NodeIconDrawer = (ctx: CanvasRenderingContext2D, size: number, color: string) => void;
 
+/** Where a node's label sits: under it (default), beside it, or above it. */
+export type LabelPosition = 'below' | 'right' | 'left' | 'above';
+
 /** Corner of a node a badge sits on. */
 export type BadgePosition = 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
 
@@ -173,6 +176,10 @@ export interface NodeStyle {
     opacity?: number;
     /** Extra ring around a dot/circle (heat, recency, a badge); null = none. */
     ring?: NodeRing | null;
+    /** Soft halo around a dot/circle in its outline colour, world px; 0 = none. */
+    glow?: number;
+    /** Label placement (see LabelPosition). */
+    labelPosition?: LabelPosition;
 }
 
 /** Outer ring drawn around a dot or circle node. */
@@ -195,6 +202,8 @@ export interface EdgeStyle {
     label?: string | null;
     /** 0..1 */
     opacity?: number;
+    /** Soft halo along the edge in its colour, world px; 0 = none. */
+    glow?: number;
 }
 
 /**

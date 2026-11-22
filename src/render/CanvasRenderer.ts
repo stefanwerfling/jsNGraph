@@ -122,6 +122,9 @@ export class CanvasRenderer {
     /** Horizontal padding of a label pill, world px. */
     public static readonly PILL_PAD_X = 7;
 
+    /** Halo passes under a glowing edge: [width factor of `glow`, opacity]. */
+    private static readonly HALO: ReadonlyArray<[number, number]> = [[1, 0.09], [0.45, 0.16]];
+
     /** Cluster disc radius in screen px: grows with the member count, stays inside the cluster's extent. */
     public static clusterRadiusPx(cluster: RenderCluster, scale: number): number {
         const bySize = Math.min(64, 6 + Math.sqrt(Math.max(0, cluster.size)) * 2.5);
@@ -252,6 +255,18 @@ export class CanvasRenderer {
                     // LOD: an arrowhead under ~2 px on screen is not visible, skip it.
                     arrow: style.directed && arrow * camera.scale >= CanvasRenderer.MIN_ARROW_PX ? arrow : 0
                 };
+
+                if (style.glow > 0) {
+                    const halo = {from: start, to: end, arrow: 0};
+
+                    for (const [extra, a] of CanvasRenderer.HALO) {
+                        if (bulk !== null) {
+                            bulk.line(style.color, style.width + style.glow * extra, a * style.opacity * alpha, halo);
+                        } else {
+                            this.batcher.add(style.color, style.width + style.glow * extra, a * style.opacity * alpha, halo);
+                        }
+                    }
+                }
 
                 if (bulk !== null) {
                     bulk.line(style.color, style.width, style.opacity * alpha, segment);
@@ -601,6 +616,18 @@ export class CanvasRenderer {
             ctx.lineTo(end.x, end.y);
         }
 
+        if (style.glow > 0) {
+            ctx.save();
+            ctx.setLineDash([]);
+            ctx.lineCap = 'round';
+            for (const [extra, a] of CanvasRenderer.HALO) {
+                ctx.globalAlpha = a * style.opacity * alpha;
+                ctx.lineWidth = style.width + style.glow * extra;
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
         ctx.stroke();
         ctx.setLineDash([]);
 
@@ -742,10 +769,30 @@ export class CanvasRenderer {
         ctx.restore();
     }
 
+    /** Soft radial halo in the node's accent, fading out over `glow` world px. */
+    private drawHalo(x: number, y: number, r: number, color: string, glow: number, strong: boolean): void {
+        if (glow <= 0) {
+            return;
+        }
+
+        const {ctx} = this;
+        const outer = r + glow * (strong ? 1.5 : 1);
+        const g = ctx.createRadialGradient(x, y, r * 0.6, x, y, outer);
+
+        g.addColorStop(0, Color.withAlpha(color, strong ? 0.7 : 0.5));
+        g.addColorStop(0.45, Color.withAlpha(color, strong ? 0.28 : 0.16));
+        g.addColorStop(1, Color.withAlpha(color, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x, y, outer, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
     private drawDotNode(node: GraphNode, style: ResolvedNodeStyle, state: NodeDrawState): void {
         const {ctx, theme} = this;
         const r = style.radius;
 
+        this.drawHalo(node.x, node.y, r, style.fill, style.glow, state.hovered || state.highlighted);
         this.drawRing(node.x, node.y, r, style);
 
         if (state.highlighted || state.selected || state.hovered) {
@@ -903,8 +950,10 @@ export class CanvasRenderer {
             const pad = item.style.labelBackground !== null ? CanvasRenderer.PILL_PAD_X : 0;
 
             w *= k;
-            const top = camera.toScreen(item.node.x - w / 2 - pad, item.node.y + item.offsetY - 10 * k);
             const lines = (item.node.sublabel !== null ? 13 : 0) + 13 * k;
+            const anchor = CanvasRenderer.labelAnchor(item.node, item.style, item.offsetY);
+            const left = anchor.align === 'center' ? anchor.x - w / 2 - pad : anchor.align === 'left' ? anchor.x - pad : anchor.x - w - pad;
+            const top = camera.toScreen(left, anchor.y - 10 * k);
             const fits = this.placer.tryPlace({x: top.x, y: top.y, w: (w + 2 * pad) * camera.scale, h: lines * camera.scale});
 
             if (!fits && !item.forced) {
@@ -922,6 +971,7 @@ export class CanvasRenderer {
         const {ctx, theme} = this;
         const r = style.radius;
 
+        this.drawHalo(node.x, node.y, r, style.stroke, style.glow, state.hovered || state.highlighted);
         this.drawRing(node.x, node.y, r, style);
 
         ctx.save();
@@ -1004,6 +1054,32 @@ export class CanvasRenderer {
     }
 
     /**
+     * Baseline anchor of a node's label for its `labelPosition`. `offsetY`
+     * is the distance below the centre a 'below' label uses (radius + rings
+     * + text size); the other sides derive their gap from it.
+     */
+    public static labelAnchor(node: GraphNode, style: ResolvedNodeStyle, offsetY: number): {x: number; y: number; align: CanvasTextAlign} {
+        const pill = style.labelBackground !== null;
+        const size = style.labelSize;
+        // Distance from the centre to the node's outer edge (rings included).
+        const rim = Math.max(style.radius, offsetY - size - 3);
+        const sideGap = rim + (pill ? CanvasRenderer.PILL_PAD_X + 5 : 6);
+        const midY = node.y + size * 0.36 - (node.sublabel !== null ? 6 : 0);
+
+        switch (style.labelPosition) {
+            case 'right':
+                return {x: node.x + sideGap, y: midY, align: 'left'};
+            case 'left':
+                return {x: node.x - sideGap, y: midY, align: 'right'};
+            case 'above':
+                return {x: node.x, y: node.y - rim - 6 - (node.sublabel !== null ? 12 : 0) - (pill ? 4 : 0), align: 'center'};
+            default:
+                // A pill sits a little lower, clear of status/highlight rings.
+                return {x: node.x, y: node.y + offsetY + (pill ? 4 : 0), align: 'center'};
+        }
+    }
+
+    /**
      * Label (+ sublabel) centred under a node. With a pill background the
      * text sits on a rounded backdrop; `strong` (hovered/selected) inverts
      * the pill to the label colour, so the focused node's name stands out.
@@ -1011,11 +1087,12 @@ export class CanvasRenderer {
     private drawLabel(node: GraphNode, style: ResolvedNodeStyle, offsetY: number, strong = false): void {
         const {ctx, theme} = this;
 
-        // A pill sits a little lower, clear of status/highlight rings.
-        const y = node.y + offsetY + (style.labelBackground !== null ? 4 : 0);
+        const anchor = CanvasRenderer.labelAnchor(node, style, offsetY);
+        const x = anchor.x;
+        const y = anchor.y;
 
         ctx.save();
-        ctx.textAlign = 'center';
+        ctx.textAlign = anchor.align;
 
         const size = style.labelSize;
         const weight = style.labelBackground !== null || size >= 12.5 ? '600 ' : '';
@@ -1025,8 +1102,10 @@ export class CanvasRenderer {
 
             const w = ctx.measureText(style.label).width + 2 * CanvasRenderer.PILL_PAD_X;
             const h = (node.sublabel !== null ? 12 : 0) + size + 5;
+            const left = anchor.align === 'center' ? x - w / 2
+                : anchor.align === 'left' ? x - CanvasRenderer.PILL_PAD_X : x - w + CanvasRenderer.PILL_PAD_X;
 
-            CanvasRenderer.roundRectPath(ctx, node.x - w / 2, y - size - 1, w, h, Math.min(8, h / 2));
+            CanvasRenderer.roundRectPath(ctx, left, y - size - 1, w, h, Math.min(8, h / 2));
             ctx.fillStyle = strong ? style.labelColor : style.labelBackground;
             ctx.fill();
             ctx.fillStyle = strong ? theme.background : style.labelColor;
@@ -1035,12 +1114,12 @@ export class CanvasRenderer {
             ctx.fillStyle = style.labelColor;
         }
 
-        ctx.fillText(style.label, node.x, y);
+        ctx.fillText(style.label, x, y);
 
         if (node.sublabel !== null) {
             ctx.globalAlpha *= 0.75;
             ctx.font = '9.5px system-ui, sans-serif';
-            ctx.fillText(node.sublabel, node.x, y + Math.max(12, size + 1));
+            ctx.fillText(node.sublabel, x, y + Math.max(12, size + 1));
         }
 
         ctx.restore();

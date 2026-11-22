@@ -6,12 +6,13 @@ import { GraphEdge } from './model/GraphEdge';
 import { GraphNode } from './model/GraphNode';
 import { EdgeLanes } from './model/EdgeLanes';
 import { GraphQuery, NeighborDirection } from './model/GraphQuery';
-import { EdgeKindStyle, NGraphCluster, NGraphClusterEdge, NGraphEdgeData, NGraphHull, NGraphNodeData } from './model/NGraphTypes';
+import { EdgeKindStyle, LabelPosition, NGraphCluster, NGraphClusterEdge, NGraphEdgeData, NGraphHull, NGraphNodeData } from './model/NGraphTypes';
 import { CanvasRenderer, RenderCluster, RenderClusters, RenderHull } from './render/CanvasRenderer';
 import { WebGLLayer } from './render/WebGLLayer';
 import { ClusterResolver } from './render/ClusterResolver';
+import { ColumnHeaderOptions, ColumnHeaders } from './render/ColumnHeaders';
 import { Effects, NGraphOverlay, OverlayContext, PulseOptions, RippleOptions, TrailOptions } from './render/Effects';
-import { EdgeStyler, LabelStyle, NodeStyler, StyleResolver } from './render/StyleResolver';
+import { EdgeColorMode, EdgeStyler, LabelStyle, NodeStyler, StyleResolver } from './render/StyleResolver';
 import { Theme, ThemeTokens } from './render/Theme';
 import { ClickModifiers, InteractionController } from './interaction/InteractionController';
 import { HitCandidate, MIN_HIT_RADIUS_PX, pickHit } from './interaction/HitPick';
@@ -93,6 +94,15 @@ export interface NGraphOptions {
     renderer?: 'canvas' | 'webgl' | 'auto';
     /** With renderer 'auto': visible node count from which WebGL draws. Default 50 000. */
     webglMinNodes?: number;
+    /** Soft neon halo for every dot/circle node and every edge, world px (NodeStyle/EdgeStyle.glow win). Default 0. */
+    glow?: {nodes?: number; edges?: number};
+    /** Where labels sit: 'below' (default), 'right', 'left', 'above' (NodeStyle.labelPosition wins). */
+    labelPosition?: LabelPosition;
+    /** Edge colour: 'load' (traffic colours, default) or the accent of the 'source' / 'target' node
+     *  (its `color`, group colour or fill) — branches of a flow keep their colour. Edge `color` wins. */
+    edgeColor?: EdgeColorMode;
+    /** Layered layout ('right'): titles over the columns, separators between them. */
+    columnHeaders?: ColumnHeaderOptions;
 }
 
 export interface NGraphContextEvent {
@@ -233,6 +243,7 @@ export class NGraph {
     private hulls: NGraphHull[] = [];
     private readonly effects = new Effects();
     private overlays: NGraphOverlay[] = [this.effects];
+    private columnHeaders: ColumnHeaders | null = null;
     private readonly overlayContext: OverlayContext;
     /** Hull polygons for the current positions; null = recompute on next use. */
     private hullCache: Array<{hull: NGraphHull; render: RenderHull}> | null = null;
@@ -276,7 +287,12 @@ export class NGraph {
         this.camera = new Camera(options.minZoom ?? 0.1, options.maxZoom ?? 4);
         this.renderer = new CanvasRenderer(this.canvas, this.theme, () => this.loop.request());
         this.styles = new StyleResolver(this.theme, options.edgeKinds ?? {}, options.styleNode ?? null,
-            options.styleEdge ?? null, options.labelStyle ?? 'plain');
+            options.styleEdge ?? null, options.labelStyle ?? 'plain', {
+                nodeGlow: options.glow?.nodes ?? 0,
+                edgeGlow: options.glow?.edges ?? 0,
+                labelPosition: options.labelPosition ?? 'below',
+                edgeColor: options.edgeColor ?? 'load'
+            });
         this.layout = options.layoutMode === 'radial'
             ? new RadialLayout(options.radialLayout)
             : options.layoutMode === 'layered'
@@ -304,6 +320,10 @@ export class NGraph {
                 return node === null ? null : this.styles.node(node).radius;
             }
         };
+
+        if (options.columnHeaders !== undefined) {
+            this.setColumnHeaders(options.columnHeaders);
+        }
 
         this.interaction = new InteractionController(
             this.canvas,
@@ -754,6 +774,45 @@ export class NGraph {
     /** Ids within `depth` hops of `id` (including it). Ignores the filter. */
     public neighborhood(id: string, depth = 1, direction: NeighborDirection = 'both'): Set<string> {
         return GraphQuery.neighborhood(id, this.edges.values(), depth, direction, this.nodes);
+    }
+
+    /** Every node upstream and downstream of `id` (any depth, along edge direction): the paths through it. */
+    public lineage(id: string): Set<string> {
+        return GraphQuery.lineage(id, this.edges.values(), this.nodes);
+    }
+
+    // ---- flow look -------------------------------------------------------------
+
+    /** Change the graph-wide glow / label position / edge colour mode (see the options). */
+    public setLook(look: {glow?: {nodes?: number; edges?: number}; labelPosition?: LabelPosition; edgeColor?: EdgeColorMode}): void {
+        const current = this.styles.styleDefaults;
+
+        this.styles.setDefaults({
+            nodeGlow: look.glow?.nodes ?? current.nodeGlow,
+            edgeGlow: look.glow?.edges ?? current.edgeGlow,
+            labelPosition: look.labelPosition ?? current.labelPosition,
+            edgeColor: look.edgeColor ?? current.edgeColor
+        });
+        this.loop.request();
+    }
+
+    /** Column titles for the layered layout; null removes them. No effect with other layouts. */
+    public setColumnHeaders(options: ColumnHeaderOptions | null): void {
+        if (this.columnHeaders !== null) {
+            const old = this.columnHeaders;
+            this.overlays = this.overlays.filter((o) => o !== old.under && o !== old.over);
+            this.columnHeaders = null;
+        }
+
+        const layout = this.layout;
+
+        if (options !== null && layout instanceof LayeredLayout && layout.direction === 'right') {
+            this.columnHeaders = new ColumnHeaders(options, () => layout.columns, this.camera, () => this.theme,
+                () => ({width: this.width, height: this.height, dpr: window.devicePixelRatio || 1}));
+            this.overlays.push(this.columnHeaders.under, this.columnHeaders.over);
+        }
+
+        this.loop.request();
     }
 
     // ---- selection -----------------------------------------------------------

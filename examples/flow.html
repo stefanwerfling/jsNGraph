@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — flow dashboard</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    body { background: #0b0f17; }
+    .app { display: grid; grid-template-columns: 52px 1fr; height: calc(100vh - 41px); min-height: 560px; }
+    .rail { background: #0e131d; border-right: 1px solid #1d2636; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0; }
+    .rail button { width: 34px; height: 34px; border-radius: 8px; border: 0; background: transparent; color: #6f7d96; cursor: pointer; display: grid; place-items: center; }
+    .rail button.on, .rail button:hover { background: #172032; color: #9fe7f0; }
+    .rail svg { width: 18px; height: 18px; }
+    .rail .grow { flex: 1; }
+    .main { display: grid; grid-template-rows: 44px 1fr 28px; min-width: 0; }
+    .top { display: flex; align-items: center; gap: 22px; padding: 0 16px; border-bottom: 1px solid #1d2636; background: #0e131d; font-size: 13px; }
+    .top h1 { font-size: 14px; letter-spacing: .08em; margin: 0 8px 0 0; color: #dbe6f7; }
+    .tab { background: none; border: 0; color: #7f8ca5; font: inherit; padding: 13px 2px 11px; cursor: pointer; border-bottom: 2px solid transparent; }
+    .tab.on { color: #9fe7f0; border-bottom-color: #3fd0e0; }
+    .top .spacer { flex: 1; }
+    .top label { color: #7f8ca5; display: flex; gap: 6px; align-items: center; }
+    .ok { color: #57e39b; }
+    .body { display: grid; grid-template-columns: 210px 1fr; min-height: 0; }
+    .side { border-right: 1px solid #1d2636; padding: 14px 14px; display: flex; flex-direction: column; gap: 16px; font-size: 11px; color: #7f8ca5; background: #0c1019; overflow: hidden; }
+    .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .kpi b { display: block; font-size: 17px; color: #e6eef9; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+    .spark { width: 100%; height: 46px; display: block; }
+    .side h3 { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; margin: 0 0 4px; color: #8e9bb4; }
+    .side .grow { flex: 1; }
+    #hoverInfo { font: 11px ui-monospace, monospace; color: #9fb0cc; min-height: 3.6em; white-space: pre-line; }
+    .view { position: relative; min-width: 0; min-height: 0; }
+    .view > div { position: absolute; inset: 0; }
+    .status { display: flex; gap: 18px; align-items: center; padding: 0 14px; font-size: 11px; color: #7f8ca5; border-top: 1px solid #1d2636; background: #0e131d; }
+    .status .spacer { flex: 1; }
+    @media (max-width: 760px) { .app { grid-template-columns: 1fr; } .rail { display: none; } .body { grid-template-columns: 1fr; } .side { display: none; } }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="layered.html">Layered</a>
+    <a href="flow.html" class="active">Flow dashboard</a>
+</nav>
+
+<div class="app">
+    <div class="rail">
+        <button class="on" title="Flow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><path d="M7 12c6 0 6-7 10-7M7 12c6 0 6 7 10 7"/></svg></button>
+        <button title="Metrics"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 20h18M6 16v-5M11 16V7M16 16v-8M21 16v-3"/></svg></button>
+        <button title="Topology"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-4h12v4"/></svg></button>
+        <span class="grow"></span>
+        <button title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg></button>
+    </div>
+    <div class="main">
+        <div class="top">
+            <h1>DASHBOARD</h1>
+            <button class="tab on" data-view="streams">Streams</button>
+            <button class="tab" data-view="fanout">Fan-out</button>
+            <span class="spacer"></span>
+            <label><input type="checkbox" id="glow" checked> Glow</label>
+            <label><input type="checkbox" id="live" checked> Live</label>
+            <span class="ok">● OK</span>
+            <span>Latency: <b id="latency">12</b> ms</span>
+        </div>
+        <div class="body">
+            <aside class="side">
+                <div class="kpis">
+                    <div class="kpi">Bits active<b id="kpiBits">–</b></div>
+                    <div class="kpi">Flow rate<b id="kpiRate">–</b></div>
+                </div>
+                <div><h3>Throughput</h3><svg class="spark" id="spark1" viewBox="0 0 180 46" preserveAspectRatio="none"></svg></div>
+                <div><h3>Active bits</h3><svg class="spark" id="spark2" viewBox="0 0 180 46" preserveAspectRatio="none"></svg></div>
+                <div><h3>Errors</h3><svg class="spark" id="spark3" viewBox="0 0 180 46" preserveAspectRatio="none"></svg></div>
+                <span class="grow"></span>
+                <div><h3>Hover</h3><div id="hoverInfo">Hover a node to light up
+every path through it.</div></div>
+            </aside>
+            <div class="view">
+                <div id="streams"></div>
+                <div id="fanout" style="visibility:hidden"></div>
+            </div>
+        </div>
+        <div class="status">
+            <span id="statusBits">Bits active: –</span>
+            <span id="statusNodes"></span>
+            <span class="spacer"></span>
+            <span class="ok">● OK</span>
+            <span>Latency: <span id="latency2">12</span> ms</span>
+        </div>
+    </div>
+</div>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+(() => {
+    const {NGraph} = window.JSNGraph;
+
+    let seed = 11;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
+    const pad2 = (n) => String(n).padStart(2, '0');
+
+    const theme = {
+        background: '#0b0f17', gridDot: 'rgba(0,0,0,0)', nodeFill: '#0b0f17', nodeStroke: '#3a4a68', nodeIcon: '#dbe6f7',
+        nodeLabel: '#c6d3e8', nodeHoverStroke: '#ffffff', nodeSelectedStroke: '#ffffff', edgeLow: '#3fd0e0',
+        edgeMid: '#ffc94a', edgeHigh: '#ff5fa2', trafficDot: '#ffffff', statusOk: '#57e39b', statusWarning: '#ffc94a',
+        statusCritical: '#ff5fa2', statusDown: '#ff5f5f', panelBackground: '#111827', panelBorder: '#2a3650',
+        panelText: '#dbe6f7', panelSubtext: '#8e9bb4', panelBar: '#3fd0e0', highlightStroke: 'rgba(255,255,255,0.28)', dimOpacity: 0.12
+    };
+
+    /**
+     * Shared behaviour of both views: hover lights the lineage (all paths
+     * through the node), the rest dims; edges on the path glow brighter.
+     */
+    function makeGraph(el, nodes, edges, options, describe) {
+        let lit = null;
+        const level = new Map(nodes.map((n) => [n.id, n.level]));
+        const graph = new NGraph(el, {
+            theme, layoutMode: 'layered', edgeStyle: 'curve', panZoom: true, grid: false, detailPanel: false,
+            draggable: false, labelCollision: false, labelMinZoom: 0.3,
+            glow: {nodes: 9, edges: 3},
+            tooltip: (n) => describe(n.id),
+            edgeTooltip: false,
+            ...options,
+            styleEdge: (e) => {
+                const own = options.styleEdge?.(e) ?? {};
+                if (lit === null) return own;
+                return lit.has(e.source.id) && lit.has(e.target.id) ? {...own, width: (own.width ?? 1) + 1.2, opacity: 1, glow: 7} : own;
+            }
+        });
+        graph.setData(nodes, edges);
+        graph.on('nodeHover', (n) => {
+            if (n === null) {
+                lit = null;
+                graph.clearHighlight();
+                document.getElementById('hoverInfo').textContent = 'Hover a node to light up\nevery path through it.';
+                return;
+            }
+            lit = graph.lineage(n.id);
+            graph.highlight(lit);
+            document.getElementById('hoverInfo').textContent = `${describe(n.id)}\nlevel ${level.get(n.id)} · ${lit.size - 1} nodes on its paths`;
+        });
+        return graph;
+    }
+
+    // ---- view 1: streams → channels → frames → groups → bits ----------------------
+
+    const STREAMS = [
+        {name: 'Stream A', color: '#3fd0e0', icon: 'web'},
+        {name: 'Stream B', color: '#ff5fa2', icon: 'phone'},
+        {name: 'Stream C', color: '#ffc94a', icon: 'database'}
+    ];
+    const bitValue = new Map();
+    const owner = new Map();         // node id → stream index
+    const v1nodes = [];
+    const v1edges = [];
+    let eid = 0;
+    const pairs = new Set();         // one edge per pair, also in the random cross links
+    const link = (a, b) => {
+        if (!pairs.has(a + '>' + b)) {
+            pairs.add(a + '>' + b);
+            v1edges.push({id: `e${eid++}`, source: a, target: b});
+        }
+    };
+
+    v1nodes.push({id: 'root', label: 'Network root', ring: 0, kind: 'gateway', color: '#ffffff', size: 18, level: 'root'});
+    const frames = [];
+    const groups = [];
+    STREAMS.forEach((st, s) => {
+        const sid = `s${s}`;
+        owner.set(sid, s);
+        v1nodes.push({id: sid, label: st.name, ring: 1, kind: st.icon, color: st.color, size: 17, level: 'stream'});
+        link('root', sid);
+        for (let c = 0; c < 3; c++) {
+            const cid = `c${s}${c}`;
+            owner.set(cid, s);
+            v1nodes.push({id: cid, label: `Channel ${'ABC'[s]}${c + 1}`, ring: 2, color: st.color, size: 7, level: 'channel'});
+            link(sid, cid);
+            for (let f = 0; f < 2; f++) {
+                const fid = `f${s}${c}${f}`;
+                owner.set(fid, s);
+                frames.push(fid);
+                v1nodes.push({id: fid, label: 'Frame', ring: 3, color: st.color, size: 7, level: 'frame'});
+                link(cid, fid);
+            }
+        }
+    });
+    // a few frames also take input from another stream's channels — the tangle in the middle
+    for (let k = 0; k < 14; k++) {
+        const s = Math.floor(rnd() * 3);
+        const other = (s + 1 + Math.floor(rnd() * 2)) % 3;
+        link(`c${other}${Math.floor(rnd() * 3)}`, `f${s}${Math.floor(rnd() * 3)}${Math.floor(rnd() * 2)}`);
+    }
+    frames.forEach((fid, i) => {
+        const s = owner.get(fid);
+        for (let g = 0; g < 2; g++) {
+            const gid = `g${i}${g}`;
+            owner.set(gid, s);
+            groups.push(gid);
+            v1nodes.push({id: gid, label: String(g + 1), ring: 4, color: STREAMS[s].color, size: 6, level: 'group'});
+            link(fid, gid);
+            if (rnd() < 0.35) link(pick(frames), gid);
+        }
+    });
+    groups.forEach((gid, i) => {
+        const s = owner.get(gid);
+        for (let b = 0; b < 6; b++) {
+            const bid = `b${i}_${b}`;
+            owner.set(bid, s);
+            bitValue.set(bid, rnd() < 0.68);
+            v1nodes.push({id: bid, label: '', ring: 5, shape: 'dot', color: STREAMS[s].color, size: 3.6, level: 'bit'});
+            link(gid, bid);
+        }
+    });
+
+    const describe1 = (id) => {
+        const n = v1nodes.find((x) => x.id === id);
+        if (n === undefined) return null;
+        const st = owner.has(id) ? STREAMS[owner.get(id)].name : 'all streams';
+        return n.level === 'bit' ? `Bit ${id.slice(1)} = ${bitValue.get(id) ? 1 : 0} · ${st}` : `${n.label} · ${st}`;
+    };
+
+    const streams = makeGraph(document.getElementById('streams'), v1nodes, v1edges, {
+        edgeColor: 'source',
+        layeredLayout: {marginX: 70, marginY: 62, maxSpacing: 70, sweeps: 8, grid: {5: 6}, gridGap: 16},
+        columnHeaders: {labels: ['Root', 'Streams', 'Channels', 'Frames', 'Groups', 'Bits']},
+        styleNode: (n) => {
+            const lvl = n.ring;
+            if (lvl === 5) {
+                return bitValue.get(n.id) ? {glow: 5} : {opacity: 0.28, glow: 0};
+            }
+            if (lvl >= 2) {
+                return {icon: null, labelSize: 8.5, glow: 6};
+            }
+            return {labelSize: 11.5, glow: 14};
+        },
+        styleEdge: (e) => ({width: e.target.ring === 5 ? 0.7 : e.source.ring <= 1 ? 2.2 : 1, opacity: e.target.ring === 5 ? 0.5 : 0.75})
+    }, describe1);
+
+    // ---- view 2: sources → 50 rows → five stages → bits → one sink ------------------
+
+    const v2nodes = [];
+    const v2edges = [];
+    const ROWS = 50;
+    const STAGE_ICONS = ['web', 'gateway', 'server', 'database', 'agent'];
+    const TAGS = ['#7aa2ff', '#9d7bff', '#57e39b', '#3fd0e0'];
+    let e2 = 0;
+    const link2 = (a, b) => {
+        if (!pairs.has(a + '>' + b)) {
+            pairs.add(a + '>' + b);
+            v2edges.push({id: `x${e2++}`, source: a, target: b});
+        }
+    };
+    const bits2 = new Map();
+
+    for (let s = 0; s < 3; s++) {
+        v2nodes.push({id: `src${s}`, label: `Source ${s + 1}`, ring: 0, shape: 'dot', color: '#ff8a2a', size: 7, level: 'source'});
+    }
+    for (let r = 0; r < ROWS; r++) {
+        const tid = `t${r}`;
+        v2nodes.push({id: tid, label: `Tool ${pad2(r + 1)}`, ring: 1, shape: 'dot', color: TAGS[r % TAGS.length], size: 4.5, level: 'tool'});
+        link2(`src${Math.floor(r * 3 / ROWS)}`, tid);
+        if (rnd() < 0.25) link2(`src${Math.floor(rnd() * 3)}`, tid);
+    }
+    for (let c = 0; c < 5; c++) {
+        for (let r = 0; r < ROWS; r++) {
+            const id = `k${c}_${r}`;
+            v2nodes.push({id, label: '', ring: 2 + c, kind: STAGE_ICONS[c], color: c % 2 === 0 ? '#57e39b' : '#3fd0e0', size: 6.5, level: `stage ${c + 1}`});
+            const prev = c === 0 ? 't' : `k${c - 1}_`;
+            link2(`${prev}${r}`, id);
+            if (rnd() < 0.3) link2(`${prev}${Math.max(0, Math.min(ROWS - 1, r + Math.round((rnd() - 0.5) * 16)))}`, id);
+        }
+    }
+    for (let r = 0; r < ROWS; r++) {
+        const bid = `bit${r}`;
+        const v = rnd() < 0.5;
+        bits2.set(bid, v);
+        v2nodes.push({id: bid, label: v ? '1' : '0', ring: 7, shape: 'dot', color: '#3fd0e0', size: 3, level: 'bit'});
+        link2(`k4_${r}`, bid);
+        link2(bid, 'sink');
+    }
+    v2nodes.push({id: 'sink', label: '', ring: 8, shape: 'dot', color: '#3fd0e0', size: 3.5, level: 'sink'});
+
+    const describe2 = (id) => {
+        const n = v2nodes.find((x) => x.id === id);
+        if (n === undefined) return null;
+        if (n.level === 'bit') return `Bit ${id.slice(3)} = ${bits2.get(id) ? 1 : 0}`;
+        if (n.level.startsWith('stage')) return `${n.level} · row ${Number(id.split('_')[1]) + 1} (${n.kind})`;
+        return n.label || n.level;
+    };
+
+    const fanout = makeGraph(document.getElementById('fanout'), v2nodes, v2edges, {
+        layeredLayout: {marginX: 70, marginY: 50, maxSpacing: 150, sweeps: 2},
+        columnHeaders: {labels: ['Source nodes', `${ROWS} tool rows`, 'Stage 1', 'Stage 2', 'Stage 3', 'Stage 4', 'Stage 5', 'Bits', ''], counts: false},
+        styleNode: (n) => {
+            if (n.ring === 0) return {labelPosition: 'left', labelSize: 10, glow: 16};
+            if (n.ring === 1) return {labelPosition: 'right', labelSize: 8, labelBackground: 'rgba(122,162,255,0.16)', glow: 0};
+            if (n.ring === 7) return {labelPosition: 'right', labelSize: 8, glow: bits2.get(n.id) ? 6 : 0, opacity: bits2.get(n.id) ? 1 : 0.45};
+            if (n.ring === 8) return {glow: 14};
+            return {glow: 4, labelSize: 8};
+        },
+        styleEdge: (e) => e.source.ring === 0
+            ? {color: '#ff8a2a', width: 1.1, opacity: 0.55}
+            : e.target.ring === 8
+                ? {color: '#3fd0e0', width: 0.8, opacity: 0.45}
+                : {color: e.source.ring % 2 === 0 ? '#57e39b' : '#3fd0e0', width: 0.8, opacity: 0.4}
+    }, describe2);
+
+    // ---- chrome: tabs, kpis, sparklines, live --------------------------------------
+
+    let view = 'streams';
+    const graphs = {streams, fanout};
+    document.querySelectorAll('.tab').forEach((tab) => tab.addEventListener('click', () => {
+        view = tab.dataset.view;
+        document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t === tab));
+        for (const [name, g] of Object.entries(graphs)) {
+            document.getElementById(name).style.visibility = name === view ? 'visible' : 'hidden';
+            g.redraw();
+        }
+        updateStatus();
+    }));
+
+    document.getElementById('glow').addEventListener('change', (e) => {
+        const on = e.target.checked;
+        streams.setLook({glow: {nodes: on ? 9 : 0, edges: on ? 3 : 0}});
+        fanout.setLook({glow: {nodes: on ? 9 : 0, edges: on ? 3 : 0}});
+    });
+
+    const series = {rate: [], bits: [], err: []};
+    function sparkline(id, values, color, fill) {
+        const svg = document.getElementById(id);
+        const max = Math.max(...values, 1), min = Math.min(...values, 0);
+        const pts = values.map((v, i) => `${(i / (values.length - 1 || 1) * 180).toFixed(1)},${(44 - (v - min) / (max - min || 1) * 40).toFixed(1)}`);
+        svg.innerHTML = `<polyline points="0,46 ${pts.join(' ')} 180,46" fill="${fill}" stroke="none"/>`
+            + `<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="1.3"/>`;
+    }
+
+    const activeBits = () => [...bitValue.values()].filter(Boolean).length;
+    function updateStatus() {
+        const n = view === 'streams' ? `${v1nodes.length} nodes · ${v1edges.length} edges` : `${v2nodes.length} nodes · ${v2edges.length} edges`;
+        document.getElementById('statusNodes').textContent = n;
+    }
+
+    function step() {
+        // flip a few bits, drift the flow rate
+        for (let k = 0; k < 6; k++) {
+            const id = pick([...bitValue.keys()]);
+            bitValue.set(id, !bitValue.get(id));
+        }
+        const id2 = pick([...bits2.keys()]);
+        bits2.set(id2, !bits2.get(id2));
+        fanout.updateNode(id2, {label: bits2.get(id2) ? '1' : '0'});
+
+        const bits = activeBits();
+        const rate = 4.2 + Math.sin(Date.now() / 3000) * 0.5 + rnd() * 0.3;
+        const latency = Math.round(10 + rnd() * 6);
+        series.rate.push(rate); series.bits.push(bits); series.err.push(rnd() < 0.15 ? rnd() * 8 : rnd());
+        for (const k in series) if (series[k].length > 60) series[k].shift();
+
+        document.getElementById('kpiBits').textContent = `${bits}/${bitValue.size}`;
+        document.getElementById('statusBits').textContent = `Bits active: ${bits}/${bitValue.size}`;
+        document.getElementById('kpiRate').textContent = `${rate.toFixed(1)} Gbps`;
+        document.getElementById('latency').textContent = latency;
+        document.getElementById('latency2').textContent = latency;
+        sparkline('spark1', series.rate, '#3fd0e0', 'rgba(63,208,224,0.12)');
+        sparkline('spark2', series.bits, '#ffc94a', 'rgba(255,201,74,0.10)');
+        sparkline('spark3', series.err, '#ff5fa2', 'rgba(255,95,162,0.10)');
+        streams.redraw();
+    }
+
+    for (let i = 0; i < 40; i++) step();
+    updateStatus();
+    let timer = setInterval(step, 900);
+    document.getElementById('live').addEventListener('change', (e) => {
+        clearInterval(timer);
+        if (e.target.checked) timer = setInterval(step, 900);
+    });
+})();
+</script>
+</body>
+</html>

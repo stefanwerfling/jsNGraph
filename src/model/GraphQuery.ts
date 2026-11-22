@@ -50,6 +50,24 @@ export class GraphQuery {
         return seen;
     }
 
+    /**
+     * Everything upstream and downstream of `startId` (following edge
+     * direction source→target both ways, any depth), start included: the
+     * paths that run through a node in a flow. Unlike
+     * `neighborhood(id, Infinity, 'both')` it does not spill sideways into
+     * sibling branches. Unknown start id → empty set.
+     */
+    public static lineage(startId: string, edges: Iterable<EdgeLike>, knownIds?: ReadonlySet<string> | ReadonlyMap<string, unknown>): Set<string> {
+        const list = Array.from(edges);
+        const down = GraphQuery.neighborhood(startId, list, Infinity, 'out', knownIds);
+
+        for (const id of GraphQuery.neighborhood(startId, list, Infinity, 'in', knownIds)) {
+            down.add(id);
+        }
+
+        return down;
+    }
+
     /** Hop distance from `startId` to every reachable node (undirected), up to maxDepth. */
     public static hopDistances(startId: string, edges: Iterable<EdgeLike>, maxDepth = Infinity): Map<string, number> {
         const adjacency = GraphQuery.adjacency(edges, 'both');
