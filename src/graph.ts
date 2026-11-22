@@ -25,7 +25,7 @@ export type { GraphEdge } from './model/GraphEdge';
 export { GraphQuery } from './model/GraphQuery';
 export type { NeighborDirection } from './model/GraphQuery';
 export { EdgeKindPresets, StyleResolver } from './render/StyleResolver';
-export type { NodeStyler, EdgeStyler, ResolvedNodeStyle, ResolvedEdgeStyle } from './render/StyleResolver';
+export type { NodeStyler, EdgeStyler, ResolvedNodeStyle, ResolvedEdgeStyle, LabelStyle } from './render/StyleResolver';
 export { Camera } from './view/Camera';
 export { Effects } from './render/Effects';
 export type { NGraphOverlay, OverlayContext, PulseOptions, TrailOptions, RippleOptions } from './render/Effects';

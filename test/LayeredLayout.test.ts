@@ -176,4 +176,22 @@ describe('LayeredLayout', () => {
         expect(pinned.x).toBe(77);
         expect(pinned.y).toBe(88);
     });
+
+    it("direction 'down' stacks layers as rows top-to-bottom, members side by side", () => {
+        const top = makeNode('lead', 0);
+        const mid = ['a', 'b', 'c'].map((id) => makeNode(id, 1));
+        const bottom = makeNode('x', 2);
+        const layout = new LayeredLayout({direction: 'down'});
+
+        settle(layout, [top, ...mid, bottom], [], 1200, 800);
+
+        expect(top.y).toBeLessThan(mid[0]?.y ?? 0);
+        expect(mid[0]?.y ?? 0).toBeLessThan(bottom.y);
+        expect(Math.abs((mid[0]?.y ?? 0) - (mid[2]?.y ?? 1))).toBeLessThan(1);
+        expect(Math.abs(top.x - 600)).toBeLessThan(1);
+
+        const xs = mid.map((n) => n.x).sort((a, b) => a - b);
+        expect((xs[1] ?? 0) - (xs[0] ?? 0)).toBeGreaterThan(30);
+        expect((xs[2] ?? 0) - (xs[1] ?? 0)).toBeGreaterThan(30);
+    });
 });

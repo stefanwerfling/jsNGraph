@@ -71,6 +71,35 @@ describe('StyleResolver', () => {
         expect(styles.node(node('b')).radius).toBe(22);
     });
 
+    it('image, badge and label pill: data → resolved style, callback can override', () => {
+        const plain = new StyleResolver(Theme.dark);
+        const avatar = node('a', {image: 'a.png', badge: 17});
+
+        expect(plain.node(avatar).image).toBe('a.png');
+        expect(plain.node(avatar).badge).toBe('17');
+        expect(plain.node(avatar).badgeColor).toBe(Theme.dark.statusOk);
+        expect(plain.node(avatar).labelBackground).toBeNull();
+        expect(plain.node(node('b', {badge: 0})).badge).toBeNull();
+        expect(plain.node(node('c', {shape: 'dot', image: 'c.png'})).image).toBeNull();
+
+        const pill = new StyleResolver(Theme.dark, {}, (n) => n.id === 'a' ? {labelBackground: '#fff', badge: null} : null, null, 'pill');
+
+        expect(pill.node(node('b')).labelBackground).not.toBeNull();
+        expect(pill.node(avatar).labelBackground).toBe('#fff');
+        expect(pill.node(avatar).badge).toBeNull();
+    });
+
+    it('updateNode patches image and badge; empty values clear them', () => {
+        const n = node('a', {image: 'a.png', badge: '3'});
+
+        n.updateFrom({badge: 5, badgeColor: '#f00'});
+        expect(n.badge).toBe('5');
+        expect(n.badgeColor).toBe('#f00');
+        n.updateFrom({image: '', badge: ''});
+        expect(n.image).toBeNull();
+        expect(n.badge).toBeNull();
+    });
+
     it('edges keep load coloring by default, kinds switch to the neutral tone', () => {
         const styles = new StyleResolver(Theme.dark, EdgeKindPresets.knowledge);
         const a = node('a');

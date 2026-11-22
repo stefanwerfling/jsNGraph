@@ -15,6 +15,9 @@ export class GraphNode {
     public meta: Record<string, string> | null;
     public sublabel: string | null;
     public pulse: boolean;
+    public image: string | null;
+    public badge: string | null;
+    public badgeColor: string | null;
     public ring: number;
     public shape: NodeShape;
     public color: string | null;
@@ -38,6 +41,9 @@ export class GraphNode {
         this.meta = data.meta ?? null;
         this.sublabel = data.sublabel ?? null;
         this.pulse = data.pulse ?? false;
+        this.image = data.image !== undefined && data.image !== '' ? data.image : null;
+        this.badge = GraphNode.badgeText(data.badge);
+        this.badgeColor = data.badgeColor ?? null;
         this.ring = data.ring ?? 1;
         this.shape = data.shape ?? 'circle';
         this.color = data.color ?? null;
@@ -85,6 +91,18 @@ export class GraphNode {
             this.pulse = patch.pulse;
         }
 
+        if (patch.image !== undefined) {
+            this.image = patch.image !== '' ? patch.image : null;
+        }
+
+        if (patch.badge !== undefined) {
+            this.badge = GraphNode.badgeText(patch.badge);
+        }
+
+        if (patch.badgeColor !== undefined) {
+            this.badgeColor = patch.badgeColor;
+        }
+
         if (patch.ring !== undefined) {
             this.ring = patch.ring;
         }
@@ -130,6 +148,15 @@ export class GraphNode {
         }
 
         this.radius = this.shape === 'card' ? 30 : this.shape === 'dot' ? 7 : 22;
+    }
+
+    /** Badge input → text; '' and 0 mean "no badge". */
+    public static badgeText(badge: number | string | null | undefined): string | null {
+        if (badge === undefined || badge === null || badge === '' || badge === 0) {
+            return null;
+        }
+
+        return String(badge);
     }
 
     private static clamp01(value: number): number {

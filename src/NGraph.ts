@@ -10,7 +10,7 @@ import { CanvasRenderer, RenderCluster, RenderClusters, RenderHull } from './ren
 import { WebGLLayer } from './render/WebGLLayer';
 import { ClusterResolver } from './render/ClusterResolver';
 import { Effects, NGraphOverlay, OverlayContext, PulseOptions, RippleOptions, TrailOptions } from './render/Effects';
-import { EdgeStyler, NodeStyler, StyleResolver } from './render/StyleResolver';
+import { EdgeStyler, LabelStyle, NodeStyler, StyleResolver } from './render/StyleResolver';
 import { Theme, ThemeTokens } from './render/Theme';
 import { ClickModifiers, InteractionController } from './interaction/InteractionController';
 import { HitCandidate, MIN_HIT_RADIUS_PX, pickHit } from './interaction/HitPick';
@@ -29,6 +29,9 @@ export interface NGraphOptions {
     theme?: 'dark' | 'light' | ThemeTokens;
     /** Draw a label under each node. Default true. */
     showLabels?: boolean;
+    /** 'plain' text (default) or 'pill': a rounded backdrop behind each label,
+     *  inverted for the hovered/selected node. Per node: NodeStyle.labelBackground. */
+    labelStyle?: LabelStyle;
     /** Allow dragging nodes to reposition them. Default true. */
     draggable?: boolean;
     /** Show the built-in click-to-open detail panel. Default true. */
@@ -270,8 +273,9 @@ export class NGraph {
         this.root.appendChild(this.canvas);
 
         this.camera = new Camera(options.minZoom ?? 0.1, options.maxZoom ?? 4);
-        this.renderer = new CanvasRenderer(this.canvas, this.theme);
-        this.styles = new StyleResolver(this.theme, options.edgeKinds ?? {}, options.styleNode ?? null, options.styleEdge ?? null);
+        this.renderer = new CanvasRenderer(this.canvas, this.theme, () => this.loop.request());
+        this.styles = new StyleResolver(this.theme, options.edgeKinds ?? {}, options.styleNode ?? null,
+            options.styleEdge ?? null, options.labelStyle ?? 'plain');
         this.layout = options.layoutMode === 'radial'
             ? new RadialLayout(options.radialLayout)
             : options.layoutMode === 'layered'
@@ -474,6 +478,11 @@ export class NGraph {
 
     public setShowLabels(show: boolean): void {
         this.showLabels = show;
+        this.loop.request();
+    }
+
+    public setLabelStyle(labelStyle: LabelStyle): void {
+        this.styles.setLabelStyle(labelStyle);
         this.loop.request();
     }
 

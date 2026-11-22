@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — team network</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    body { background: #0e0c15; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="monitoring.html">Monitoring</a>
+    <a href="layered.html">Layered flow</a>
+    <a href="radial.html">Radial</a>
+    <a href="team.html" class="active">Team</a>
+    <a href="knowledge.html">Knowledge</a>
+    <a href="kinds.html">Node gallery</a>
+    <a href="api.html">API playground</a>
+</nav>
+
+<div class="toolbar tl">
+    <button id="toggle-theme">Toggle theme</button>
+    <button id="talk">New conversation</button>
+    <button id="toggle-pill">Plain labels</button>
+</div>
+
+<div id="graph" class="graph-stage"></div>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+    // A team as a network: avatar nodes (node.image), unread-count badges
+    // (node.badge), name pills (labelStyle: 'pill') and top-down layers
+    // (layeredLayout.direction: 'down', node.ring = row).
+
+    /** Initials on a soft gradient, as a data: URL — stands in for real photos. */
+    function avatar(name, hue) {
+        const c = document.createElement('canvas');
+        c.width = c.height = 128;
+        const ctx = c.getContext('2d');
+        const g = ctx.createLinearGradient(0, 0, 128, 128);
+        g.addColorStop(0, `hsl(${hue} 55% 58%)`);
+        g.addColorStop(1, `hsl(${(hue + 40) % 360} 50% 32%)`);
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, 128, 128);
+        // shoulders + head silhouette, then the initial on top
+        ctx.fillStyle = 'rgba(255,255,255,0.16)';
+        ctx.beginPath();
+        ctx.arc(64, 132, 50, Math.PI, 0);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(64, 54, 26, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '600 44px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(name.slice(0, 1), 64, 58);
+        return c.toDataURL('image/png');
+    }
+
+    const people = [
+        ['stefan', 'Stefan', 0, 'Lead'],
+        ['clara', 'Clara', 1, 'Assistant'],
+        ['ben', 'Ben', 2, 'Sales'], ['natascha', 'Natascha', 2, 'Support'],
+        ['mara', 'Mara', 2, 'Inbox'], ['lukas', 'Lukas', 2, 'Planning'],
+        ['anton', 'Anton', 3, 'Research'], ['nils', 'Nils', 3, 'Writing'],
+        ['jonas', 'Jonas', 3, 'Calls'], ['mia', 'Mia', 3, 'Calendar'],
+        ['fabio', 'Fabio', 3, 'Accounting'], ['paul', 'Paul', 3, 'Knowledge']
+    ];
+
+    const nodes = people.map(([id, label, ring, role], i) => ({
+        id, label, ring,
+        kind: 'agent',
+        size: 28,
+        image: avatar(label, (i * 47 + 200) % 360),
+        meta: {role}
+    }));
+    nodes.find((n) => n.id === 'mara').badge = 17;
+    nodes.find((n) => n.id === 'jonas').badge = 5;
+
+    // Everyone talks to the lead, the assistant and most of the next row: a dense mesh.
+    const edges = [];
+    const byRing = (r) => people.filter((p) => p[2] === r).map((p) => p[0]);
+    const link = (a, b) => edges.push({id: `${a}-${b}`, source: a, target: b, kind: 'team'});
+    for (const id of [...byRing(1), ...byRing(2), ...byRing(3)]) link('stefan', id);
+    for (const id of [...byRing(2), ...byRing(3)]) link('clara', id);
+    for (const a of byRing(2)) for (const b of byRing(3)) if ((a + b).length % 3 !== 0) link(a, b);
+
+    const purple = {...JSNGraph.Theme.dark, background: '#0e0c15', edgeNeutral: '#8f8aa8'};
+    let dark = true;
+    let pill = true;
+    const active = new Set();
+
+    const graph = new JSNGraph.NGraph(document.getElementById('graph'), {
+        theme: purple,
+        grid: false,
+        layoutMode: 'layered',
+        layeredLayout: {direction: 'down', maxSpacing: 230, marginY: 90},
+        labelStyle: 'pill',
+        edgeKinds: {team: {tone: 'neutral', width: 0.8, animated: false}},
+        // the signed-in user's own name gets the light pill
+        styleNode: (n) => n.id === 'stefan' ? {labelBackground: dark ? '#f2f0fa' : '#1d1b26', labelColor: dark ? '#14121c' : '#ffffff'} : null,
+        // quiet mesh; a running conversation lights its edge up
+        styleEdge: (e) => active.has(e.id) ? {color: '#a78bfa', width: 1.8, opacity: 0.95} : {opacity: 0.3}
+    });
+    graph.setData(nodes, edges);
+
+    // soft violet glow behind the graph (an 'under' overlay, world coordinates)
+    graph.addOverlay({
+        layer: 'under',
+        draw(ctx, info) {
+            if (!dark) return;
+            // centred under the team, so it follows the layout
+            let x = 0, y = 0, n = 0;
+            for (const p of people) {
+                const at = info.nodePosition(p[0]);
+                if (at) { x += at.x; y += at.y; n++; }
+            }
+            if (n === 0) return;
+            x /= n; y = y / n + 120;
+            const g = ctx.createRadialGradient(x, y, 40, x, y, 800);
+            g.addColorStop(0, 'rgba(76, 40, 140, 0.35)');
+            g.addColorStop(1, 'rgba(76, 40, 140, 0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(x - 800, y - 800, 1600, 1600);
+        }
+    });
+
+    document.getElementById('toggle-theme').addEventListener('click', () => {
+        dark = !dark;
+        graph.setTheme(dark ? purple : 'light');
+        document.body.style.background = dark ? '#0e0c15' : '#f4f6fb';
+    });
+
+    document.getElementById('toggle-pill').addEventListener('click', (ev) => {
+        pill = !pill;
+        graph.setLabelStyle(pill ? 'pill' : 'plain');
+        ev.target.textContent = pill ? 'Plain labels' : 'Pill labels';
+    });
+
+    // a conversation: one edge animates for a while, the receiver's badge counts up
+    const badges = {mara: 17, jonas: 5};
+    document.getElementById('talk').addEventListener('click', () => {
+        const edge = edges[Math.floor(Math.random() * edges.length)];
+        active.add(edge.id);
+        graph.updateEdge(edge.id, {animated: true});
+        badges[edge.target] = (badges[edge.target] || 0) + 1;
+        graph.updateNode(edge.target, {badge: badges[edge.target]});
+        setTimeout(() => {
+            active.delete(edge.id);
+            graph.updateEdge(edge.id, {animated: false});
+        }, 4000);
+    });
+
+    // opening someone's panel counts as reading their messages
+    graph.on('nodeClick', (node) => {
+        if (badges[node.id]) {
+            badges[node.id] = 0;
+            graph.updateNode(node.id, {badge: 0});
+        }
+    });
+</script>
+</body>
+</html>

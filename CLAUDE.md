@@ -240,6 +240,15 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
 - `examples/livingmap.html`: a growing agent mesh in 3D — projection in the page, `setPositions` per frame,
   depth/growth/focus via style opacities (bucketed for batching), glow via an overlay blurred once per frame.
 
+## Team look (NeuraTeam-style people network)
+
+- Node `image` (avatar/logo URL or data: URL, cover-cropped into the circle or the card's icon chip; loaded once
+  by `render/ImageCache.ts`, icon shows until loaded/on error, a load requests a frame), `badge` + `badgeColor`
+  (count bubble top-right; '' / 0 hides). `labelStyle: 'pill'` option / `setLabelStyle` (rounded backdrop,
+  inverted for hovered/selected); per node via `NodeStyle.labelBackground` (+ `image`, `badge`, `badgeColor`).
+- `LayeredLayout` `direction: 'down'`: layers as rows top→bottom (`ring` = row).
+- Example: `examples/team.html` (generated initial avatars, quiet neutral mesh, conversation lights an edge).
+
 ## Known gaps (V1)
 
 - No built-in toolbar (pause/labels/etc.) — that's presentation-specific, left to the consuming

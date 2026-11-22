@@ -5,6 +5,7 @@ import { Color } from '../util/Color';
 import { Camera } from '../view/Camera';
 import { BulkSink } from './BulkBuffers';
 import { EdgeBatcher } from './EdgeBatcher';
+import { ImageCache } from './ImageCache';
 import { NGraphOverlay, OverlayContext } from './Effects';
 import { LabelPlacer } from './LabelPlacer';
 import { NodeIcons } from './NodeIcons';
@@ -114,6 +115,9 @@ export class CanvasRenderer {
     /** Plain dots smaller than this radius on screen are drawn as batched squares (LOD). */
     public static readonly DOT_DETAIL_PX = 2;
 
+    /** Horizontal padding of a label pill, world px. */
+    public static readonly PILL_PAD_X = 7;
+
     /** Cluster disc radius in screen px: grows with the member count, stays inside the cluster's extent. */
     public static clusterRadiusPx(cluster: RenderCluster, scale: number): number {
         const bySize = Math.min(64, 6 + Math.sqrt(Math.max(0, cluster.size)) * 2.5);
@@ -131,8 +135,13 @@ export class CanvasRenderer {
     private readonly labelWidths = new Map<string, number>();
     /** Tiny dots of the current frame as x, y, r triples, by `color|alpha`. */
     private readonly dotBatches = new Map<string, number[]>();
+    /** Node pictures (NGraphNodeData.image), loaded on first use. */
+    private readonly images: ImageCache;
 
-    public constructor(private readonly canvas: HTMLCanvasElement, theme: ThemeTokens) {
+    /** `onAsset` is called when a node picture finished loading (request a frame). */
+    public constructor(private readonly canvas: HTMLCanvasElement, theme: ThemeTokens, onAsset: () => void = () => undefined) {
+        this.images = new ImageCache(onAsset);
+
         const ctx = canvas.getContext('2d');
 
         if (ctx === null) {
@@ -283,7 +292,7 @@ export class CanvasRenderer {
             const alpha = (dimmed ? dimOpacity : 1) * style.opacity;
 
             // WebGL: every plain dot is one instance; only its label stays on the canvas.
-            if (bulk !== null && style.shape === 'dot' && style.ring === null && !hovered && !selected && !highlighted) {
+            if (bulk !== null && style.shape === 'dot' && style.ring === null && style.badge === null && !hovered && !selected && !highlighted) {
                 bulk.disc(node.x, node.y, style.radius, style.fill, style.stroke, alpha);
 
                 if (showLabels && style.radius * camera.scale >= CanvasRenderer.DOT_DETAIL_PX) {
@@ -297,7 +306,7 @@ export class CanvasRenderer {
 
             // LOD: a plain dot under ~2 px on screen is one square in a batch.
             if (style.shape === 'dot' && style.radius * camera.scale < CanvasRenderer.DOT_DETAIL_PX
-                && style.ring === null && !hovered && !selected && !highlighted) {
+                && style.ring === null && style.badge === null && !hovered && !selected && !highlighted) {
                 // At least ~1.2 px wide, so a zoomed-out cloud stays visible.
                 this.batchDot(node.x, node.y, Math.max(style.radius, 0.6 / camera.scale), style.fill, alpha);
                 continue;
@@ -688,6 +697,10 @@ export class CanvasRenderer {
         ctx.strokeStyle = style.stroke;
         ctx.stroke();
 
+        if (style.badge !== null) {
+            this.drawBadge(node.x + r * 0.72, node.y - r * 0.72, style.badge, style.badgeColor);
+        }
+
         // Dense graphs: labels of hovered/selected dots stay readable even when the rest are off.
         if (state.showLabel || state.hovered || state.selected) {
             this.labelOrQueue(node, style, r + 12, state);
@@ -769,7 +782,7 @@ export class CanvasRenderer {
 
     private labelOrQueue(node: GraphNode, style: ResolvedNodeStyle, offsetY: number, state: NodeDrawState): void {
         if (this.labelQueue === null) {
-            this.drawLabel(node, style, offsetY);
+            this.drawLabel(node, style, offsetY, state.hovered || state.selected);
             return;
         }
 
@@ -817,9 +830,10 @@ export class CanvasRenderer {
                 this.labelWidths.set(text, w);
             }
 
-            const top = camera.toScreen(item.node.x - w / 2, item.node.y + item.offsetY - 10);
+            const pad = item.style.labelBackground !== null ? CanvasRenderer.PILL_PAD_X : 0;
+            const top = camera.toScreen(item.node.x - w / 2 - pad, item.node.y + item.offsetY - 10);
             const lines = item.node.sublabel !== null ? 24 : 13;
-            const fits = this.placer.tryPlace({x: top.x, y: top.y, w: w * camera.scale, h: lines * camera.scale});
+            const fits = this.placer.tryPlace({x: top.x, y: top.y, w: (w + 2 * pad) * camera.scale, h: lines * camera.scale});
 
             if (!fits && !item.forced) {
                 continue;
@@ -827,7 +841,7 @@ export class CanvasRenderer {
 
             ctx.save();
             ctx.globalAlpha = item.alpha;
-            this.drawLabel(item.node, item.style, item.offsetY);
+            this.drawLabel(item.node, item.style, item.offsetY, item.forced);
             ctx.restore();
         }
     }
@@ -877,6 +891,18 @@ export class CanvasRenderer {
         ctx.arc(0, 0, r, 0, Math.PI * 2);
         ctx.fillStyle = style.fill;
         ctx.fill();
+
+        const image = style.image !== null ? this.images.get(style.image) : null;
+
+        if (image !== null) {
+            ctx.save();
+            ctx.clip();
+            CanvasRenderer.drawCover(ctx, image, -r, -r, 2 * r, 2 * r);
+            ctx.restore();
+            ctx.beginPath();
+            ctx.arc(0, 0, r, 0, Math.PI * 2);
+        }
+
         ctx.lineWidth = state.selected ? 3 : state.hovered ? 2.5 : 1.5;
         ctx.strokeStyle = state.selected
             ? theme.nodeSelectedStroke
@@ -885,7 +911,7 @@ export class CanvasRenderer {
                 : style.stroke;
         ctx.stroke();
 
-        if (style.icon !== null) {
+        if (style.icon !== null && image === null) {
             NodeIcons.draw(ctx, style.icon, r * 1.15, theme.nodeIcon);
         }
 
@@ -896,24 +922,49 @@ export class CanvasRenderer {
 
         ctx.restore();
 
+        if (style.badge !== null) {
+            this.drawBadge(node.x + r * 0.72, node.y - r * 0.72, style.badge, style.badgeColor);
+        }
+
         if (state.showLabel) {
             this.labelOrQueue(node, style, r + 14, state);
         }
     }
 
-    private drawLabel(node: GraphNode, style: ResolvedNodeStyle, offsetY: number): void {
-        const {ctx} = this;
+    /**
+     * Label (+ sublabel) centred under a node. With a pill background the
+     * text sits on a rounded backdrop; `strong` (hovered/selected) inverts
+     * the pill to the label colour, so the focused node's name stands out.
+     */
+    private drawLabel(node: GraphNode, style: ResolvedNodeStyle, offsetY: number, strong = false): void {
+        const {ctx, theme} = this;
+        // A pill sits a little lower, clear of status/highlight rings.
+        const y = node.y + offsetY + (style.labelBackground !== null ? 4 : 0);
 
         ctx.save();
-        ctx.fillStyle = style.labelColor;
-        ctx.font = '11px system-ui, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(style.label, node.x, node.y + offsetY);
+
+        if (style.labelBackground !== null) {
+            ctx.font = '600 11px system-ui, sans-serif';
+
+            const w = ctx.measureText(style.label).width + 2 * CanvasRenderer.PILL_PAD_X;
+            const h = node.sublabel !== null ? 28 : 16;
+
+            CanvasRenderer.roundRectPath(ctx, node.x - w / 2, y - 12, w, h, 8);
+            ctx.fillStyle = strong ? style.labelColor : style.labelBackground;
+            ctx.fill();
+            ctx.fillStyle = strong ? theme.background : style.labelColor;
+        } else {
+            ctx.font = '11px system-ui, sans-serif';
+            ctx.fillStyle = style.labelColor;
+        }
+
+        ctx.fillText(style.label, node.x, y);
 
         if (node.sublabel !== null) {
             ctx.globalAlpha *= 0.75;
             ctx.font = '9.5px system-ui, sans-serif';
-            ctx.fillText(node.sublabel, node.x, node.y + offsetY + 12);
+            ctx.fillText(node.sublabel, node.x, y + 12);
         }
 
         ctx.restore();
@@ -965,7 +1016,15 @@ export class CanvasRenderer {
         ctx.lineWidth = 1;
         ctx.stroke();
 
-        if (style.icon !== null) {
+        const image = style.image !== null ? this.images.get(style.image) : null;
+
+        if (image !== null) {
+            ctx.save();
+            CanvasRenderer.roundRectPath(ctx, -w / 2 + 8, -chip / 2, chip, chip, 7);
+            ctx.clip();
+            CanvasRenderer.drawCover(ctx, image, -w / 2 + 8, -chip / 2, chip, chip);
+            ctx.restore();
+        } else if (style.icon !== null) {
             ctx.save();
             ctx.translate(-w / 2 + 8 + chip / 2, 0);
             NodeIcons.draw(ctx, style.icon, chip * 0.72, theme.nodeIcon);
@@ -993,6 +1052,45 @@ export class CanvasRenderer {
         ctx.fill();
 
         ctx.restore();
+
+        if (style.badge !== null) {
+            this.drawBadge(node.x + w / 2 - 2, node.y - h / 2 + 2, style.badge, style.badgeColor);
+        }
+    }
+
+    /** Count bubble centred at (x, y): a pill that grows with the text, ringed in the background colour. */
+    private drawBadge(x: number, y: number, text: string, color: string): void {
+        const {ctx, theme} = this;
+
+        ctx.save();
+        ctx.font = '700 9.5px system-ui, sans-serif';
+
+        const h = 15;
+        const w = Math.max(h, ctx.measureText(text).width + 8);
+
+        CanvasRenderer.roundRectPath(ctx, x - w / 2, y - h / 2, w, h, h / 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = theme.background;
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, x, y + 0.5);
+        ctx.restore();
+    }
+
+    /** Draw `image` scaled to cover the box (centre crop), like CSS object-fit: cover. */
+    private static drawCover(ctx: CanvasRenderingContext2D, image: HTMLImageElement,
+        x: number, y: number, w: number, h: number): void {
+        const iw = image.naturalWidth;
+        const ih = image.naturalHeight;
+        const scale = Math.max(w / iw, h / ih);
+        const sw = w / scale;
+        const sh = h / scale;
+
+        ctx.drawImage(image, (iw - sw) / 2, (ih - sh) / 2, sw, sh, x, y, w, h);
     }
 
     private drawLasso(points: ReadonlyArray<Point>): void {

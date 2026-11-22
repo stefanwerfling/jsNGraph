@@ -29,6 +29,15 @@ export interface NGraphNodeData {
     sublabel?: string;
     /** Draw an animated glow ring in the node's status color (e.g. "working"). */
     pulse?: boolean;
+    /** Picture drawn inside a 'circle' (cover-cropped to the disc) or in the
+     *  icon chip of a 'card' — an avatar, a logo. Any URL the page may load,
+     *  incl. data: URLs; '' removes it. Until it has loaded (or if it fails) the icon shows. */
+    image?: string;
+    /** Small count/marker bubble at the node's top-right (e.g. unread items).
+     *  Empty string or 0 hides it. */
+    badge?: number | string;
+    /** Badge fill (any CSS color). Default the theme's ok/green. */
+    badgeColor?: string;
     /** Radial layout only: ring index — 0 = center hub, 1..n = outer rings. Default 1. */
     ring?: number;
     /** 'circle' (classic device dot, default), 'card' — a rounded rectangle
@@ -105,6 +114,14 @@ export interface NodeStyle {
     icon?: NodeKind | null;
     label?: string;
     labelColor?: string;
+    /** Pill behind the label (any CSS color); null = none. Default from the
+     *  `labelStyle` option. */
+    labelBackground?: string | null;
+    /** Picture inside the node (see NGraphNodeData.image); null = none. */
+    image?: string | null;
+    /** Badge text (see NGraphNodeData.badge); null = none. */
+    badge?: number | string | null;
+    badgeColor?: string;
     /** 0..1 */
     opacity?: number;
     /** Extra ring around a dot/circle (heat, recency, a badge); null = none. */

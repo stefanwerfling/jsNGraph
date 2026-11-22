@@ -14,9 +14,17 @@ export interface ResolvedNodeStyle {
     icon: NodeKind | null;
     label: string;
     labelColor: string;
+    /** Pill behind the label, or null for plain text. */
+    labelBackground: string | null;
+    image: string | null;
+    badge: string | null;
+    badgeColor: string;
     opacity: number;
     ring: Required<NodeRing> | null;
 }
+
+/** 'plain' text labels (default) or 'pill': a rounded backdrop behind each label. */
+export type LabelStyle = 'plain' | 'pill';
 
 export interface ResolvedEdgeStyle {
     color: string;
@@ -64,8 +72,13 @@ export class StyleResolver {
         private theme: ThemeTokens,
         private edgeKinds: Readonly<Record<string, EdgeKindStyle>> = {},
         private nodeStyler: NodeStyler | null = null,
-        private edgeStyler: EdgeStyler | null = null
+        private edgeStyler: EdgeStyler | null = null,
+        private labelStyle: LabelStyle = 'plain'
     ) {
+    }
+
+    public setLabelStyle(labelStyle: LabelStyle): void {
+        this.labelStyle = labelStyle;
     }
 
     public setTheme(theme: ThemeTokens): void {
@@ -90,6 +103,8 @@ export class StyleResolver {
         const accent = node.color ?? (node.group !== null
             ? Color.fromPalette(node.group, theme.palette ?? Theme.palette)
             : null);
+        const labelBackground = this.labelStyle === 'pill' ? Color.withAlpha(theme.background, 0.72) : null;
+        const badgeColor = node.badgeColor ?? theme.statusOk;
         const base: ResolvedNodeStyle = node.shape === 'dot'
             ? {
                 shape: 'dot',
@@ -99,6 +114,10 @@ export class StyleResolver {
                 icon: null,
                 label: node.label,
                 labelColor: theme.nodeLabel,
+                labelBackground: labelBackground,
+                image: null,
+                badge: node.badge,
+                badgeColor: badgeColor,
                 opacity: 1,
                 ring: null
             }
@@ -110,6 +129,10 @@ export class StyleResolver {
                 icon: node.kind,
                 label: node.label,
                 labelColor: theme.nodeLabel,
+                labelBackground: labelBackground,
+                image: node.image,
+                badge: node.badge,
+                badgeColor: badgeColor,
                 opacity: 1,
                 ring: null
             };
@@ -130,6 +153,10 @@ export class StyleResolver {
             icon: override.icon !== undefined ? override.icon : shape === 'dot' ? null : base.icon,
             label: override.label ?? base.label,
             labelColor: override.labelColor ?? base.labelColor,
+            labelBackground: override.labelBackground !== undefined ? override.labelBackground : base.labelBackground,
+            image: override.image !== undefined ? override.image : shape === 'dot' ? null : base.image,
+            badge: override.badge !== undefined ? GraphNode.badgeText(override.badge) : base.badge,
+            badgeColor: override.badgeColor ?? base.badgeColor,
             opacity: StyleResolver.unit(override.opacity ?? base.opacity),
             ring: override.ring === undefined || override.ring === null
                 ? base.ring

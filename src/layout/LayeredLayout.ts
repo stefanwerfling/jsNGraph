@@ -26,6 +26,13 @@ export interface LayeredLayoutOptions {
     minSpacing?: number;
     /** Minimum horizontal distance between two columns. Default 0 (columns fit the canvas width). */
     minColumnGap?: number;
+    /**
+     * 'right' (default): layers are columns, 0 = leftmost. 'down': layers are
+     * rows, 0 = top — an org-chart / team arrangement. With 'down' the axes
+     * swap: layers spread over the height (marginY, minColumnGap = minimum
+     * row gap), the nodes of one layer over the width (marginX, min/maxSpacing).
+     */
+    direction?: 'right' | 'down';
 }
 
 const DEFAULTS: Required<LayeredLayoutOptions> = {
@@ -35,13 +42,14 @@ const DEFAULTS: Required<LayeredLayoutOptions> = {
     maxSpacing: 84,
     sweeps: 4,
     minSpacing: 0,
-    minColumnGap: 0
+    minColumnGap: 0,
+    direction: 'right'
 };
 
 /**
  * Sugiyama-style layered layout: node.ring is the COLUMN (0 = leftmost),
  * columns are evenly spread left-to-right, nodes stack vertically inside
- * their column. Within a column nodes are ordered by the barycenter of
+ * their column (`direction: 'down'`: rows top-to-bottom, side by side). Within a column nodes are ordered by the barycenter of
  * their neighbors in the adjacent column, swept back and forth across the
  * columns (the classic iterative crossing-reduction) so deeper flows settle
  * to a low-crossing arrangement without a full Sugiyama solver.
@@ -63,6 +71,12 @@ export class LayeredLayout {
 
     public tick(nodes: GraphNode[], edges: GraphEdge[], width: number, height: number): void {
         const {easing, marginX, marginY, maxSpacing, minSpacing, minColumnGap} = this.options;
+        const down = this.options.direction === 'down';
+        // Layer axis (columns, or rows when 'down') and the axis along one layer.
+        const layerExtent = down ? height : width;
+        const layerMargin = down ? marginY : marginX;
+        const crossExtent = down ? width : height;
+        const crossMargin = down ? marginX : marginY;
         const sweeps = Math.max(1, Math.floor(this.options.sweeps));
 
         const columns = new Map<number, GraphNode[]>();
@@ -137,14 +151,14 @@ export class LayeredLayout {
         }
 
         // Columns spread over the width, centred; never closer than minColumnGap.
-        const columnGap = maxRing === 0 ? 0 : Math.max(minColumnGap, (width - 2 * marginX) / maxRing);
+        const columnGap = maxRing === 0 ? 0 : Math.max(minColumnGap, (layerExtent - 2 * layerMargin) / maxRing);
 
         for (const ring of orderedRings) {
             const members = columns.get(ring) ?? [];
-            const tx = width / 2 + (ring - maxRing / 2) * columnGap;
+            const layerPos = layerExtent / 2 + (ring - maxRing / 2) * columnGap;
             const spacing = members.length <= 1
                 ? 0
-                : Math.max(minSpacing, Math.min(maxSpacing, (height - 2 * marginY) / (members.length - 1)));
+                : Math.max(minSpacing, Math.min(maxSpacing, (crossExtent - 2 * crossMargin) / (members.length - 1)));
 
             for (let i = 0; i < members.length; i++) {
                 const node = members[i];
@@ -153,7 +167,9 @@ export class LayeredLayout {
                     continue;
                 }
 
-                const ty = height / 2 + (i - (members.length - 1) / 2) * spacing;
+                const crossPos = crossExtent / 2 + (i - (members.length - 1) / 2) * spacing;
+                const tx = down ? crossPos : layerPos;
+                const ty = down ? layerPos : crossPos;
 
                 node.x += (tx - node.x) * easing;
                 node.y += (ty - node.y) * easing;
