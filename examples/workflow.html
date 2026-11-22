@@ -64,6 +64,7 @@
     <span class="sep"></span>
     <button id="run">▶ Run</button>
     <button id="fail">Fail mail: off</button>
+    <button id="replay" disabled>⟲ Replay</button>
     <button id="clearRun">Clear run</button>
     <span class="sep"></span>
     <button id="disable">Disable</button>
@@ -84,7 +85,7 @@
 
 <script src="../dist/jsngraph.global.js"></script>
 <script>
-    const { WorkflowEditor } = window.JSNGraph;
+    const { WorkflowEditor, WorkflowReplay } = window.JSNGraph;
 
     const types = [
         {type: 'webhook', label: 'Webhook', icon: '⚡', color: '#ff6d5a', outputs: [{id: 'main'}]},
@@ -177,15 +178,16 @@
     editor.on('connectionClick', (e) => log(`connectionClick: ${e.id}`));
     editor.on('connectRefused', (e) => log(`refused ${e.from.node}.${e.from.port} → ${e.to.node}.${e.to.port}: ${e.reason}`));
 
-    $('mode').onclick = () => {
-        editor.setReadOnly(!editor.readOnly);
+    function setMode(readOnly) {
+        editor.setReadOnly(readOnly);
         $('mode').textContent = editor.readOnly ? 'View only' : 'Edit';
         $('mode').classList.toggle('on', !editor.readOnly);
         $('note').disabled = editor.readOnly;
         $('tidy').disabled = editor.readOnly;
         $('palette').style.opacity = editor.readOnly ? '.4' : '';
         syncButtons();
-    };
+    }
+    $('mode').onclick = () => setMode(!editor.readOnly);
     let light = false;
     $('theme').onclick = () => {
         light = !light;
@@ -282,6 +284,8 @@
         if (running) return;
         running = true;
         $('run').disabled = true;
+        replay?.close();
+        editor.startRecording();   // every status call below is recorded for ⟲ Replay
         editor.clearStatus();
 
         const doc = editor.getDocument();
@@ -380,10 +384,33 @@
             editor.setConnectionStatus(id, n === undefined ? {status: 'success'} : {items: n, status: 'success'});
         }
         editor.setRunPath(executed, touched);   // the untaken loop-back stays dimmed
-        log(`run finished: ${executed.size} nodes${failMail ? ' — Send mail failed (hover its badge)' : ''}`);
+        lastRun = editor.stopRecording();
+        log(`run finished: ${executed.size} nodes${failMail ? ' — Send mail failed (hover its badge)' : ''} · ${lastRun.length} status events recorded`);
         running = false;
         $('run').disabled = false;
+        $('replay').disabled = false;
     }
+
+    // ---- Replay: the recorded run played back in the viewer (read-only) ----
+    let lastRun = null;
+    let replay = null;
+
+    $('replay').onclick = () => {
+        if (lastRun === null || running) return;
+        replay?.close();
+        const wasReadOnly = editor.readOnly;
+        setMode(true);
+        replay = new WorkflowReplay(editor, lastRun, {autoplay: true});
+        replay.on('end', (e) => log(`replay finished (${WorkflowReplay.format(e.duration)}) — scrub or step with ⏮ ⏭`));
+        replay.on('close', () => {
+            replay = null;
+            setMode(wasReadOnly);
+            $('replay').disabled = false;
+            log('replay closed — the picture stays at the replayed moment');
+        });
+        $('replay').disabled = true;
+        log('replaying the last run in the viewer: ▶/❚❚, ⏮ ⏭ step, drag the bar to scrub, 1× changes the speed');
+    };
 
     $('run').onclick = () => runWorkflow();
     $('fail').onclick = () => {
@@ -391,7 +418,7 @@
         $('fail').textContent = `Fail mail: ${failMail ? 'on' : 'off'}`;
         $('fail').classList.toggle('on', failMail);
     };
-    $('clearRun').onclick = () => { editor.clearStatus(); log('run cleared'); };
+    $('clearRun').onclick = () => { replay?.close(); editor.clearStatus(); log('run cleared'); };
 
     syncButtons();
     window.editor = editor;

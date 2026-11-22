@@ -108,4 +108,16 @@ has `groups`. Run status of hidden members shows on the collapsed node (error �
 and it stays lit when any member ran. `tidyUp` lays out the drawn picture — a collapsed group is one node —
 via the pure `WorkflowGroups.substitute` (`test/WorkflowGroups.test.ts`).
 
-Later / optional: a read-only execution-replay mode, nested groups.
+Run replay: `editor.startRecording()` / `stopRecording()` record every status call (`setNodeStatus`,
+`setConnectionStatus`, `setRunPath`, `clearStatus`) with its time as `WorkflowRunEvent`s — the host's run code stays as
+it is; a host with its own execution log can build the events itself. `new WorkflowReplay(editor, events, {controls?,
+speed?, autoplay?, loop?})` plays them back through the same status API: `play` / `pause` / `toggle`, `seek(ms)`,
+`stepForward` / `stepBack` (to the next/previous event time), `setSpeed`; events `time`, `end`, `close`; `destroy(clear?)`.
+The built-in bar (bottom centre of the editor) has play/pause, steps, a scrubber with one mark per event time (red
+where a node or connection failed), the time, speed (0.5×–4×) and close; Space and ←/→ work while it has focus, and
+it keeps its input from the editor. Forward playback applies only the new events; seeking backwards redraws the state
+at that moment. Works in the viewer and the editor; the document is never touched. Pure part `WorkflowRun.ts`
+(`sorted`, `duration`, `steps`, `stateAt`, `compress` — squeeze long idle gaps, `errorTimes`; `test/WorkflowRun.test.ts`).
+The example records each ▶ Run; ⟲ Replay plays it back in view-only mode.
+
+Later / optional: nested groups.

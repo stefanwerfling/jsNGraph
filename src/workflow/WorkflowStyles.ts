@@ -204,6 +204,25 @@ export class WorkflowStyles {
             'background:color-mix(in srgb,var(--wf-node-bg) 88%,transparent);border:1px solid var(--wf-node-border);' +
             'box-shadow:0 4px 14px rgba(0,0,0,.25)}',
 
+            // Run replay bar
+            ':where(.wf-replay){position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:4;' +
+            'display:flex;align-items:center;gap:4px;width:min(560px,calc(100% - 24px));box-sizing:border-box;padding:6px 8px;' +
+            'border-radius:10px;background:color-mix(in srgb,var(--wf-node-bg) 92%,transparent);border:1px solid var(--wf-node-border);' +
+            'box-shadow:0 4px 14px rgba(0,0,0,.25);color:var(--wf-text);font:12px/1 system-ui,sans-serif;cursor:default}',
+            ':where(.wf-replay-btn){flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;padding:0 6px;border:0;border-radius:6px;' +
+            'background:transparent;color:inherit;font:inherit;cursor:pointer}',
+            ':where(.wf-replay-btn:hover){background:color-mix(in srgb,var(--wf-text) 12%,transparent)}',
+            ':where(.wf-replay-btn:focus-visible),:where(.wf-replay-range:focus-visible){outline:2px solid var(--wf-sel);outline-offset:1px}',
+            ':where(.wf-replay-track){position:relative;flex:1;min-width:60px;height:26px;margin:0 6px}',
+            ':where(.wf-replay-track)::before{content:"";position:absolute;left:0;right:0;top:12px;height:3px;border-radius:2px;' +
+            'background:color-mix(in srgb,var(--wf-text) 18%,transparent)}',
+            ':where(.wf-replay-fill){position:absolute;left:0;top:12px;height:3px;border-radius:2px;background:var(--wf-accent)}',
+            ':where(.wf-replay-mark){position:absolute;top:8px;width:2px;height:11px;margin-left:-1px;border-radius:1px;' +
+            'background:color-mix(in srgb,var(--wf-text) 45%,transparent);pointer-events:none}',
+            ':where(.wf-replay-mark.wf-replay-error){background:var(--wf-bad);top:5px;width:4px;height:17px;margin-left:-2px}',
+            ':where(.wf-replay-range){position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}',
+            ':where(.wf-replay-time){flex:none;min-width:84px;text-align:right;color:var(--wf-subtext);font-variant-numeric:tabular-nums}',
+
             // Palette drag: the ghost node under the cursor, and a connection it would drop into
             ':where(.wf-ghost){position:fixed;left:0;top:0;z-index:10000;pointer-events:none;transform-origin:0 0;opacity:.9}',
             ':where(.wf-ghost .wf-node){position:relative;box-shadow:0 8px 24px rgba(0,0,0,.35)}',

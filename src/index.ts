@@ -112,6 +112,10 @@ export { WorkflowMinimap } from './workflow/WorkflowMinimap';
 export type { WorkflowMinimapItem, WorkflowMinimapHost, WorkflowMinimapFrame } from './workflow/WorkflowMinimap';
 export { WorkflowGroups } from './workflow/WorkflowGroups';
 export type { WorkflowGroupProxy } from './workflow/WorkflowGroups';
+export { WorkflowRun } from './workflow/WorkflowRun';
+export type { WorkflowRunState } from './workflow/WorkflowRun';
+export { WorkflowReplay } from './workflow/WorkflowReplay';
+export type { WorkflowReplayOptions, WorkflowReplayEvents } from './workflow/WorkflowReplay';
 export type {
     WorkflowSide,
     WorkflowPortDir,
@@ -128,6 +132,7 @@ export type {
     WorkflowNodeStatus,
     WorkflowNodeStatusInfo,
     WorkflowConnectionStatus,
+    WorkflowRunEvent,
     WorkflowCanConnect,
     WorkflowChangeKind,
     WorkflowChange,

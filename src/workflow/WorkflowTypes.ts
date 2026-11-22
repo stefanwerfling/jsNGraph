@@ -119,6 +119,17 @@ export interface WorkflowConnectionStatus {
     status?: 'success' | 'error';
 }
 
+/**
+ * One recorded status call of a run, `at` milliseconds after the run began
+ * (see `WorkflowEditor.startRecording` and `WorkflowReplay`). Exactly one of
+ * `node`, `connection`, `runPath` or `clear` is set.
+ */
+export type WorkflowRunEvent =
+    | {at: number; node: string; status: WorkflowNodeStatus; message?: string}
+    | {at: number; connection: string; state: WorkflowConnectionStatus | null}
+    | {at: number; runPath: {nodes: string[]; connections?: string[]} | null}
+    | {at: number; clear: true};
+
 /** Host veto: return false (or a reason string) to refuse a connection. */
 export type WorkflowCanConnect = (from: WorkflowPortRef, to: WorkflowPortRef, doc: WorkflowDocument) => boolean | string;
 
