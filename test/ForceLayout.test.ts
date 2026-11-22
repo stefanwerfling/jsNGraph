@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { GraphEdge } from '../src/model/GraphEdge';
 import { GraphNode } from '../src/model/GraphNode';
 import { ForceLayout } from '../src/layout/ForceLayout';
@@ -34,6 +34,33 @@ describe('ForceLayout', () => {
 
         expect(Math.abs(a.x - 400)).toBeLessThanOrEqual(40);
         expect(Math.abs(a.y - 300)).toBeLessThanOrEqual(40);
+    });
+
+    it('pushes coincident nodes apart in opposite directions, without chance', () => {
+        // With random fallbacks drawn per node, both could go the same way
+        // and the collision pass then moved them past the speed cap (the
+        // test above failed about 1 run in 20). Pinning Math.random to one
+        // value forces that case; the layout must not depend on it.
+        const random = vi.spyOn(Math, 'random').mockReturnValue(0.9);
+        try {
+            const a = makeNode('a', 400, 300);
+            const b = makeNode('b', 400, 300);
+            new ForceLayout().tick([a, b], [], 800, 600);
+            for (const n of [a, b]) {
+                expect(Math.abs(n.x - 400)).toBeLessThanOrEqual(40);
+                expect(Math.abs(n.y - 300)).toBeLessThanOrEqual(40);
+            }
+            // Opposite: the midpoint stays where they started.
+            expect((a.x + b.x) / 2).toBeCloseTo(400, 6);
+            expect((a.y + b.y) / 2).toBeCloseTo(300, 6);
+
+            // A pile fans out: every node on its own spot.
+            const pile = ['c', 'd', 'e', 'f'].map((id) => makeNode(id, 400, 300));
+            new ForceLayout().tick(pile, [], 800, 600);
+            expect(new Set(pile.map((n) => `${n.x.toFixed(3)},${n.y.toFixed(3)}`)).size).toBe(4);
+        } finally {
+            random.mockRestore();
+        }
     });
 
     it('resolves overlap so two connected nodes end up at least radius apart', () => {

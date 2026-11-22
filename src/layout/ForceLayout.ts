@@ -89,16 +89,20 @@ export class ForceLayout {
         const cx = width / 2;
         const cy = height / 2;
 
-        for (const node of nodes) {
-            if (node.fixed) {
+        for (let i = 0; i < nodes.length; i++) {
+            const node = nodes[i];
+
+            if (node === undefined || node.fixed) {
                 continue;
             }
 
             let fx = (cx - node.x) * centerStrength;
             let fy = (cy - node.y) * centerStrength;
 
-            for (const other of nodes) {
-                if (other === node) {
+            for (let j = 0; j < nodes.length; j++) {
+                const other = nodes[j];
+
+                if (other === undefined || j === i) {
                     continue;
                 }
 
@@ -107,8 +111,9 @@ export class ForceLayout {
                 let distSq = dx * dx + dy * dy;
 
                 if (distSq < 0.01) {
-                    dx = Math.random() - 0.5;
-                    dy = Math.random() - 0.5;
+                    const [ux, uy] = ForceLayout.apart(i, j);
+                    dx = ux * 0.1;
+                    dy = uy * 0.1;
                     distSq = 0.01;
                 }
 
@@ -157,6 +162,21 @@ export class ForceLayout {
         ForceLayout.resolveCollisions(nodes);
     }
 
+    /**
+     * Unit vector pushing nodes[i] away from nodes[j] when the two sit on
+     * the same spot. Opposite for the two of a pair and deterministic:
+     * independent random draws per node could send both the same way, so
+     * the collision pass then pushed them on past the speed cap. Pairs
+     * spread over the circle, so a pile of coincident nodes fans out.
+     */
+    private static apart(i: number, j: number): [number, number] {
+        const lo = Math.min(i, j);
+        const hi = Math.max(i, j);
+        const angle = (lo * 0.618034 + hi * 0.381966) * 2 * Math.PI;
+        const sign = i < j ? -1 : 1;
+        return [sign * Math.cos(angle), sign * Math.sin(angle)];
+    }
+
     private static clampSpeed(v: number): number {
         return Math.max(-MAX_SPEED, Math.min(MAX_SPEED, v));
     }
@@ -194,8 +214,7 @@ export class ForceLayout {
                 let ny = dy / dist;
 
                 if (dist < 0.01) {
-                    nx = Math.random() - 0.5;
-                    ny = Math.random() - 0.5;
+                    [nx, ny] = ForceLayout.apart(j, i);
                     dist = 0.01;
                 }
 
