@@ -1,9 +1,17 @@
 # jsNGraph
 
-Interactive network topology graph rendering — TypeScript, Canvas, force-directed layout,
-zero runtime dependencies. Styled after network-monitoring dashboards: devices as icon nodes,
-edges colored green→yellow→red by traffic load, animated traffic dots, status rings, a
-click-to-open detail panel.
+Interactive graph rendering for the browser — TypeScript, zero runtime dependencies. Four
+parts that share one camera and one theme:
+
+- **`NGraph`** — network topology and knowledge graphs on Canvas: force/radial/layered/static
+  layouts, devices as icon nodes, edges colored green→yellow→red by traffic load, animated
+  traffic dots, status rings, a click-to-open detail panel; level of detail up to 100 000 nodes.
+- **`WorkflowEditor`** — a node-based workflow editor and viewer (DOM + SVG): typed ports,
+  connections, undo, sub-workflows, run status and run replay. Graphics only; what a node
+  does stays in your app.
+- **`ModelView`** — a pan/zoom viewer for model architectures with granularity levels.
+- **Rect kit / `RectBoard`** — DOM+SVG diagram blocks, mini charts and connectors on a pan/zoom
+  board, for explainers and wiring diagrams; optionally editable.
 
 ## Install
 
@@ -30,9 +38,9 @@ same class whichever path you import it from:
 |---|---|---|
 | `jsngraph/graph` | `NGraph`, styles, theme, effects, camera, geometry | ≈ 78 KB (25 KB) |
 | `jsngraph/rect` | rect kit, `RectBoard`, the small charts | from ≈ 11 KB, by what you import |
-| `jsngraph/modelview` | `ModelView` | |
-| `jsngraph/workflow` | `WorkflowEditor` and its helpers | |
-| `jsngraph` | all of it | ≈ 242 KB (72 KB) as a namespace |
+| `jsngraph/modelview` | `ModelView` | ≈ 26 KB (9 KB) |
+| `jsngraph/workflow` | `WorkflowEditor` and its helpers | ≈ 103 KB (29 KB) |
+| `jsngraph` | all of it | ≈ 246 KB (73 KB) as a namespace |
 
 ## Usage
 
@@ -167,6 +175,104 @@ graph.repaint();                                          // redraw only (e.g. a
   ≈ 3 ms with clusters (≈ 60 ms without, ≈ 500 ms before this level of detail). Zoomed in
   it takes ≤ 6 ms (Chrome, desktop).
 
+## Workflow editor
+
+A node-based workflow editor; `readOnly: true` makes the same widget a viewer. You describe
+node *types* (label, icon, colour, ports); the widget owns the document and its undo history
+and reports every finished gesture.
+
+```ts
+import { WorkflowEditor, WorkflowReplay } from 'jsngraph/workflow';
+
+const editor = new WorkflowEditor(el, {
+    types: [
+        {type: 'webhook', label: 'Webhook', icon: '⚡', color: '#ff6d5a', outputs: [{id: 'main'}]},
+        {type: 'if', label: 'If', icon: '?', inputs: [{id: 'main'}],
+            outputs: [{id: 'true', label: 'true'}, {id: 'false', label: 'false'}]},
+        {type: 'llm', label: 'Chat model', outputs: [{id: 'model', kind: 'model', side: 'top'}]}
+    ],
+    canConnect: (from, to, doc) => true,                  // your veto (or a reason string)
+    minimap: true
+});
+
+editor.setDocument({nodes, connections, notes, groups});
+editor.on('change', (c) => save(editor.getDocument()));  // one event per gesture: move, connect, group …
+editor.on('addRequest', (e) => openPicker(e, (type) => editor.addNodeFrom(e.port, e.dir, {type})));
+editor.on('nodeDblClick', (e) => openParameters(e.id));
+
+// Run status is display only — your engine feeds it while it executes:
+editor.startRecording();
+editor.setNodeStatus('fetch', 'running');
+editor.setConnectionStatus('c2', {items: 3, active: true});
+editor.setNodeStatus('mail', 'error', {message: 'SMTP timeout'});
+editor.setRunPath(executedNodes, travelledConnections);   // dims what did not run
+const run = editor.stopRecording();
+
+new WorkflowReplay(editor, run, {autoplay: true});        // play it back: scrubber, steps, speed
+```
+
+- Ports: `kind` (only equal kinds connect), `side` (sockets at the bottom/top), `max`.
+- Editing: drag to connect, "+" on free ports and on connections ask your picker
+  (`addRequest` / `insertRequest`), palette drag-in (`beginDrag`), copy/paste through the
+  clipboard, delete re-links chains, sticky notes, connection labels, `tidyUp()`.
+- Sub-workflows: `doc.groups`; a collapsed group is one node with proxy ports; groups nest.
+- Look: `:where()` CSS over `--wf-*` variables, `setStyleVars`, dark/light.
+- Full reference: [`docs/workflow-editor.md`](docs/workflow-editor.md); live demo `examples/workflow.html`.
+
+## Model view
+
+A renderer for model architectures — it never fetches or parses a model; you hand it modules
+and flows built from whatever source you have:
+
+```ts
+import { ModelView } from 'jsngraph/modelview';
+
+const view = new ModelView(el, {theme: 'dark'});
+
+view.setData({
+    modules: [
+        {id: 'emb', kind: 'embedding', label: 'Embeddings', detail: {shape: '[V, 2560]'}},
+        {id: 'layers', kind: 'block', label: 'Decoder layer', repeat: 32},
+        {id: 'attn', kind: 'attention', label: 'Attention', parent: 'layers', level: 1},
+        {id: 'mlp', kind: 'mlp', label: 'MLP', parent: 'layers', level: 1},
+        {id: 'head', kind: 'head', label: 'LM head'}
+    ],
+    flows: [
+        {source: 'emb', target: 'attn', animated: true},
+        {source: 'attn', target: 'mlp'},
+        {source: 'emb', target: 'mlp', kind: 'residual'},
+        {source: 'mlp', target: 'head'}
+    ]
+});
+
+view.setLevel(1);                                         // 0 = blocks; getMaxLevel() for the finest
+```
+
+Flows are written between the finest modules; coarser levels are derived by collapsing onto
+parents. Top-down layout, residual/skip edges routed beside the main path, "×N" repeats,
+labelled frames around opened parents, a click detail panel. Demo: `examples/modelview.html`.
+
+## Rect kit and boards
+
+Plain DOM+SVG pieces for explainers and wiring diagrams — blocks (`RectBox`, `RectGroup`),
+mini charts (`Heatmap`, `BarStrip`, `Sparkline`, `Scatter`, `Network`, `Matrix`, `Timeline`, …),
+labels and connectors — placed on a `RectBoard` with its own pan/zoom camera:
+
+```ts
+import { RectBoard, RectBox, Heatmap } from 'jsngraph/rect';
+
+const board = new RectBoard(el);
+
+board.add(new RectBox({title: 'Signal', body: new Heatmap({rows: 4, cols: 10, scan: true}).render()}).render(), 0, 0, 'in');
+board.add(new RectBox({title: 'Decoder', accent: 'green', glow: true}).render(), 320, 0, 'dec');
+board.connect('in', 'dec', {style: 'curve', dots: true, label: 'spikes'});
+board.story(['in', 'dec'], {onStep: (i) => …});          // wheel / arrow keys fly from step to step
+```
+
+Charts are seeded (`seed`) for illustration or take your data (`values` / `series`).
+`editable: true` turns the board into an editor surface (drag, resize, connect, reroute, one
+`commit` event per gesture). Demos: `examples/rect-explainer.html`, `examples/rect-editor.html`.
+
 ## Development
 
 ```bash
@@ -178,8 +284,9 @@ npm test
 ```
 
 Open `examples/index.html` directly in a browser (no build step needed once `npm run build`
-has produced `dist/jsngraph.global.js`) for a live demo with theme/label toggles and a
-simulated failure button.
+has produced `dist/jsngraph.global.js`): a gallery linking to every demo — network monitoring,
+layered/radial layouts, knowledge graph, 6 000-note vault, 100 000-note atlas, workflow editor,
+model view, rect explainers and the board editor.
 
 ## Design notes
 
@@ -198,7 +305,6 @@ simulated failure button.
 
 ## Status
 
-V1: canvas rendering, force layout with collision resolution, hover/click/drag interaction,
-dark/light themes, live `updateNode`/`updateEdge`, click-to-open detail panel. Not yet built:
-edge-hover load tooltip, save/restore of dragged positions, a toolbar (left to the consuming
-app — see `examples/index.html` for a sample one).
+All four parts are in use. Not published to npm yet (see Install). There is deliberately no
+built-in toolbar — pause, label and theme buttons belong to the page; the examples show sample
+ones.
