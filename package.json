@@ -43,6 +43,11 @@
       "types": "./dist/netview.d.ts",
       "import": "./dist/netview.js",
       "require": "./dist/netview.cjs"
+    },
+    "./chart": {
+      "types": "./dist/chart.d.ts",
+      "import": "./dist/chart.js",
+      "require": "./dist/chart.cjs"
     }
   },
   "files": [

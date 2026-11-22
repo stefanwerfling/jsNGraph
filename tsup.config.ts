@@ -11,7 +11,8 @@ export default defineConfig([
             modelview: 'src/modelview.ts',
             workflow: 'src/workflow.ts',
             widget: 'src/widget.ts',
-            netview: 'src/netview.ts'
+            netview: 'src/netview.ts',
+            chart: 'src/chart.ts'
         },
         format: ['esm', 'cjs'],
         splitting: true,

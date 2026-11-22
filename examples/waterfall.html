@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — waterfall chart</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .lead { color: var(--text-dim); margin: 0 0 16px; font-size: 14px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 0 0 12px; font-size: 13px; }
+    .controls button { background: var(--bg-soft); color: var(--text); border: 1px solid var(--border);
+        border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; }
+    .controls button.on { border-color: var(--accent); color: var(--accent); }
+    .controls label { display: flex; gap: 6px; align-items: center; color: var(--text-dim); }
+    .board { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: #121726; }
+    .board.light { background: #ffffff; border-color: #dde3ea; }
+    #main { height: 420px; }
+    .lower { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid rgba(127,127,127,.18); }
+    .lower > div { height: 240px; min-width: 0; }
+    .lower > div + div { border-left: 1px solid rgba(127,127,127,.18); }
+    @media (max-width: 760px) { .lower { grid-template-columns: 1fr; } .lower > div + div { border-left: 0; border-top: 1px solid rgba(127,127,127,.18); } #main { height: 340px; } }
+    #status { margin-top: 10px; font: 12px ui-monospace, monospace; color: var(--text-dim); min-height: 1.4em; }
+    .hint { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="netview.html">NetView</a>
+    <a href="waterfall.html" class="active">Waterfall</a>
+</nav>
+
+<main>
+    <h1>Waterfall spectra</h1>
+    <p class="lead">Fifty spectra (an FFT of a drifting test signal each) stacked front to back. Hover a trace to see
+        it below left, click to keep it; drag the marker to cut a slice through every spectrum at one frequency
+        (below right). Wheel zooms the frequency axis, drag pans, double-click resets.
+        <code>new WaterfallChart(el, {series})</code> + <code>LineChart</code> — canvas, no dependencies.</p>
+
+    <div class="controls">
+        <button id="theme">Light</button>
+        <button id="occlude">Hidden lines</button>
+        <button id="live">Live</button>
+        <label>Traces <input id="count" type="range" min="10" max="120" step="5" value="50"><span id="countOut">50</span></label>
+        <label>Depth <input id="depth" type="range" min="0" max="60" step="1" value="42"></label>
+    </div>
+
+    <div class="board" id="board">
+        <div id="main"></div>
+        <div class="lower">
+            <div id="trace"></div>
+            <div id="slice"></div>
+        </div>
+    </div>
+    <div id="status"></div>
+    <p class="hint">Data is generated in the page: a sum of three sines whose periods drift from trace to trace, plus
+        noise, through a radix-2 FFT, in dB, floored at −30.</p>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+(() => {
+    const {WaterfallChart, LineChart} = window.JSNGraph;
+
+    // ---- data: radix-2 FFT of a drifting test signal ------------------------------
+
+    class FFT {
+        constructor(n) {
+            this.n = n;
+            this.rev = new Uint32Array(n);
+            const bits = Math.log2(n);
+            for (let i = 0; i < n; i++) {
+                let r = 0;
+                for (let b = 0; b < bits; b++) r |= ((i >> b) & 1) << (bits - 1 - b);
+                this.rev[i] = r;
+            }
+            this.cos = new Float64Array(n / 2);
+            this.sin = new Float64Array(n / 2);
+            for (let i = 0; i < n / 2; i++) {
+                this.cos[i] = Math.cos(-2 * Math.PI * i / n);
+                this.sin[i] = Math.sin(-2 * Math.PI * i / n);
+            }
+        }
+        /** Magnitudes in dB of the first half of the spectrum. */
+        db(signal) {
+            const {n, rev} = this;
+            const re = new Float64Array(n);
+            const im = new Float64Array(n);
+            for (let i = 0; i < n; i++) re[rev[i]] = signal[i] * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (n - 1))); // Hann
+            for (let size = 2; size <= n; size *= 2) {
+                const half = size / 2, step = n / size;
+                for (let start = 0; start < n; start += size) {
+                    for (let k = 0; k < half; k++) {
+                        const c = this.cos[k * step], s = this.sin[k * step];
+                        const a = start + k, b = a + half;
+                        const tr = re[b] * c - im[b] * s, ti = re[b] * s + im[b] * c;
+                        re[b] = re[a] - tr; im[b] = im[a] - ti;
+                        re[a] += tr; im[a] += ti;
+                    }
+                }
+            }
+            const out = new Float64Array(n / 2);
+            for (let i = 0; i < n / 2; i++) out[i] = 20 * Math.log10(Math.hypot(re[i], im[i]) / n + 1e-9);
+            return out;
+        }
+    }
+
+    const SIZE = 1024, BINS = 300;
+    const fft = new FFT(SIZE);
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+
+    /** Spectrum number `n` (drift parameter `t`). */
+    function spectrum(t) {
+        const sig = new Float64Array(SIZE);
+        for (let i = 0; i < SIZE; i++) {
+            sig[i] = 2.0 * Math.sin(2 * Math.PI * i / (20 + t * 0.2))
+                + 5 * Math.sin(2 * Math.PI * i / (10 + t * 0.01))
+                + 10 * Math.sin(2 * Math.PI * i / (5 - t * 0.002))
+                + 6.0 * (rnd() - 0.5);             // zero-mean noise: no DC spike
+        }
+        const db = fft.db(sig).slice(0, BINS);
+        const y = new Float64Array(BINS);
+        for (let i = 0; i < BINS; i++) {
+            const v = db[i];
+            y[i] = v < -30 ? -30 : Math.min(3, v);     // floor the noise, cap the peaks
+        }
+        y[0] = -30;
+        return y;
+    }
+
+    let count = 50;
+    let offset = 0;                                // drift start (the live mode advances it)
+    let spectra = [];
+    const build = () => {
+        spectra = [];
+        for (let i = 0; i < count; i++) spectra.push({name: `Spectrum ${i}`, y: spectrum(offset + i)});
+    };
+    build();
+
+    // ---- charts -------------------------------------------------------------------
+
+    const accent = {trace: '#ff7a1a', hover: '#64bae4'};
+    let waterfall = new WaterfallChart(document.getElementById('main'), {
+        series: spectra,
+        yRange: {min: -40, max: 20},
+        marker: 133,
+        selected: 0
+    });
+    const trace = new LineChart(document.getElementById('trace'), {
+        yRange: {min: -30, max: 5},
+        title: 'Selected / hovered spectrum'
+    });
+    const slice = new LineChart(document.getElementById('slice'), {
+        yRange: {min: -30, max: 5},
+        title: 'Cross-section slice',
+        legend: false
+    });
+
+    let hovered = null;
+    const status = document.getElementById('status');
+
+    function updateTrace() {
+        const sel = waterfall.selected;
+        const series = [];
+        if (hovered !== null && hovered !== sel) {
+            series.push({name: spectra[hovered].name, y: spectra[hovered].y, color: accent.hover + 'aa', width: 2,
+                dash: [3, 3], fill: [accent.hover + '55', accent.hover + '00']});
+        }
+        if (sel !== null) {
+            series.push({name: spectra[sel].name, y: spectra[sel].y, color: accent.trace, width: 2});
+        }
+        trace.setSeries(series);
+    }
+
+    function updateSlice() {
+        const m = waterfall.getMarker();
+        const values = waterfall.slice();
+        slice.setTitle(m === null ? 'Cross-section slice' : `Cross-section slice at bin ${m.x}`);
+        slice.setSeries([{y: values, color: accent.hover, width: 2, dash: [3, 3],
+            fill: [accent.hover + '77', accent.hover + '22']}]);
+        slice.setXRange({min: 0, max: Math.max(1, values.length - 1)});
+        showStatus();
+    }
+
+    function showStatus() {
+        const m = waterfall.getMarker();
+        const r = waterfall.xVisible;
+        const sel = waterfall.selected;
+        status.textContent = `selected: ${sel === null ? '—' : spectra[sel].name}`
+            + `  ·  hover: ${hovered === null ? '—' : spectra[hovered].name}`
+            + `  ·  marker: ${m === null ? '—' : 'bin ' + m.x}`
+            + `  ·  x: ${r.min.toFixed(1)} … ${r.max.toFixed(1)}`;
+    }
+
+    swap(waterfall);
+
+    // ---- controls -----------------------------------------------------------------
+
+    const themeBtn = document.getElementById('theme');
+    themeBtn.addEventListener('click', () => {
+        const light = themeBtn.classList.toggle('on');
+        const t = light ? 'light' : 'dark';
+        accent.hover = light ? '#2f8fc4' : '#64bae4';
+        accent.trace = light ? '#e8590c' : '#ff7a1a';
+        document.getElementById('board').classList.toggle('light', light);
+        waterfall.setTheme(t); trace.setTheme(t); slice.setTheme(t);
+        updateTrace(); updateSlice();
+    });
+
+    let occlude = false;
+    const occludeBtn = document.getElementById('occlude');
+    occludeBtn.addEventListener('click', () => {
+        occlude = occludeBtn.classList.toggle('on');
+        recreate();
+    });
+
+    const depth = document.getElementById('depth');
+    depth.addEventListener('input', recreate);
+
+    /** Options that are fixed at construction: rebuild the chart, keep state. */
+    function recreate() {
+        const keep = {marker: waterfall.getMarker()?.x ?? 133, selected: waterfall.selected,
+            theme: themeBtn.classList.contains('on') ? 'light' : 'dark', range: waterfall.xVisible};
+        const host = document.getElementById('main');
+        waterfall.destroy();
+        const next = new WaterfallChart(host, {
+            series: spectra, yRange: {min: -40, max: 20}, marker: keep.marker, selected: keep.selected,
+            theme: keep.theme, occlude, depthY: Number(depth.value) / 100, depthX: Number(depth.value) / 150
+        });
+        next.setXRange(keep.range);
+        swap(next);
+    }
+
+    function swap(next) {
+        waterfall = next;
+        waterfall.on('hover', ({index}) => { hovered = index; updateTrace(); showStatus(); });
+        waterfall.on('select', () => { updateTrace(); showStatus(); });
+        waterfall.on('marker', updateSlice);
+        waterfall.on('rangeChange', showStatus);
+        updateTrace(); updateSlice();
+    }
+
+    const countIn = document.getElementById('count');
+    countIn.addEventListener('input', () => {
+        count = Number(countIn.value);
+        document.getElementById('countOut').textContent = count;
+        build();
+        hovered = null;
+        waterfall.setSeries(spectra);
+        updateTrace(); updateSlice();
+    });
+
+    let liveTimer = null;
+    const liveBtn = document.getElementById('live');
+    liveBtn.addEventListener('click', () => {
+        if (liveTimer !== null) {
+            clearInterval(liveTimer); liveTimer = null; liveBtn.classList.remove('on');
+            return;
+        }
+        liveBtn.classList.add('on');
+        liveTimer = setInterval(() => {
+            // a new spectrum arrives at the front, the oldest falls off the back
+            offset -= 1;
+            spectra.pop();
+            spectra.unshift({name: '', y: spectrum(offset)});
+            spectra.forEach((s, i) => { s.name = `Spectrum ${i}`; });
+            waterfall.setSeries(spectra);
+            updateTrace(); updateSlice();
+        }, 120);
+    });
+})();
+</script>
+</body>
+</html>

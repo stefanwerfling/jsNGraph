@@ -177,6 +177,17 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   Cells/curves are batched per colour×alpha bucket (34 → 9 ms/frame for 40 blocks × 256 experts).
   Example: `examples/netview.html` (simulated traces, drop a Hugin JSON for a real one).
 
+- `chart/` — `WaterfallChart` + `LineChart` (subpath `jsngraph/chart`): scientific x/y charts on one canvas each
+  (shared base `ChartSurface`: DPR-sharp resize, on-demand `RenderLoop`, axis/tick drawing; `ChartTheme` dark/light).
+  Waterfall: traces stacked front (index 0) to back, each shifted right/up (`depthX`/`depthY`); hover/click
+  (`hover`/`select`), a draggable slice marker (`marker` event, `getMarker`, `slice()` = every trace at that x),
+  x-only wheel zoom/drag pan/double-click reset (`rangeChange`), `occlude` (hidden lines: each trace filled to its
+  baseline; highlighted traces then keep their stack place, on top their fill would blank the front). `setSeries`
+  keeps the zoom when the x extent is unchanged (streaming). LineChart: series with dash/fill/gradient, title,
+  legend, grid bands. Pure parts: `ChartScale` (nice ticks, mapping, zoom/pan/clamp), `WaterfallGeometry`
+  (stack layout, nearest index, segment-distance hit test — vertical distance misses steep peak flanks);
+  `test/Chart.test.ts`. Example: `examples/waterfall.html` (in-page radix-2 FFT of a drifting test signal).
+
 ## Commands
 
 - `npm run dev` — `tsup --watch`. `npm run build` — `dist/index.{js,cjs,d.ts}` (npm) +
