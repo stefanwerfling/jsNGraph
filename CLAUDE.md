@@ -147,6 +147,13 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   Plan + milestones W1–W6: `docs/workflow-editor.md`.
   Example: `examples/workflow.html`.
 
+- `widget/` — small standalone dashboard widgets (SVG, no canvas), subpath `jsngraph/widget`. `DayClock`
+  (taken over from kavula's dashboard, without d3/jQuery): a day on one 24 h dial (00:00 top, clockwise), elapsed
+  part shaded, hand = now, items as arcs on rings (overlaps get their own, max `maxRings`), states past/running/
+  upcoming; `itemClick`/`itemHover`, `live`, fixed `now`, `locale`, `--dc-*` vars via `:where()` (`DayClockStyles`).
+  Drawn in a fixed 290 view box (+16 px per side for the 06:00/18:00 labels). Pure part `DayClockGeometry.ts`
+  (`place` = ring layout, arcs, wedge; `test/DayClock.test.ts`). Example: `examples/dayclock.html`.
+
 ## Commands
 
 - `npm run dev` — `tsup --watch`. `npm run build` — `dist/index.{js,cjs,d.ts}` (npm) +

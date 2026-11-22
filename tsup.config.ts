@@ -9,7 +9,8 @@ export default defineConfig([
             graph: 'src/graph.ts',
             rect: 'src/rect.ts',
             modelview: 'src/modelview.ts',
-            workflow: 'src/workflow.ts'
+            workflow: 'src/workflow.ts',
+            widget: 'src/widget.ts'
         },
         format: ['esm', 'cjs'],
         splitting: true,

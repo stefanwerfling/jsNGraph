@@ -1,7 +1,7 @@
 # jsNGraph
 
 Interactive graph rendering for the browser — TypeScript, zero runtime dependencies. Four
-parts that share one camera and one theme:
+parts that share one camera and one theme, plus small standalone widgets:
 
 - **`NGraph`** — network topology and knowledge graphs on Canvas: force/radial/layered/static
   layouts, devices as icon nodes, edges colored green→yellow→red by traffic load, animated
@@ -12,6 +12,7 @@ parts that share one camera and one theme:
 - **`ModelView`** — a pan/zoom viewer for model architectures with granularity levels.
 - **Rect kit / `RectBoard`** — DOM+SVG diagram blocks, mini charts and connectors on a pan/zoom
   board, for explainers and wiring diagrams; optionally editable.
+- **Widgets** — `DayClock`, a working day on one 24 h dial (SVG).
 
 ## Install
 
@@ -40,7 +41,8 @@ same class whichever path you import it from:
 | `jsngraph/rect` | rect kit, `RectBoard`, the small charts | from ≈ 11 KB, by what you import |
 | `jsngraph/modelview` | `ModelView` | ≈ 26 KB (9 KB) |
 | `jsngraph/workflow` | `WorkflowEditor` and its helpers | ≈ 103 KB (29 KB) |
-| `jsngraph` | all of it | ≈ 246 KB (73 KB) as a namespace |
+| `jsngraph/widget` | `DayClock` | ≈ 9 KB (3 KB) |
+| `jsngraph` | all of it | ≈ 254 KB (76 KB) as a namespace |
 
 ## Usage
 
@@ -273,6 +275,33 @@ Charts are seeded (`seed`) for illustration or take your data (`values` / `serie
 `editable: true` turns the board into an editor surface (drag, resize, connect, reroute, one
 `commit` event per gesture). Demos: `examples/rect-explainer.html`, `examples/rect-editor.html`.
 
+## Day clock
+
+A working day on one 24 h dial (00:00 top, 06:00 right, 12:00 bottom, 18:00 left): the elapsed
+part is shaded, a hand marks now, each appointment is an arc from start to end with a dot at its
+start — overlapping ones on separate rings — coloured done / running / planned:
+
+```ts
+import { DayClock } from 'jsngraph/widget';
+
+const clock = new DayClock(el, {theme: 'auto', live: true, nowLabel: 'Now'});
+
+clock.setItems([
+    {id: 'a1', start: new Date(2026, 10, 22, 8, 15), end: new Date(2026, 10, 22, 10, 30), label: 'Install heat pump'},
+    {id: 'a2', start: new Date(2026, 10, 22, 12, 15), end: new Date(2026, 10, 22, 13, 0), label: 'Lunch', color: '#e0a52a'}
+]);
+clock.on('itemClick', (e) => openAppointment(e.item.id));
+clock.on('itemHover', (e) => highlightRow(e?.item.id));   // null when the pointer leaves
+DayClock.state(item, new Date());                         // 'past' | 'running' | 'upcoming', for your own list
+```
+
+- Options: `theme` (`auto` follows the OS), `size` (max dial width, default 290), `maxRings`
+  (default 4), `locale` for the times, `now` (a fixed moment — `setNow(date | null)`), `live`
+  (redraw every 30 s).
+- Only items touching the day of "now" are drawn; items across midnight are cut at the edge.
+- Colours are `--dc-*` CSS variables (`setStyleVars`), rules are zero-specificity `:where()`.
+- Demo: `examples/dayclock.html` (with a time-travel slider).
+
 ## Development
 
 ```bash
@@ -286,7 +315,7 @@ npm test
 Open `examples/index.html` directly in a browser (no build step needed once `npm run build`
 has produced `dist/jsngraph.global.js`): a gallery linking to every demo — network monitoring,
 layered/radial layouts, knowledge graph, 6 000-note vault, 100 000-note atlas, workflow editor,
-model view, rect explainers and the board editor.
+model view, rect explainers, the board editor and the day clock.
 
 ## Design notes
 
@@ -305,6 +334,6 @@ model view, rect explainers and the board editor.
 
 ## Status
 
-All four parts are in use. Not published to npm yet (see Install). There is deliberately no
+All four parts and the day clock are in use. Not published to npm yet (see Install). There is deliberately no
 built-in toolbar — pause, label and theme buttons belong to the page; the examples show sample
 ones.

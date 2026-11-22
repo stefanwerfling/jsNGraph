@@ -6,3 +6,7 @@ export * from './graph';
 export * from './modelview';
 export * from './rect';
 export * from './workflow';
+export { DayClock, DayClockStyles } from './widget/DayClock';
+export type { DayClockOptions, DayClockEvents, DayClockStyleVar } from './widget/DayClock';
+export { DayClockGeometry, DAY_MINUTES } from './widget/DayClockGeometry';
+export type { DayClockItem, DayClockState, DayClockPlaced } from './widget/DayClockGeometry';

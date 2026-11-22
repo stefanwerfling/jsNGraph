@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — day clock</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    main { max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .lead { color: var(--text-dim); margin: 0 0 20px; font-size: 14px; }
+    .panel { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 24px; align-items: start;
+        background: var(--bg-soft); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+    .panel.light { background: #ffffff; color: #151a23; border-color: #dde3ea; }
+    @media (max-width: 720px) { .panel { grid-template-columns: 1fr; } }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 16px; font-size: 13px; }
+    .controls button { background: var(--bg-soft); color: var(--text); border: 1px solid var(--border);
+        border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; }
+    .controls button.on { border-color: var(--accent); color: var(--accent); }
+    .controls input[type=range] { width: 220px; }
+    .cap { text-align: center; font-size: 12px; opacity: .7; margin-bottom: 8px; }
+    .legend { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; font-size: 12px; }
+    .legend span { border: 1px solid currentColor; border-radius: 999px; padding: 1px 8px; opacity: .8; }
+    .day { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; opacity: .65; margin: 12px 0 4px; }
+    .row { display: flex; gap: 10px; align-items: baseline; padding: 7px 8px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+    .row:hover, .row.hot { background: rgba(122, 162, 255, .12); }
+    .row time { font-size: 12px; opacity: .7; min-width: 92px; font-variant-numeric: tabular-nums; }
+    .row .where { font-size: 12px; opacity: .6; }
+    .pill { margin-left: auto; font-size: 11px; border-radius: 999px; padding: 1px 8px; color: #fff; white-space: nowrap; }
+    .pill.past { background: #6b7688; } .pill.running { background: #1f9d63; } .pill.upcoming { background: #2b6cb0; }
+    #log { margin-top: 16px; font: 12px ui-monospace, monospace; color: var(--text-dim); min-height: 1.4em; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="workflow.html">Workflow</a>
+    <a href="dayclock.html" class="active">Day clock</a>
+</nav>
+
+<main>
+    <h1>Day clock</h1>
+    <p class="lead">A working day on one 24 h dial: the elapsed part is shaded, the hand is now, every appointment
+        an arc on its own ring when it overlaps another. <code>new DayClock(el).setItems(items)</code> — SVG,
+        no dependencies.</p>
+
+    <div class="controls">
+        <button id="theme">Light card</button>
+        <button id="live" class="on">Live time</button>
+        <label>Time travel <input id="travel" type="range" min="0" max="1439" step="5"></label>
+        <span id="travelOut"></span>
+    </div>
+
+    <div class="panel" id="panel">
+        <div>
+            <div class="cap">Your day on one clock</div>
+            <div id="clock"></div>
+        </div>
+        <div>
+            <div class="legend"><span>✓ done</span><span>▶ running</span><span>◷ planned</span></div>
+            <div id="feed"></div>
+        </div>
+    </div>
+
+    <div id="log">Click an arc or a row.</div>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+    const { DayClock } = window.JSNGraph;
+
+    // A service technician's day — relative to today so the demo is always "live".
+    const today = new Date();
+    const at = (h, m = 0, plusDays = 0) => new Date(today.getFullYear(), today.getMonth(), today.getDate() + plusDays, h, m);
+    const items = [
+        {id: 'a1', start: at(7, 30), end: at(8, 0), label: 'Team stand-up', where: 'Workshop'},
+        {id: 'a2', start: at(8, 15), end: at(10, 30), label: 'Install heat pump', where: 'Müller, Hauptstr. 4'},
+        {id: 'a3', start: at(9, 30), end: at(10, 0), label: 'Supplier call', where: 'Phone'},
+        {id: 'a4', start: at(11, 0), end: at(12, 15), label: 'Service visit', where: 'Bäckerei Kraus'},
+        {id: 'a5', start: at(12, 15), end: at(13, 0), label: 'Lunch break', where: '', color: '#e0a52a'},
+        {id: 'a6', start: at(13, 0), end: at(15, 30), label: 'Boiler replacement', where: 'Schmidt, Lindenweg 12'},
+        {id: 'a7', start: at(14, 0), end: at(14, 30), label: 'Quote follow-up', where: 'Office'},
+        {id: 'a8', start: at(14, 15), end: at(16, 0), label: 'Apprentice training', where: 'Workshop'},
+        {id: 'a9', start: at(16, 30), end: at(17, 0), label: 'Write reports', where: 'Office'},
+        {id: 'b1', start: at(8, 0, 1), end: at(9, 30, 1), label: 'Maintenance contract', where: 'Stadtwerke'},
+        {id: 'b2', start: at(10, 0, 1), end: at(12, 0, 1), label: 'Solar inspection', where: 'Hof Berger'}
+    ];
+
+    const clock = new DayClock(document.getElementById('clock'), {theme: 'dark', live: true});
+    clock.setItems(items);
+
+    const $ = (id) => document.getElementById(id);
+    const log = (t) => { $('log').textContent = t; };
+    const fmt = (d) => clock.formatTime(d);
+    const label = {past: 'Done', running: 'Running', upcoming: 'Planned'};
+
+    function renderFeed() {
+        const now = clock.now;
+        const feed = $('feed');
+        feed.replaceChildren();
+        const sameDay = (d, n) => d.toDateString() === n.toDateString();
+        const lists = [
+            ['Today', items.filter((i) => sameDay(i.start, now)), true],
+            ['Tomorrow', items.filter((i) => sameDay(i.start, new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1))), false]
+        ];
+        for (const [title, list, withState] of lists) {
+            const head = document.createElement('div');
+            head.className = 'day';
+            head.textContent = title;
+            feed.appendChild(head);
+            for (const item of list.sort((a, b) => a.start - b.start)) {
+                const row = document.createElement('div');
+                row.className = 'row';
+                row.dataset.id = item.id;
+                const time = document.createElement('time');
+                time.textContent = `${fmt(item.start)}–${fmt(item.end)}`;
+                const text = document.createElement('span');
+                text.textContent = item.label + ' ';
+                const where = document.createElement('span');
+                where.className = 'where';
+                where.textContent = item.where;
+                text.appendChild(where);
+                row.append(time, text);
+                if (withState) {
+                    const state = DayClock.state(item, now);
+                    const pill = document.createElement('span');
+                    pill.className = `pill ${state}`;
+                    pill.textContent = label[state];
+                    row.appendChild(pill);
+                }
+                row.onclick = () => log(`row: ${item.label} (${item.id}) — a host would open the appointment here`);
+                feed.appendChild(row);
+            }
+        }
+    }
+
+    clock.on('itemClick', (e) => log(`itemClick: ${e.item.label} (${e.item.id}), ${e.state}`));
+    clock.on('itemHover', (e) => {
+        document.querySelectorAll('.row').forEach((r) => r.classList.toggle('hot', e !== null && r.dataset.id === e.item.id));
+    });
+
+    // Time travel: a fixed "now" on today's date; "Live time" goes back to the clock.
+    const syncTravel = () => {
+        const n = clock.now;
+        $('travel').value = String(n.getHours() * 60 + n.getMinutes());
+        $('travelOut').textContent = fmt(n);
+    };
+    $('travel').oninput = () => {
+        const m = Number($('travel').value);
+        clock.setNow(at(Math.floor(m / 60), m % 60));
+        $('live').classList.remove('on');
+        syncTravel();
+        renderFeed();
+    };
+    $('live').onclick = () => {
+        clock.setNow(null);
+        $('live').classList.add('on');
+        syncTravel();
+        renderFeed();
+    };
+
+    let light = false;
+    $('theme').onclick = () => {
+        light = !light;
+        clock.setTheme(light ? 'light' : 'dark');
+        $('panel').classList.toggle('light', light);
+        $('theme').textContent = light ? 'Dark card' : 'Light card';
+    };
+
+    setInterval(() => { if ($('live').classList.contains('on')) { syncTravel(); renderFeed(); } }, 30000);
+    syncTravel();
+    renderFeed();
+    window.clock = clock;
+</script>
+</body>
+</html>
