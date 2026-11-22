@@ -13,6 +13,26 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./graph": {
+      "types": "./dist/graph.d.ts",
+      "import": "./dist/graph.js",
+      "require": "./dist/graph.cjs"
+    },
+    "./rect": {
+      "types": "./dist/rect.d.ts",
+      "import": "./dist/rect.js",
+      "require": "./dist/rect.cjs"
+    },
+    "./modelview": {
+      "types": "./dist/modelview.d.ts",
+      "import": "./dist/modelview.js",
+      "require": "./dist/modelview.cjs"
+    },
+    "./workflow": {
+      "types": "./dist/workflow.d.ts",
+      "import": "./dist/workflow.js",
+      "require": "./dist/workflow.cjs"
     }
   },
   "files": [

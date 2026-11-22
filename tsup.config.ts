@@ -2,8 +2,17 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig([
     {
-        entry: {index: 'src/index.ts'},
+        // One entry per part (package.json "exports"); ESM shares code
+        // between them in chunks, so one class is one class across parts.
+        entry: {
+            index: 'src/index.ts',
+            graph: 'src/graph.ts',
+            rect: 'src/rect.ts',
+            modelview: 'src/modelview.ts',
+            workflow: 'src/workflow.ts'
+        },
         format: ['esm', 'cjs'],
+        splitting: true,
         dts: true,
         sourcemap: true,
         clean: true,

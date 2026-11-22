@@ -22,6 +22,18 @@ Or, with no build step at all, drop the browser bundle straight into an HTML pag
 </script>
 ```
 
+`jsngraph` exports everything. To keep the parts you don't use out of your
+bundle, import one part instead; they share their code, so a class is the
+same class whichever path you import it from:
+
+| Import | Contains | Minified (gzip) |
+|---|---|---|
+| `jsngraph/graph` | `NGraph`, styles, theme, effects, camera, geometry | ≈ 78 KB (25 KB) |
+| `jsngraph/rect` | rect kit, `RectBoard`, the small charts | from ≈ 11 KB, by what you import |
+| `jsngraph/modelview` | `ModelView` | |
+| `jsngraph/workflow` | `WorkflowEditor` and its helpers | |
+| `jsngraph` | all of it | ≈ 242 KB (72 KB) as a namespace |
+
 ## Usage
 
 ```ts
