@@ -226,6 +226,8 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   `edgeHover` event, hovered edge drawn wider on top. Nodes win over edges; the edge hit-test only runs when a
   tooltip or listener wants it (`wantsEdgeHover`), and not when clustered / below `edgeMinZoom`.
 - Example: `examples/knowledge.html`.
+- `examples/livingmap.html`: a growing agent mesh in 3D — projection in the page, `setPositions` per frame,
+  depth/growth/focus via style opacities (bucketed for batching), glow via an overlay blurred once per frame.
 
 ## Known gaps (V1)
 

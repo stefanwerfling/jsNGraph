@@ -142,6 +142,11 @@ const remove = graph.addOverlay({layer: 'over', draw: (ctx, info) => { /* world 
   drawings (return `true` while animating).
 - `examples/vault.html`: 1 000–6 000 notes with folder hulls, heat rings and effects. A frame
   of 3 000 notes takes ≈ 6 ms in the overview and ≈ 3 ms zoomed in (Chrome, desktop).
+- `examples/livingmap.html`: a mesh that grows as simulated agents finish work, turned in 3D.
+  The page projects x/y/z with yaw, pitch and perspective and hands the result to
+  `setPositions` every frame (`layoutMode: 'static'`); depth, growth and focus are opacities
+  from `styleNode` / `styleEdge` (bucketed so strokes still batch), the glow of busy regions is
+  an `addOverlay` that strokes into a second canvas and draws it once with `blur(2px)`.
 
 ### Very large graphs: level of detail and clusters
 
@@ -314,7 +319,7 @@ npm test
 
 Open `examples/index.html` directly in a browser (no build step needed once `npm run build`
 has produced `dist/jsngraph.global.js`): a gallery linking to every demo — network monitoring,
-layered/radial layouts, knowledge graph, 6 000-note vault, 100 000-note atlas, workflow editor,
+layered/radial layouts, knowledge graph, 6 000-note vault, 100 000-note atlas, living map, workflow editor,
 model view, rect explainers, the board editor and the day clock.
 
 ## Design notes

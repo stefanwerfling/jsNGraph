@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — living map</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    html, body { height: 100%; overflow: hidden; background: #040507; }
+    #graph { position: absolute; inset: 45px 0 0 0; cursor: grab; touch-action: none; }
+    #graph.dragging { cursor: grabbing; }
+    .hud { position: absolute; z-index: 40; pointer-events: none; }
+    .hud > * { pointer-events: auto; }
+    #title { top: 70px; left: 28px; max-width: 360px; }
+    #title .eyebrow { font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: #6f7a8c; }
+    #title h1 { font-size: 30px; font-weight: 300; margin: 8px 0 6px; color: #eef2f7; }
+    #title p { margin: 0; font-size: 13px; color: #8f9aab; line-height: 1.5; }
+    #cards { left: 50%; bottom: 64px; transform: translateX(-50%); display: grid;
+        grid-template-columns: repeat(4, minmax(0, 190px)); gap: 8px; width: min(800px, calc(100% - 32px)); }
+    .card { background: rgba(10, 13, 18, .82); border: 1px solid #1d2430; border-radius: 10px; padding: 9px 11px;
+        cursor: pointer; font-size: 12px; color: #aab4c3; backdrop-filter: blur(4px); transition: border-color .15s; }
+    .card:hover, .card.on { border-color: var(--c); }
+    .card .name { color: var(--c); font-weight: 600; font-size: 12px; margin-bottom: 4px; }
+    .card .task { color: #d7dde6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .card .count { color: #6f7a8c; font-size: 11px; margin-top: 2px; }
+    .card .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; background: #3a4352; }
+    .card.working .dot { background: var(--c); box-shadow: 0 0 6px var(--c); }
+    @media (max-width: 760px) { #cards { grid-template-columns: repeat(2, minmax(0, 1fr)); bottom: 60px; } #title h1 { font-size: 22px; } }
+    #bar { left: 0; right: 0; bottom: 0; display: flex; gap: 8px; align-items: center; padding: 10px 16px;
+        border-top: 1px solid #141a23; background: rgba(4, 5, 7, .9); font-size: 12px; color: #8f9aab; }
+    #bar button { background: transparent; color: #c8d0dc; border: 1px solid #222a36; border-radius: 6px;
+        padding: 4px 10px; cursor: pointer; font: inherit; }
+    #bar button.on { border-color: #4b5a70; color: #fff; }
+    #ticker { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 11px ui-monospace, monospace; color: #6f7a8c; }
+    #hint { right: 20px; bottom: 64px; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: #4c5666; text-align: right; }
+    @media (max-width: 760px) { #hint { display: none; } }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="vault.html">Large vault</a>
+    <a href="livingmap.html" class="active">Living map</a>
+</nav>
+
+<div id="graph"></div>
+
+<div id="title" class="hud">
+    <div class="eyebrow">Night shift · 8 agents</div>
+    <h1>A map that grows</h1>
+    <p>Every agent owns a region of one shared mesh. Work makes its region glow and flex; every finished
+        result adds new points and links for good. NGraph draws it — the 3D turn, depth and glow are a
+        projection, style callbacks and an overlay on top.</p>
+</div>
+
+<div id="cards" class="hud"></div>
+<div id="hint" class="hud">drag to turn · wheel to zoom · click a region</div>
+
+<div id="bar" class="hud">
+    <button id="pause">❚❚ Pause</button>
+    <button id="speed">1× speed</button>
+    <button id="orbit" class="on">Orbit</button>
+    <button id="reset">Reset view</button>
+    <span id="ticker">starting the shift …</span>
+</div>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+    const { NGraph, Theme } = window.JSNGraph;
+
+    // ---- the agents (fictional) -------------------------------------------------------------
+    const AGENTS = [
+        {name: 'Harvester', color: '#4fd1a5', tasks: ['crawl release notes', 'fetch vendor feeds', 'pull forum threads']},
+        {name: 'Parser', color: '#6fa8ff', tasks: ['split PDFs into sections', 'read changelog tables', 'normalise dates']},
+        {name: 'Indexer', color: '#b48cff', tasks: ['embed new sections', 'rebuild the topic index', 'link duplicates']},
+        {name: 'Summarizer', color: '#ffb454', tasks: ['write a weekly digest', 'condense a long thread', 'draft release summary']},
+        {name: 'Reviewer', color: '#ff6f91', tasks: ['check citations', 'flag contradictions', 'approve a digest']},
+        {name: 'Translator', color: '#5ad4e6', tasks: ['translate digest to German', 'localise glossary', 'review terminology']},
+        {name: 'Planner', color: '#e6d85a', tasks: ['schedule tomorrow’s crawl', 'rebalance the queue', 'split a big job']},
+        {name: 'Archivist', color: '#9aa7ff', tasks: ['compress old runs', 'tag stale sources', 'snapshot the index']}
+    ];
+    const RESULTS = 40;          // result slots per agent, three new points each
+    const BASE = 1100;           // points of the initial mesh
+
+    // ---- a deterministic mesh: points in a wobbly disc, z from smooth waves -----------------
+    let seed = 7;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+    const depth = (x, y) => Math.sin(x * 3.1 + y * 1.3) * 0.28 + Math.cos(y * 4.2 - x * 1.7) * 0.18;
+
+    const anchors = AGENTS.map((_, i) => {
+        const a = (i / AGENTS.length) * Math.PI * 2 + 0.4;
+        const r = 0.55 + (i % 2) * 0.12;
+        return [Math.cos(a) * r * 1.25, Math.sin(a) * r * 0.85];
+    });
+    const ownerOf = (x, y) => {
+        let best = 0, d = Infinity;
+        anchors.forEach(([ax, ay], i) => { const q = (x - ax) ** 2 + (y - ay) ** 2; if (q < d) { d = q; best = i; } });
+        return best;
+    };
+
+    const pts = [];   // {x, y, z, g (agent), unit (0 = base), k (0..2 within a result), parent}
+    for (let i = 0; i < BASE; i++) {
+        const a = rand() * Math.PI * 2, r = Math.sqrt(rand());
+        const x = Math.cos(a) * r * 1.35 + Math.sin(r * 9 + a) * 0.05;
+        const y = Math.sin(a) * r * 0.95 + Math.cos(r * 7 - a * 2) * 0.05;
+        pts.push({x, y, z: depth(x, y) + (rand() - 0.5) * 0.25, g: ownerOf(x, y), unit: 0, parent: -1});
+    }
+    for (let g = 0; g < AGENTS.length; g++) {
+        const own = pts.map((p, i) => ({p, i})).filter((v) => v.p.g === g && v.p.unit === 0);
+        for (let unit = 1; unit <= RESULTS; unit++) {
+            const root = own[(unit * 37) % own.length];
+            const angle = unit * 2.39996;   // golden angle: new growth spreads evenly around the region
+            for (let k = 0; k < 3; k++) {
+                const r = 0.03 + k * 0.025;
+                pts.push({x: root.p.x + Math.cos(angle + k * 0.7) * r, y: root.p.y + Math.sin(angle + k * 0.7) * r,
+                    z: root.p.z + Math.sin(angle + k) * r * 1.6, g, unit, k, parent: root.i});
+            }
+        }
+    }
+
+    // Links: nearest neighbours in 3D (z counts less), plus a link to an earlier point so the
+    // mesh is one piece. Grown points link to their root and to points that exist before them.
+    const edges = [];
+    const seen = new Set();
+    const link = (a, b) => {
+        const key = a < b ? `${a}:${b}` : `${b}:${a}`;
+        if (a === b || seen.has(key)) return;
+        seen.add(key);
+        edges.push([a, b]);
+    };
+    for (let i = 0; i < pts.length; i++) {
+        const p = pts[i];
+        const kMax = p.unit === 0 ? 4 : 3;
+        const near = [];   // the kMax nearest so far, ascending
+        let earlier = -1, earlierD = Infinity;
+        for (let j = 0; j < pts.length; j++) {
+            if (j === i) continue;
+            const q = pts[j];
+            if (p.unit === 0 && q.unit !== 0) continue;                                   // base links base
+            if (p.unit !== 0 && q.unit !== 0 && !(q.g === p.g && q.unit < p.unit)) continue; // grown: older only
+            const d = (p.x - q.x) ** 2 + (p.y - q.y) ** 2 + ((p.z - q.z) * 0.35) ** 2;
+            if (j < i && q.unit === 0 && d < earlierD) { earlier = j; earlierD = d; }
+            if (near.length < kMax || d < near[near.length - 1].d) {
+                let at = near.length;
+                while (at > 0 && near[at - 1].d > d) at--;
+                near.splice(at, 0, {j, d});
+                if (near.length > kMax) near.pop();
+            }
+        }
+        near.forEach((v) => link(i, v.j));
+        if (p.unit === 0 && earlier >= 0) link(i, earlier);
+        if (p.parent >= 0) link(i, p.parent);
+    }
+    const edgeOf = new Map(edges.map(([a, b], i) => [`e${i}`, [a, b, i]]));
+
+    // ---- simulation: agents work, idle, finish results --------------------------------------
+    const agents = AGENTS.map((a, i) => ({
+        ...a, id: i, state: 'idle', until: 1 + rand() * 4, task: '', units: 0, births: [],
+        activity: 0, phase: rand() * 10
+    }));
+    let simTime = 0, speed = 1, paused = false;
+    const ease = (t) => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+
+    function stepAgents(dt) {
+        for (const a of agents) {
+            a.until -= dt;
+            if (a.until <= 0) {
+                if (a.state === 'idle') {
+                    a.state = 'working';
+                    a.task = a.tasks[Math.floor(rand() * a.tasks.length)];
+                    a.until = 3 + rand() * 6;
+                    log(`${a.name} · started: ${a.task}`);
+                } else {
+                    a.state = 'idle';
+                    a.until = 1.5 + rand() * 4;
+                    if (a.units < RESULTS) {
+                        a.units++;
+                        a.births.push(simTime);
+                        const id = pts.findIndex((p) => p.g === a.id && p.unit === a.units && p.k === 0);
+                        graph.pulse([`n${id}`], a.color, {durationMs: 1600});
+                        log(`${a.name} · finished: ${a.task} → result #${a.units}`);
+                    }
+                    a.task = '';
+                }
+                renderCards();
+            }
+            const target = a.state === 'working' ? 1 : 0.12;
+            a.activity += (target - a.activity) * (1 - Math.exp(-dt / 0.9));
+            a.phase += dt * (0.6 + a.activity);
+        }
+    }
+
+    /** 0..1: how far a point has appeared (base points always 1). */
+    function amount(p) {
+        if (p.unit === 0) return 1;
+        const born = agents[p.g].births[p.unit - 1];
+        return born === undefined ? 0 : ease((simTime - born - p.k * 0.25) / 0.9);
+    }
+
+    // ---- 3D: a coherent deformation field, then yaw/pitch + perspective ---------------------
+    let yaw = 0.15, pitch = -0.25, zoom = 1, targetYaw = yaw, targetPitch = pitch, targetZoom = 1, orbit = true;
+    let orbitTime = 0, orbitBase = 0.15, orbitPitch = -0.25;   // the sway centres on where a drag left the view
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) { orbit = false; document.getElementById('orbit').classList.remove('on'); }
+    const el = document.getElementById('graph');
+    let W = el.clientWidth, H = el.clientHeight;
+
+    function field(p) {
+        let {x, y, z} = p;
+        if (reduced) return {x, y, z};
+        for (const a of agents) {
+            const [ax, ay] = anchors[a.id];
+            const dx = p.x - ax, dy = p.y - ay;
+            const w = Math.exp(-(dx * dx + dy * dy) / 0.09) * a.activity;   // neighbours flex together
+            if (w < 0.002) continue;
+            x += w * Math.sin(a.phase * 0.9 + dy * 6 + a.id) * 0.018;
+            y += w * Math.cos(a.phase * 0.7 + dx * 6 + a.id) * 0.018;
+            z += w * (Math.sin(a.phase * 0.5 + p.x * 4) * 0.05 + 0.04 * a.units / RESULTS);
+        }
+        return {x, y, z};
+    }
+
+    const view = [];   // per point: screen x, y, depth z, perspective k
+    function project() {
+        const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+        const scale = Math.min(W * 0.3, H * 0.4) * zoom;
+        for (let i = 0; i < pts.length; i++) {
+            const {x, y, z} = field(pts[i]);
+            const rx = x * cy + z * sy, rz = -x * sy + z * cy;
+            const ry = y * cp - rz * sp, zz = y * sp + rz * cp;
+            const k = 3.2 / (3.2 - zz);
+            view[i] = {x: W / 2 + rx * scale * k, y: H / 2 + ry * scale * k, z: zz, k};
+        }
+    }
+
+    // ---- NGraph: static layout, look from style callbacks, glow from an overlay -------------
+    const q = (v) => Math.round(v * 50) / 50;   // few distinct opacities → strokes batch per look
+    let focus = null;
+    const depthAlpha = (z) => Math.max(0.22, Math.min(1, (z + 1) * 0.62));
+
+    const graph = new NGraph(el, {
+        theme: {...Theme.dark, background: '#040507'},
+        layoutMode: 'static', panZoom: false, draggable: false, grid: false,
+        showLabels: false, detailPanel: false, edgeTooltip: false, labelCollision: false,
+        tooltip: (n) => {
+            const p = pts[+n.id.slice(1)];
+            return p.unit === 0 ? `${AGENTS[p.g].name} · region` : `${AGENTS[p.g].name} · result #${p.unit}`;
+        },
+        styleNode: (n) => {
+            const i = +n.id.slice(1), p = pts[i], v = view[i], amt = amount(p);
+            if (amt < 0.003) return {opacity: 0, radius: 0.01};
+            const grown = p.unit > 0;
+            const dim = focus !== null && p.g !== focus ? 0.22 : 1;
+            return {
+                color: i % 5 === 0 ? '#e5edf3' : AGENTS[p.g].color,
+                radius: (grown ? 1.7 : i % 9 === 0 ? 1.5 : 0.95) * v.k * amt,
+                opacity: q(dim * depthAlpha(v.z) * amt * (grown ? 0.9 : i % 3 === 0 ? 0.7 : 0.42))
+            };
+        },
+        styleEdge: (e) => {
+            const [a, b, i] = edgeOf.get(e.id);
+            const amt = Math.min(amount(pts[a]), amount(pts[b]));
+            if (amt < 0.003) return {opacity: 0};
+            const grown = pts[a].unit > 0 || pts[b].unit > 0;
+            const g = pts[a].g;
+            const dim = focus !== null && g !== focus && pts[b].g !== focus ? 0.22 : 1;
+            return {
+                color: i % 4 === 0 ? '#dce6f0' : AGENTS[g].color,
+                width: grown ? 0.6 : 0.45,
+                opacity: q(dim * depthAlpha((view[a].z + view[b].z) / 2) * amt *
+                    (grown ? 0.3 : 0.13 + (agents[g].units / RESULTS) * 0.06))
+            };
+        }
+    });
+
+    // Glow: lines of busy regions drawn thick-to-thin on a second canvas, softened once.
+    const glow = document.createElement('canvas');
+    const gctx = glow.getContext('2d');
+    const canBlur = 'filter' in CanvasRenderingContext2D.prototype;
+    const glowEdges = edges.map(([a, b], i) => ({a, b, i})).filter((e) => pts[e.a].unit === 0 && pts[e.b].unit === 0 && e.i % 3 === 0);
+
+    graph.addOverlay({layer: 'under', draw: (ctx) => {
+        if (glow.width !== ctx.canvas.width || glow.height !== ctx.canvas.height) {
+            glow.width = ctx.canvas.width;
+            glow.height = ctx.canvas.height;
+        }
+        gctx.setTransform(1, 0, 0, 1, 0, 0);
+        gctx.clearRect(0, 0, glow.width, glow.height);
+        gctx.setTransform(ctx.getTransform());   // same DPR and camera as NGraph's canvas
+        gctx.lineCap = 'round';
+
+        for (const a of agents) {
+            const energy = a.activity * (focus === null || focus === a.id ? 1 : 0.25);
+            if (energy < 0.02) continue;
+            gctx.strokeStyle = a.color;
+            for (const [width, alpha] of [[4, 0.025], [1.6, 0.07], [0.6, 0.09]]) {
+                gctx.lineWidth = width;
+                gctx.globalAlpha = energy * alpha;
+                gctx.beginPath();
+                for (const e of glowEdges) {
+                    if (pts[e.a].g !== a.id) continue;
+                    gctx.moveTo(view[e.a].x, view[e.a].y);
+                    gctx.lineTo(view[e.b].x, view[e.b].y);
+                }
+                gctx.stroke();
+            }
+        }
+
+        // New links flare up in their agent's colour while they form.
+        for (const [a, b] of edges) {
+            const p = pts[a].unit > 0 ? pts[a] : pts[b].unit > 0 ? pts[b] : null;
+            if (p === null) continue;
+            const born = agents[p.g].births[p.unit - 1];
+            const age = born === undefined ? Infinity : simTime - born;
+            if (age > 2.5) continue;
+            const light = (1 - age / 2.5) * Math.min(amount(pts[a]), amount(pts[b]));
+            if (light < 0.01) continue;
+            gctx.strokeStyle = AGENTS[p.g].color;
+            for (const [width, alpha] of [[5, 0.1], [1.6, 0.4]]) {
+                gctx.lineWidth = width;
+                gctx.globalAlpha = light * alpha;
+                gctx.beginPath();
+                gctx.moveTo(view[a].x, view[a].y);
+                gctx.lineTo(view[b].x, view[b].y);
+                gctx.stroke();
+            }
+        }
+
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        if (canBlur) ctx.filter = 'blur(2px)';
+        ctx.drawImage(glow, 0, 0);
+        ctx.restore();
+        return false;   // our own loop below drives the frames
+    }});
+
+    project();
+    graph.setData(
+        pts.map((p, i) => ({id: `n${i}`, label: AGENTS[p.g].name, shape: 'dot', x: 0, y: 0})),
+        edges.map(([a, b], i) => ({id: `e${i}`, source: `n${a}`, target: `n${b}`}))
+    );
+
+    // ---- frame loop: simulate, move the camera, project, hand positions to NGraph -----------
+    let last = performance.now();
+    function frame(now) {
+        requestAnimationFrame(frame);
+        const dt = Math.min((now - last) / 1000, 0.1);
+        last = now;
+        if (document.hidden) return;
+        if (!paused) {
+            simTime += dt * speed;
+            stepAgents(dt * speed);
+        }
+        if (orbit && !drag && !paused) {
+            // Sway instead of a full turn: the mesh is a curved sheet, edge-on it would be a line.
+            orbitTime += dt;
+            targetYaw = orbitBase + Math.sin(orbitTime * 0.12) * 0.42;
+            targetPitch = orbitPitch + Math.sin(orbitTime * 0.07) * 0.12;
+        }
+        const blend = 1 - Math.exp(-dt * 6);
+        yaw += (targetYaw - yaw) * blend;
+        pitch += (targetPitch - pitch) * blend;
+        zoom += (targetZoom - zoom) * blend;
+        W = el.clientWidth;
+        H = el.clientHeight;
+        project();
+        const positions = {};
+        for (let i = 0; i < pts.length; i++) positions[`n${i}`] = view[i];
+        graph.setPositions(positions);
+    }
+    requestAnimationFrame(frame);
+
+    // ---- input: turn, zoom, focus -----------------------------------------------------------
+    let drag = null;
+    el.addEventListener('pointerdown', (e) => {
+        drag = {x: e.clientX, y: e.clientY, yaw: targetYaw, pitch: targetPitch, moved: false};
+        el.classList.add('dragging');
+    });
+    addEventListener('pointermove', (e) => {
+        if (drag === null) return;
+        const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+        if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+        targetYaw = drag.yaw + dx * 0.006;
+        targetPitch = Math.max(-1.2, Math.min(1.2, drag.pitch + dy * 0.006));
+    });
+    addEventListener('pointerup', () => {
+        if (drag !== null && drag.moved) {
+            suppressClick = performance.now();
+            orbitBase = targetYaw;
+            orbitPitch = targetPitch;
+            orbitTime = 0;
+        }
+        drag = null;
+        el.classList.remove('dragging');
+    });
+    let suppressClick = 0;
+    el.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        targetZoom = Math.max(0.5, Math.min(3, targetZoom * Math.exp(-e.deltaY * 0.0015)));
+    }, {passive: false});
+
+    function setFocus(g) {
+        focus = focus === g ? null : g;   // the style callbacks dim the other regions
+        renderCards();
+    }
+    graph.on('nodeClick', (n) => {
+        if (performance.now() - suppressClick < 250) return;
+        if (n === null) { if (focus !== null) setFocus(focus); return; }
+        setFocus(pts[+n.id.slice(1)].g);
+    });
+
+    // ---- HUD --------------------------------------------------------------------------------
+    const cards = document.getElementById('cards');
+    function renderCards() {
+        cards.replaceChildren(...agents.map((a) => {
+            const c = document.createElement('div');
+            c.className = `card ${a.state}${focus === a.id ? ' on' : ''}`;
+            c.style.setProperty('--c', a.color);
+            const name = document.createElement('div');
+            name.className = 'name';
+            name.textContent = a.name;
+            const task = document.createElement('div');
+            task.className = 'task';
+            const dot = document.createElement('span');
+            dot.className = 'dot';
+            task.append(dot, a.state === 'working' ? a.task : 'idle');
+            const count = document.createElement('div');
+            count.className = 'count';
+            count.textContent = `${a.units} result${a.units === 1 ? '' : 's'} · ${RESULTS - a.units} slots left`;
+            c.append(name, task, count);
+            c.onclick = () => setFocus(a.id);
+            return c;
+        }));
+    }
+    const ticker = document.getElementById('ticker');
+    const clock = () => { const s = Math.floor(simTime); return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; };
+    function log(text) { ticker.textContent = `${clock()} · ${text}`; }
+
+    const $ = (id) => document.getElementById(id);
+    $('pause').onclick = () => {
+        paused = !paused;
+        $('pause').textContent = paused ? '▶ Play' : '❚❚ Pause';
+    };
+    $('speed').onclick = () => {
+        speed = speed >= 8 ? 1 : speed * 2;
+        $('speed').textContent = `${speed}× speed`;
+    };
+    $('orbit').onclick = () => {
+        orbit = !orbit;
+        $('orbit').classList.toggle('on', orbit);
+    };
+    $('reset').onclick = () => { targetYaw = orbitBase = 0.15; targetPitch = orbitPitch = -0.25; targetZoom = 1; orbitTime = 0; };
+
+    renderCards();
+    window.graph = graph;
+</script>
+</body>
+</html>
