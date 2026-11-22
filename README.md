@@ -300,7 +300,8 @@ view.on('blockClick', (e) => console.log(e?.block, e?.data));
   `attention_pattern` per block, `expert_usage`, `tokenize`) for the same text, combined.
 - A renderer only: it runs no model. Cells and curves are batched by colour, so a 40-block MoE
   with 256 experts draws in about 9 ms.
-- Demo: `examples/netview.html` (simulated traces; drop a Hugin JSON on it for a real one).
+- Demo: `examples/netview.html` (simulated traces plus two real Kolibri-1 traces from
+  `examples/data/hugin-trace-kolibri1.js`; drop a Hugin JSON on it for another real one).
 
 ## Rect kit and boards
 

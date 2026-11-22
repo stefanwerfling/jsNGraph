@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { NetCompress } from '../src/netview/NetCompress';
 import { NetHugin } from '../src/netview/NetHugin';
@@ -173,5 +174,35 @@ describe('NetHugin', () => {
         expect(t.blocks[1]!.heads![0]!.top![0]!.token).toBe('The');
         expect(t.blocks[1]!.values).toHaveLength(8);
         expect(NetCompress.measure(t).settleBlock).toBe(1);
+    });
+});
+
+describe('NetHugin on a real trace (examples/data/hugin-trace-kolibri1.js)', () => {
+    const win: {HUGIN_SAMPLES?: {id: string; prompt: string; outputs: never}[]} = {};
+    new Function('window', readFileSync(new URL('../examples/data/hugin-trace-kolibri1.js', import.meta.url), 'utf8'))(win);
+    const samples = win.HUGIN_SAMPLES ?? [];
+
+    it('holds the German and the English Kolibri-1 trace', () => {
+        expect(samples.map((x) => x.id)).toEqual(['kolibri1-de', 'kolibri1-en']);
+    });
+
+    it('turns each into a full 50-block model and trace', () => {
+        for (const sample of samples) {
+            const model = NetHugin.model(sample.outputs);
+            const trace = NetHugin.trace(sample.outputs);
+
+            expect(model).toMatchObject({architecture: 'kolibri1', hidden: 2560, blocks: 50, heads: 48, kvHeads: 4, experts: 384, expertsPerToken: 6});
+            expect(model.blockKinds).toHaveLength(50);
+            expect(trace.blocks).toHaveLength(50);
+            for (const b of trace.blocks) {
+                expect(b.values).toHaveLength(2560);
+                expect(b.heads).toHaveLength(48);
+                expect(b.experts).toHaveLength(6);
+                expect(b.lens?.top.length).toBeGreaterThan(0);
+            }
+        }
+        const en = NetHugin.trace(samples[1]!.outputs);
+        expect(en.top?.[0]?.piece).toBe('ĠParis');
+        expect(NetCompress.measure(en).settleBlock).toBeLessThan(50);
     });
 });

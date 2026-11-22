@@ -184,10 +184,64 @@
         $('note').textContent = 'simulated trace · drop a Hugin JSON to show a real one';
     }
 
+    // Real traces (Hugin `trace` on a GPU), loaded on first use via <script> so file:// works.
+    const REAL = {kolibri1: {name: 'Kolibri-1 · 50 blocks (real)', src: 'data/hugin-trace-kolibri1.js', prefix: 'kolibri1-'}};
+    const loaded = {};
+    function loadScript(src) {
+        loaded[src] ??= new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = src;
+            s.onload = resolve;
+            s.onerror = () => reject(new Error(`could not load ${src}`));
+            document.head.appendChild(s);
+        });
+        return loaded[src];
+    }
+    const realSamples = (key) => (window.HUGIN_SAMPLES ?? []).filter((x) => x.id.startsWith(REAL[key].prefix));
+
+    function fillPrompts(texts) {
+        $('prompt').innerHTML = '';
+        texts.forEach((t, i) => $('prompt').add(new Option(t.replace(/\n\s*/g, ' ⏎ '), String(i))));
+    }
+
+    async function runSelected() {
+        const key = $('model').value;
+        if (!REAL[key]) {
+            runSimulated();
+            return;
+        }
+        $('note').textContent = `loading ${REAL[key].name}…`;
+        try {
+            await loadScript(REAL[key].src);
+            const sample = realSamples(key)[Number($('prompt').value)] ?? realSamples(key)[0];
+            show(sample.outputs, {});
+            $('note').textContent = `real trace · ${sample.prompt}`;
+        } catch (err) {
+            $('note').textContent = err.message;
+        }
+    }
+
+    async function onModelChange() {
+        const key = $('model').value;
+        if (REAL[key]) {
+            try {
+                await loadScript(REAL[key].src);
+                fillPrompts(realSamples(key).map((x) => x.prompt));
+            } catch (err) {
+                $('note').textContent = err.message;
+                return;
+            }
+        } else {
+            fillPrompts(PROMPTS.map((p) => p.text));
+        }
+        runSelected();
+    }
+
     for (const [id, m] of Object.entries(MODELS)) $('model').add(new Option(m.name, id));
-    PROMPTS.forEach((p, i) => $('prompt').add(new Option(p.text.replace(/\n\s*/g, ' ⏎ '), String(i))));
-    $('model').onchange = runSimulated;
-    $('prompt').onchange = runSimulated;
+    for (const [id, r] of Object.entries(REAL)) $('model').add(new Option(r.name, id));
+    fillPrompts(PROMPTS.map((p) => p.text));
+    $('model').onchange = onModelChange;
+    $('prompt').onchange = runSelected;
     $('bins').oninput = () => { $('binsOut').textContent = $('bins').value; build(); };
     $('replay').onclick = () => view.replay();
     $('fit').onclick = () => view.fit();
