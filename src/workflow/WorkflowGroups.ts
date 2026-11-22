@@ -38,13 +38,47 @@ export class WorkflowGroups {
         return `${ref.node}:${ref.port}`;
     }
 
-    /** World rectangles of the group's existing members. */
+    /**
+     * What an expanded group's frame wraps: its own nodes, the frames of
+     * expanded child groups, and the boxes of collapsed ones.
+     */
+    public static contentRects(model: WorkflowModel, group: WorkflowGroup, seen = new Set<string>()): RectArea[] {
+        seen.add(group.id);
+
+        const rects = group.nodes.filter((id) => model.node(id) !== undefined).map((id) => WorkflowGroups.nodeRect(model, id));
+
+        for (const child of model.children(group.id)) {
+            if (seen.has(child.id)) {
+                continue;
+            }
+
+            const rect = child.collapsed === true
+                ? WorkflowGroups.collapsedRect(model, child)
+                : WorkflowGroups.frame(WorkflowGroups.contentRects(model, child, seen));
+
+            if (rect !== null) {
+                rects.push(rect);
+            }
+        }
+
+        return rects;
+    }
+
+    /** The frame of a group as drawn when expanded (null without members). */
+    public static frameOf(model: WorkflowModel, group: WorkflowGroup): RectArea | null {
+        return WorkflowGroups.frame(WorkflowGroups.contentRects(model, group));
+    }
+
+    private static nodeRect(model: WorkflowModel, id: string): RectArea {
+        const node = model.node(id)!;
+        const size = WorkflowGeometry.nodeSize(model.getType(node.type));
+
+        return {x: node.x, y: node.y, w: size.w, h: size.h};
+    }
+
+    /** World rectangles of the group's existing members (nested ones included). */
     public static memberRects(model: WorkflowModel, group: WorkflowGroup): RectArea[] {
-        return model.members(group.id).map((id) => {
-            const node = model.node(id)!;
-            const size = WorkflowGeometry.nodeSize(model.getType(node.type));
-            return {x: node.x, y: node.y, w: size.w, h: size.h};
-        });
+        return model.members(group.id).map((id) => WorkflowGroups.nodeRect(model, id));
     }
 
     /** The frame of an expanded group: members' box plus padding and the header on top. */
@@ -133,13 +167,26 @@ export class WorkflowGroups {
         return box === null ? null : {x: box.x, y: box.y, ...WorkflowGeometry.nodeSize(type)};
     }
 
-    /** Collapsed groups (with members) and, for each hidden node, the group hiding it. */
+    /**
+     * What is hidden, and by which collapsed group drawn in its place: member
+     * nodes, and groups nested inside a collapsed group. With nesting, the
+     * outermost collapsed group around an item wins.
+     */
     public static hidden(model: WorkflowModel): Map<string, string> {
         const out = new Map<string, string>();
+        const outermost = (chain: string[]): string | undefined =>
+            [...chain].reverse().find((g) => model.group(g)?.collapsed === true);
 
-        for (const g of model.allGroups()) {
-            if (g.collapsed === true) {
-                model.members(g.id).forEach((m) => out.set(m, g.id));
+        for (const n of model.allNodes()) {
+            const g = outermost(model.ancestors(n.id));
+            if (g !== undefined) {
+                out.set(n.id, g);
+            }
+        }
+        for (const grp of model.allGroups()) {
+            const g = outermost(model.ancestors(grp.id));
+            if (g !== undefined) {
+                out.set(grp.id, g);
             }
         }
 
@@ -172,7 +219,7 @@ export class WorkflowGroups {
 
         for (const g of model.allGroups()) {
             const type = WorkflowGroups.collapsedType(model, g);
-            const rect = g.collapsed === true ? WorkflowGroups.collapsedRect(model, g, type) : null;
+            const rect = g.collapsed === true && !hidden.has(g.id) ? WorkflowGroups.collapsedRect(model, g, type) : null;
 
             if (rect !== null) {
                 types.push(type);

@@ -639,34 +639,45 @@ export class WorkflowEditor {
     }
 
     /**
-     * Frame nodes as a sub-workflow (default: the selected nodes; a selected
-     * group brings its members — groups do not nest, so it is merged into
-     * the new one). One undo step; the new group is selected.
+     * Frame nodes and groups as a sub-workflow (default: the selection). A
+     * selected group goes in whole and becomes a child — groups nest. The new
+     * group sits in the innermost group around all of them (or `data.parent`).
+     * One undo step; the new group is selected.
      */
     public group(
         ids: Iterable<string> = this.selected, data: Partial<Omit<WorkflowGroup, 'id' | 'nodes'>> = {}
     ): WorkflowGroup | null {
-        const list = [...ids];
-        const nodes = this.model.expandGroups(list).filter((id) => this.model.node(id) !== undefined);
+        const wanted = [...new Set(ids)].filter((id) => this.model.node(id) !== undefined || this.model.group(id) !== undefined);
+        // An item inside another selected group goes along with that group.
+        const list = wanted.filter((id) => !this.model.ancestors(id).some((a) => wanted.includes(a)));
+        const nodes = list.filter((id) => this.model.node(id) !== undefined);
+        const groups = list.filter((id) => this.model.group(id) !== undefined);
 
-        if (this.readOnlyFlag || nodes.length === 0) {
+        if (this.readOnlyFlag || this.model.expandGroups(list).filter((id) => this.model.node(id) !== undefined).length === 0) {
             return null;
         }
 
-        const merged = this.model.removeGroups(list.filter((id) => this.model.group(id) !== undefined));
-        const group = this.model.addGroup({...data, nodes});
+        const before = new Set(this.model.allGroups().map((g) => g.id));
+        const parent = data.parent ?? this.model.commonParent(list);
+        const group = this.model.addGroup({...data, parent, nodes, groups});
+        const gone = [...before].filter((id) => this.model.group(id) === undefined);
 
         this.renderGroups();
         this.renderConnections();
         this.setSelection(new Set([group.id]), null);
-        this.commit('group', nodes, [], [], [group.id, ...merged]);
+        this.commit('group', this.model.members(group.id), [], [], [group.id, ...groups, ...gone]);
 
         return structuredClone(group);
     }
 
-    /** Dissolve a group; its nodes stay (and show again) and get selected. */
+    /**
+     * Dissolve a group; its nodes and child groups move up one level (into
+     * its parent, or to the top) and get selected.
+     */
     public ungroup(id: string): boolean {
-        const nodes = this.model.members(id);
+        const group = this.model.group(id);
+        const items = group === undefined ? [] : [...this.model.members(id).filter((m) => group.nodes.includes(m)),
+            ...this.model.children(id).map((c) => c.id)];
 
         if (this.readOnlyFlag || this.model.removeGroups([id]).length === 0) {
             return false;
@@ -674,8 +685,9 @@ export class WorkflowEditor {
 
         this.renderGroups();
         this.renderConnections();
-        this.setSelection(new Set(nodes), null);
-        this.commit('ungroup', nodes, [], [], [id]);
+        this.setSelection(new Set(items.filter((i) => this.hasItem(i))), null);
+        this.commit('ungroup', items.filter((i) => this.model.node(i) !== undefined), [], [],
+            [id, ...items.filter((i) => this.model.group(i) !== undefined)]);
 
         return true;
     }
@@ -709,8 +721,8 @@ export class WorkflowEditor {
         this.cancelGesture();
         this.finishGroupEdit(true);
 
-        const members = new Set(this.model.members(id));
-        const hadMember = [...this.selected].some((s) => members.has(s));
+        const inside = new Set([...this.model.members(id), ...this.model.descendantGroups(id).filter((g) => g !== id)]);
+        const hadMember = [...this.selected].some((s) => inside.has(s));
         const box = collapsed ? null : WorkflowGroups.collapsedRect(this.model, group);
         const moved = box === null ? [] : this.makeRoom(group, box);
 
@@ -734,10 +746,11 @@ export class WorkflowEditor {
      * as much as the frame outgrows it. Returns the moved node ids.
      */
     private makeRoom(group: WorkflowGroup, box: RectArea): string[] {
-        const frame = WorkflowGroups.frame(WorkflowGroups.memberRects(this.model, group));
-        const members = new Set(this.model.members(group.id));
-        const others = [...this.nodeViews].filter(([id]) => this.model.node(id) !== undefined && !members.has(id));
-        const gap = WorkflowGroups.PAD;
+        const frame = WorkflowGroups.frameOf(this.model, group);
+        const inside = new Set([...this.model.members(group.id), ...this.model.descendantGroups(group.id)]);
+        // Nodes, and collapsed groups (moved with their members), outside the opening group.
+        const others = [...this.nodeViews].filter(([id]) => !inside.has(id) && (this.model.node(id) !== undefined || this.model.group(id) !== undefined));
+        const gap = WorkflowGroups.PAD * 2;   // room for ports and a little air
 
         if (frame === null) {
             return [];
@@ -758,11 +771,16 @@ export class WorkflowEditor {
             const below = !right && v.rect.y >= box.y + box.h && v.rect.x < frame.x + frame.w && v.rect.x + v.rect.w > frame.x;
             const shift = right ? {x: dx, y: 0} : below ? {x: 0, y: dy} : null;
 
-            if (shift !== null && (shift.x !== 0 || shift.y !== 0)) {
-                this.model.moveNode(id, v.rect.x + shift.x, v.rect.y + shift.y);
-                this.positionNode(id);
-                moved.push(id);
+            if (shift === null || (shift.x === 0 && shift.y === 0)) {
+                continue;
             }
+            for (const n of this.model.node(id) !== undefined ? [id] : this.model.members(id)) {
+                const node = this.model.node(n)!;
+
+                this.model.moveNode(n, node.x + shift.x, node.y + shift.y);
+                moved.push(n);
+            }
+            this.positionNode(id);
         }
 
         return moved;
@@ -1539,8 +1557,11 @@ export class WorkflowEditor {
         this.groupLayer.replaceChildren();
         this.groupViews.clear();
 
-        for (const group of this.model.allGroups()) {
-            if (this.model.members(group.id).length === 0) {
+        // Outer frames first, so inner ones lie on top of them.
+        const groups = this.model.allGroups().map((g) => ({g, depth: this.model.depth(g.id)})).sort((a, b) => a.depth - b.depth);
+
+        for (const {g: group} of groups) {
+            if (this.model.members(group.id).length === 0 || this.hiddenBy.has(group.id)) {
                 continue;
             }
             if (group.collapsed === true) {
@@ -1636,7 +1657,7 @@ export class WorkflowEditor {
             return;
         }
 
-        const rect = WorkflowGroups.frame(WorkflowGroups.memberRects(this.model, group));
+        const rect = WorkflowGroups.frameOf(this.model, group);
 
         if (rect === null) {
             return;

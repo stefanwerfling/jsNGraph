@@ -91,7 +91,7 @@ label (`editConnectionLabel`, Enter/blur keeps, Escape cancels; off with `editCo
 by the host with `setConnectionLabel` (one `updateConnection` change, undoable). Survives reroute, copy/paste,
 and an insert keeps it on the upstream half. `connectionDblClick` event.
 
-Sub-workflows (groups): `doc.groups` (`WorkflowGroup`: `id`, `label?`, `nodes`, `collapsed?`, `color?`) — part of
+Sub-workflows (groups): `doc.groups` (`WorkflowGroup`: `id`, `label?`, `nodes`, `parent?`, `collapsed?`, `color?`) — part of
 the document. Expanded, a dashed frame with a header (collapse button, label, node count) surrounds the members
 and follows them; dragging the header moves the whole group, double-clicking it renames it (`editGroupLabel`).
 Collapsed, the members are hidden and the group is drawn as one stacked node (at the members' top-left) whose
@@ -99,14 +99,24 @@ ports are *proxies*: one per member port with a connection across the border (`W
 labelled only where a side has several), connections inside are not drawn. Proxy ports are shown, not grabbed —
 open the group to rewire; no insert into a connection whose source is hidden. ▸ / double-click opens it again,
 also in the viewer; collapsing and expanding is one `updateGroup` change (undoable), and opening a group that
-would cover other nodes first moves the nodes right of it right and those under it down. Groups do not nest
-(a node is in one group at most; grouping a group merges it). API: `group(ids?, data?)` (Ctrl+G, the
-selection), `ungroup(id)` (Ctrl+Shift+G), `setGroupCollapsed` / `toggleGroup`, `updateGroup`, `getGroup`,
+would cover other nodes first moves the nodes right of it right and those under it down. API: `group(ids?, data?)`
+(Ctrl+G, the selection), `ungroup(id)` (Ctrl+Shift+G), `setGroupCollapsed` / `toggleGroup`, `updateGroup`, `getGroup`,
 `groupOf`; `remove` / Delete on a group removes its nodes, copy/paste and duplicate carry groups along,
 `setDisabled` applies to the members. The selection (`getSelection`, `selectionChange`) has `groups`, a change
 has `groups`. Run status of hidden members shows on the collapsed node (error › running › waiting › success),
 and it stays lit when any member ran. `tidyUp` lays out the drawn picture — a collapsed group is one node —
 via the pure `WorkflowGroups.substitute` (`test/WorkflowGroups.test.ts`).
+
+Nested groups: `WorkflowGroup.parent` puts a group inside another; `nodes` lists the direct members only, a node
+is in one group at most (the innermost). Grouping a selection that contains a group makes it a child of the new
+group, and the new group sits in the innermost group around everything selected (`WorkflowModel.commonParent`;
+an item inside another selected group goes along with it). Ungrouping moves the content up one level. A frame wraps
+its own nodes plus the frames (or collapsed boxes) of its child groups (`WorkflowGroups.frameOf`), inner frames lie
+on top; the outermost collapsed group around a node or group is what is drawn for it (`WorkflowGroups.hidden`), and
+a collapsed group's proxy ports and run status cover all levels. Dragging a header moves everything inside; deleting
+a group deletes its whole subtree; copy/paste keeps the tree (a group copied without its parent lands at the top);
+a group left without nodes is removed, its parent too if that empties it. Loading drops missing and cyclic parents.
+Model helpers: `children`, `ancestors`, `depth`, `members` (all levels), `descendantGroups`, `commonParent`.
 
 Run replay: `editor.startRecording()` / `stopRecording()` record every status call (`setNodeStatus`,
 `setConnectionStatus`, `setRunPath`, `clearStatus`) with its time as `WorkflowRunEvent`s — the host's run code stays as
@@ -120,4 +130,3 @@ at that moment. Works in the viewer and the editor; the document is never touche
 (`sorted`, `duration`, `steps`, `stateAt`, `compress` — squeeze long idle gaps, `errorTimes`; `test/WorkflowRun.test.ts`).
 The example records each ▶ Run; ⟲ Replay plays it back in view-only mode.
 
-Later / optional: nested groups.

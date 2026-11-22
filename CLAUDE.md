@@ -138,7 +138,8 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   `WorkflowStyles.varsFromTheme`. Connection labels: `WorkflowConnection.label` (document data, under the line),
   double-click to edit, `setConnectionLabel`. Sub-workflows: `doc.groups` (`WorkflowGroup`), frame + header when
   expanded, one node with proxy ports (member ports with traffic across the border) when collapsed; pure part in
-  `WorkflowGroups.ts` (`proxies`, `frame`, `substitute` = the model as drawn, used by `tidyUp`); groups don't nest;
+  `WorkflowGroups.ts` (`proxies`, `frameOf`, `hidden`, `substitute` = the model as drawn, used by `tidyUp`); groups nest
+  via `WorkflowGroup.parent` (`nodes` = direct members, the outermost collapsed group is drawn, ungroup = up one level);
   Ctrl+G / Ctrl+Shift+G; collapse is an undoable document change, also allowed read-only.
   Run replay: `startRecording`/`stopRecording` capture the status calls as timed `WorkflowRunEvent`s;
   `WorkflowReplay` (own file) plays them back through the status API with an optional control bar (scrubber, steps,

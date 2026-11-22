@@ -79,7 +79,7 @@
     drag from the palette (onto a connection to insert) · double-click a note or connection to write<br>
     drag ports to connect · drag a connected input to move it · “+” adds a node<br>
     Shift+drag: select area · Del: delete (re-links the chain) · D: disable<br>
-    Ctrl+G: group into a sub-workflow · Ctrl+Shift+G: ungroup · double-click a collapsed group to open it<br>
+    Ctrl+G: group into a sub-workflow (groups nest) · Ctrl+Shift+G: ungroup one level · double-click a collapsed group to open it<br>
     Ctrl+C / X / V / D: copy, cut, paste, duplicate · Ctrl+Z / Ctrl+Y · wheel: zoom
 </div>
 
@@ -141,9 +141,11 @@
             // A loop back: the report feeds the customer lookup again — drawn as a detour.
             {id: 'c11', from: {node: 'send', port: 'main'}, to: {node: 'fetch', port: 'main'}, label: 'retry on bounce'}
         ],
-        // A sub-workflow: the AI part, collapsed into one node (▸ or double-click opens it).
+        // Sub-workflows nest: "Reply" holds the AI part (collapsed into one node — ▸ or
+        // double-click opens it), the standard path and the merge.
         groups: [
-            {id: 'ai', label: 'AI reply', nodes: ['agent', 'llm', 'crm'], collapsed: true, color: '#9a7be0'}
+            {id: 'reply', label: 'Reply', nodes: ['fmt', 'merge']},
+            {id: 'ai', label: 'AI reply', nodes: ['agent', 'llm', 'crm'], parent: 'reply', collapsed: true, color: '#9a7be0'}
         ]
     };
 

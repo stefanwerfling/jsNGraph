@@ -79,6 +79,27 @@ export class WorkflowModel {
         this.connections = new Map(doc.connections.map((c) => [c.id, structuredClone(c)]));
         this.notes = new Map((doc.notes ?? []).map((n) => [n.id, structuredClone(n)]));
         this.groups = new Map((doc.groups ?? []).map((g) => [g.id, structuredClone(g)]));
+        this.repairParents();
+    }
+
+    /** A parent that is missing, or that would make a cycle, is dropped (the group moves to the top). */
+    private repairParents(): void {
+        for (const g of this.groups.values()) {
+            if (g.parent !== undefined && !this.groups.has(g.parent)) {
+                delete g.parent;
+            }
+        }
+        for (const g of this.groups.values()) {
+            const seen = new Set([g.id]);
+
+            for (let p = g.parent; p !== undefined; p = this.groups.get(p)?.parent) {
+                if (seen.has(p)) {
+                    delete g.parent;
+                    break;
+                }
+                seen.add(p);
+            }
+        }
     }
 
     /** Deep copy of the current document. */
@@ -269,51 +290,145 @@ export class WorkflowModel {
         return [...this.groups.values()];
     }
 
-    /** The group a node belongs to, if any. */
+    /** The group a node directly belongs to, if any (the innermost one). */
     public groupOf(nodeId: string): WorkflowGroup | undefined {
         return this.allGroups().find((g) => g.nodes.includes(nodeId));
     }
 
-    /** Member ids of a group that exist as nodes (a loaded document may name missing ones). */
-    public members(groupId: string): string[] {
-        return (this.groups.get(groupId)?.nodes ?? []).filter((id) => this.nodes.has(id));
+    /** The groups directly inside a group. */
+    public children(groupId: string): WorkflowGroup[] {
+        return this.allGroups().filter((g) => g.parent === groupId);
+    }
+
+    /** The groups around a node or group, innermost first (a group does not count itself). */
+    public ancestors(id: string): string[] {
+        const out: string[] = [];
+        let next = this.groups.has(id) ? this.groups.get(id)!.parent : this.groupOf(id)?.id;
+
+        while (next !== undefined && !out.includes(next)) {
+            out.push(next);
+            next = this.groups.get(next)?.parent;
+        }
+
+        return out;
+    }
+
+    /** Nesting depth of a group: 0 at the top level. */
+    public depth(groupId: string): number {
+        return this.ancestors(groupId).length;
     }
 
     /**
-     * Group existing nodes (id generated when empty). Groups do not nest: the
-     * nodes leave any group they were in, and a group left empty is removed.
-     * Throws on a duplicate id or when none of the nodes exist.
+     * Existing member nodes of a group, child groups' nodes included (a loaded
+     * document may name missing ones).
      */
-    public addGroup(data: Partial<WorkflowGroup> & {nodes: string[]}): WorkflowGroup {
+    public members(groupId: string): string[] {
+        const out: string[] = [];
+        const visit = (id: string, seen: Set<string>): void => {
+            if (seen.has(id)) {
+                return;
+            }
+            seen.add(id);
+            out.push(...(this.groups.get(id)?.nodes ?? []).filter((n) => this.nodes.has(n)));
+            this.children(id).forEach((c) => visit(c.id, seen));
+        };
+
+        visit(groupId, new Set());
+        return out;
+    }
+
+    /** A group and every group nested in it, outermost first. */
+    public descendantGroups(groupId: string): string[] {
+        const out: string[] = [];
+        const queue = [groupId];
+
+        while (queue.length > 0) {
+            const id = queue.shift()!;
+
+            if (this.groups.has(id) && !out.includes(id)) {
+                out.push(id);
+                queue.push(...this.children(id).map((c) => c.id));
+            }
+        }
+
+        return out;
+    }
+
+    /**
+     * The innermost group that contains all of `ids` (nodes and groups) without
+     * being one of them — where a new group around them belongs. Undefined at
+     * the top level.
+     */
+    public commonParent(ids: Iterable<string>): string | undefined {
+        let common: string[] | null = null;
+
+        for (const id of ids) {
+            const chain = this.ancestors(id);
+            common = common === null ? chain : common.filter((g) => chain.includes(g));
+        }
+
+        return common?.[0];
+    }
+
+    /**
+     * Group existing nodes and groups (id generated when empty). Nodes leave
+     * the group they were in, listed `groups` move into the new one (a group
+     * left without content is removed), and the new group sits in `parent`.
+     * Throws on a duplicate id, when there is nothing to group, or when
+     * `parent` would make a cycle.
+     */
+    public addGroup(data: Partial<Omit<WorkflowGroup, 'nodes'>> & {nodes: string[]; groups?: string[]}): WorkflowGroup {
         const id = data.id !== undefined && data.id.length > 0 ? data.id : this.nextId('g');
         const nodes = [...new Set(data.nodes)].filter((n) => this.nodes.has(n));
+        const children = [...new Set(data.groups ?? [])].filter((g) => this.groups.has(g));
+        const parent = data.parent !== undefined && this.groups.has(data.parent) ? data.parent : undefined;
 
         if (this.groups.has(id) || this.nodes.has(id) || this.notes.has(id)) {
             throw new Error(`Workflow group id '${id}' already exists`);
         }
-        if (nodes.length === 0) {
+        if (nodes.length === 0 && !children.some((c) => this.members(c).length > 0)) {
             throw new Error('A workflow group needs at least one node');
         }
-
-        for (const n of nodes) {
-            this.dropFromGroups(n);
+        if (parent !== undefined && children.some((c) => c === parent || this.ancestors(parent).includes(c))) {
+            throw new Error('A workflow group cannot sit inside a group it contains');
         }
 
         const group: WorkflowGroup = {...structuredClone(data), id, nodes};
-        this.groups.set(id, group);
+        delete (group as {groups?: string[]}).groups;
+        if (parent === undefined) {
+            delete group.parent;
+        } else {
+            group.parent = parent;
+        }
+
+        this.groups.set(id, group);   // first, so the old groups pruned below cannot take the parent with them
+        for (const n of nodes) {
+            this.dropFromGroups(n, id);
+        }
+        for (const c of children) {
+            const old = this.groups.get(c)!.parent;
+            this.groups.get(c)!.parent = id;
+            this.prune(old);
+        }
 
         return group;
     }
 
     /** Patch label, colour or collapsed state; a blank label goes back to the default. */
-    public updateGroup(id: string, patch: Partial<Omit<WorkflowGroup, 'id' | 'nodes'>>): boolean {
+    public updateGroup(id: string, patch: Partial<Omit<WorkflowGroup, 'id' | 'nodes' | 'parent'>>): boolean {
         const group = this.groups.get(id);
 
         if (group === undefined) {
             return false;
         }
 
+        const parent = group.parent;
         Object.assign(group, structuredClone(patch), {id, nodes: group.nodes});
+        if (parent === undefined) {
+            delete group.parent;
+        } else {
+            group.parent = parent;
+        }
         if (group.label !== undefined && group.label.trim() === '') {
             delete group.label;
         } else if (group.label !== undefined) {
@@ -326,9 +441,35 @@ export class WorkflowModel {
         return true;
     }
 
-    /** Dissolve groups (their nodes stay); returns the ids that existed. */
+    /**
+     * Dissolve groups: their nodes and child groups move up into the parent
+     * (or to the top level). Returns the ids that existed.
+     */
     public removeGroups(ids: Iterable<string>): string[] {
-        return [...new Set(ids)].filter((id) => this.groups.delete(id));
+        const removed: string[] = [];
+
+        for (const id of new Set(ids)) {
+            const g = this.groups.get(id);
+
+            if (g === undefined) {
+                continue;
+            }
+
+            const parent = g.parent === undefined ? undefined : this.groups.get(g.parent);
+
+            parent?.nodes.push(...g.nodes.filter((n) => !parent.nodes.includes(n)));
+            for (const c of this.children(id)) {
+                if (parent === undefined) {
+                    delete c.parent;
+                } else {
+                    c.parent = parent.id;
+                }
+            }
+            this.groups.delete(id);
+            removed.push(id);
+        }
+
+        return removed;
     }
 
     /** `ids` with every group id replaced by its member nodes. */
@@ -346,15 +487,29 @@ export class WorkflowModel {
         return [...out];
     }
 
-    private dropFromGroups(nodeId: string): void {
+    /** Take a node out of its group(s) (except `keep`); groups left without content go. */
+    private dropFromGroups(nodeId: string, keep?: string): void {
         for (const g of this.allGroups()) {
-            if (!g.nodes.includes(nodeId)) {
-                continue;
+            if (g.id !== keep && g.nodes.includes(nodeId)) {
+                g.nodes = g.nodes.filter((n) => n !== nodeId);
+                this.prune(g.id);
             }
-            g.nodes = g.nodes.filter((n) => n !== nodeId);
-            if (!g.nodes.some((n) => this.nodes.has(n))) {
-                this.groups.delete(g.id);
+        }
+    }
+
+    /** Remove a group that has no member nodes left, then check its parent the same way. */
+    private prune(groupId: string | undefined): void {
+        while (groupId !== undefined) {
+            const g = this.groups.get(groupId);
+
+            if (g === undefined || this.members(groupId).length > 0) {
+                return;
             }
+            for (const c of this.children(groupId)) {   // empty children go along
+                this.groups.delete(c.id);
+            }
+            this.groups.delete(groupId);
+            groupId = g.parent;
         }
     }
 
@@ -387,7 +542,7 @@ export class WorkflowModel {
      */
     public fragment(ids: Iterable<string>): WorkflowDocument {
         ids = [...ids];
-        const groupIds = [...new Set(ids)].filter((id) => this.groups.has(id));
+        const groupIds = [...new Set([...new Set(ids)].filter((id) => this.groups.has(id)).flatMap((id) => this.descendantGroups(id)))];
         const set = new Set(this.expandGroups(ids).filter((id) => this.nodes.has(id)));
 
         const frag: WorkflowDocument = {
@@ -403,6 +558,9 @@ export class WorkflowModel {
             frag.groups = groupIds.map((id) => {
                 const g = structuredClone(this.groups.get(id)!);
                 g.nodes = g.nodes.filter((n) => set.has(n));
+                if (g.parent !== undefined && !groupIds.includes(g.parent)) {
+                    delete g.parent;   // copied without its parent: it lands at the top level
+                }
                 return g;
             });
         }
@@ -453,11 +611,26 @@ export class WorkflowModel {
             }
         }
 
-        for (const g of fragment.groups ?? []) {
-            const members = g.nodes.map((n) => idMap.get(n)).filter((n): n is string => n !== undefined);
+        // Innermost groups first, so a parent can take its pasted children along.
+        const frag = fragment.groups ?? [];
+        const fragIds = new Set(frag.map((g) => g.id));
+        const depth = (g: WorkflowGroup): number => {
+            let d = 0;
+            for (let p = g.parent; p !== undefined && fragIds.has(p) && d < frag.length; p = frag.find((x) => x.id === p)?.parent) {
+                d++;
+            }
+            return d;
+        };
 
-            if (members.length > 0) {
-                groups.push(this.addGroup({...g, id: this.nextId('g'), nodes: members}).id);
+        for (const g of [...frag].sort((a, b) => depth(b) - depth(a))) {
+            const members = g.nodes.map((n) => idMap.get(n)).filter((n): n is string => n !== undefined);
+            const kids = frag.filter((c) => c.parent === g.id).map((c) => idMap.get(c.id)).filter((c): c is string => c !== undefined);
+            const {parent: _parent, ...rest} = g;
+
+            if (members.length > 0 || kids.some((k) => this.members(k).length > 0)) {
+                const added = this.addGroup({...rest, id: this.nextId('g'), nodes: members, groups: kids});
+                idMap.set(g.id, added.id);
+                groups.push(added.id);
             }
         }
 

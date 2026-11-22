@@ -84,6 +84,92 @@ describe('WorkflowModel groups', () => {
     });
 });
 
+describe('WorkflowModel nested groups', () => {
+    it('nests a group in a new one and lists members through the levels', () => {
+        const m = build();
+        const inner = m.addGroup({nodes: ['b', 'c'], label: 'Branches'});
+        const outer = m.addGroup({nodes: ['if'], groups: [inner.id], label: 'Route'});
+
+        expect(m.group(inner.id)!.parent).toBe(outer.id);
+        expect(m.members(outer.id).sort()).toEqual(['b', 'c', 'if']);
+        expect(m.ancestors('b')).toEqual([inner.id, outer.id]);
+        expect(m.depth(inner.id)).toBe(1);
+        expect(m.descendantGroups(outer.id)).toEqual([outer.id, inner.id]);
+        expect(m.commonParent(['b', 'c'])).toBe(inner.id);
+        expect(m.commonParent(['b', 'if'])).toBe(outer.id);
+        expect(m.commonParent(['b', 't'])).toBeUndefined();
+        expect(m.expandGroups([outer.id]).sort()).toEqual(['b', 'c', 'if']);
+
+        // A sub-group inside the inner one keeps its place in the tree.
+        const sub = m.addGroup({nodes: ['b'], parent: m.commonParent(['b'])});
+        expect(m.group(sub.id)!.parent).toBe(inner.id);
+        expect(m.group(inner.id)!.nodes).toEqual(['c']);
+        expect(() => m.addGroup({nodes: ['a'], groups: [outer.id], parent: inner.id})).toThrow();
+    });
+
+    it('moves content up one level when a group is dissolved, and prunes empty ones', () => {
+        const m = build();
+        const inner = m.addGroup({nodes: ['b', 'c']});
+        const outer = m.addGroup({nodes: ['if'], groups: [inner.id]});
+        const mid = m.addGroup({nodes: ['b'], parent: inner.id});
+
+        m.removeGroups([inner.id]);
+        expect(m.group(outer.id)!.nodes.sort()).toEqual(['c', 'if']);
+        expect(m.group(mid.id)!.parent).toBe(outer.id);
+
+        m.removeNodes(['b']);
+        expect(m.group(mid.id)).toBeUndefined();          // emptied
+        m.removeNodes(['c', 'if']);
+        expect(m.allGroups()).toEqual([]);                // the outer one went too
+    });
+
+    it('keeps the outer group when its only nodes move into a sub-group', () => {
+        const m = build();
+        const outer = m.addGroup({nodes: ['a', 'if']});
+        const inner = m.addGroup({nodes: ['a', 'if'], parent: outer.id});
+
+        expect(m.group(outer.id)).toBeDefined();
+        expect(m.group(outer.id)!.nodes).toEqual([]);
+        expect(m.members(outer.id).sort()).toEqual(['a', 'if']);
+        expect(m.group(inner.id)!.parent).toBe(outer.id);
+    });
+
+    it('repairs missing and cyclic parents on load', () => {
+        const m = new WorkflowModel(TYPES, {
+            nodes: [{id: 'a', type: 'step', x: 0, y: 0}, {id: 'b', type: 'step', x: 0, y: 100}],
+            connections: [],
+            groups: [
+                {id: 'g1', nodes: ['a'], parent: 'g2'},
+                {id: 'g2', nodes: ['b'], parent: 'g1'},
+                {id: 'g3', nodes: [], parent: 'nope'}
+            ]
+        });
+
+        expect(m.group('g3')!.parent).toBeUndefined();
+        expect([m.group('g1')!.parent, m.group('g2')!.parent].filter((p) => p !== undefined)).toHaveLength(1);
+    });
+
+    it('copies a group with its sub-groups and pastes the tree under new ids', () => {
+        const m = build();
+        const inner = m.addGroup({nodes: ['b', 'c'], collapsed: true});
+        const outer = m.addGroup({nodes: ['if'], groups: [inner.id], label: 'Route'});
+        const frag = m.fragment([outer.id]);
+
+        expect(frag.groups!.map((g) => g.id)).toEqual([outer.id, inner.id]);
+
+        const added = m.paste(frag, 0, 400);
+        const [newOuter, newInner] = [added.groups.find((g) => m.group(g)!.label === 'Route')!, added.groups.find((g) => m.group(g)!.label === undefined)!];
+
+        expect(added.groups).toHaveLength(2);
+        expect(m.group(newInner)!.parent).toBe(newOuter);
+        expect(m.group(newInner)!.collapsed).toBe(true);
+        expect(m.members(newOuter)).toHaveLength(3);
+
+        // Copying only the inner group: it lands at the top level.
+        expect(m.fragment([inner.id]).groups![0]!.parent).toBeUndefined();
+    });
+});
+
 describe('WorkflowGroups', () => {
     it('frames the members with padding and a header', () => {
         expect(WorkflowGroups.frame([{x: 100, y: 100, w: 200, h: 64}, {x: 400, y: 200, w: 200, h: 64}])).toEqual({
@@ -140,6 +226,40 @@ describe('WorkflowGroups', () => {
         expect(p.get(g.id)!.x).toBeGreaterThan(p.get('t')!.x);
         expect(p.get('b')!.x).toBeGreaterThan(p.get(g.id)!.x);
         expect(p.get('end')!.x).toBeGreaterThan(p.get('b')!.x);
+    });
+
+    it('hides nested content behind the outermost collapsed group', () => {
+        const m = build();
+        const inner = m.addGroup({nodes: ['b', 'c'], collapsed: true});
+        const outer = m.addGroup({nodes: ['if'], groups: [inner.id]});
+
+        let hidden = WorkflowGroups.hidden(m);
+        expect(hidden.get('b')).toBe(inner.id);
+        expect(hidden.has('if')).toBe(false);
+        expect(hidden.has(inner.id)).toBe(false);
+
+        // The outer frame wraps the inner box (collapsed) and its own node.
+        const frame = WorkflowGroups.frameOf(m, m.group(outer.id)!)!;
+        const box = WorkflowGroups.collapsedRect(m, m.group(inner.id)!)!;
+        expect(frame.x).toBeLessThanOrEqual(box.x - WorkflowGroups.PAD);
+        expect(frame.y + frame.h).toBeGreaterThanOrEqual(box.y + box.h + WorkflowGroups.PAD);
+
+        m.updateGroup(outer.id, {collapsed: true});
+        hidden = WorkflowGroups.hidden(m);
+        expect(hidden.get('b')).toBe(outer.id);
+        expect(hidden.get(inner.id)).toBe(outer.id);
+
+        const drawn = WorkflowGroups.substitute(m);
+        expect(drawn.node(outer.id)).toBeDefined();
+        expect(drawn.node(inner.id)).toBeUndefined();
+        expect(drawn.connection('c5')!.from).toEqual({node: outer.id, port: 'b:main'});
+
+        // Expanded outer, expanded inner: the inner frame (with header) sits inside the outer one.
+        m.updateGroup(outer.id, {collapsed: false});
+        m.updateGroup(inner.id, {collapsed: false});
+        const o = WorkflowGroups.frameOf(m, m.group(outer.id)!)!;
+        const i = WorkflowGroups.frameOf(m, m.group(inner.id)!)!;
+        expect(i.y - o.y).toBeGreaterThanOrEqual(WorkflowGroups.HEADER + WorkflowGroups.PAD);
     });
 
     it('maps drawn ends and spots internal connections', () => {

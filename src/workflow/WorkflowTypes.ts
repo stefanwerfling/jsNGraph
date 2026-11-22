@@ -83,8 +83,10 @@ export interface WorkflowGroup {
     id: string;
     /** Header / node title. Default 'Group'. */
     label?: string;
-    /** Member node ids. */
+    /** Member node ids (direct members; nodes of child groups are listed there). */
     nodes: string[];
+    /** The group this one sits in (groups nest). Omitted at the top level. */
+    parent?: string;
     collapsed?: boolean;
     /** Tint (any CSS colour). Default: the selection blue. */
     color?: string;
