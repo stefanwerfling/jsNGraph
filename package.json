@@ -38,6 +38,11 @@
       "types": "./dist/widget.d.ts",
       "import": "./dist/widget.js",
       "require": "./dist/widget.cjs"
+    },
+    "./netview": {
+      "types": "./dist/netview.d.ts",
+      "import": "./dist/netview.js",
+      "require": "./dist/netview.cjs"
     }
   },
   "files": [

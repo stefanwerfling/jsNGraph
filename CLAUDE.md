@@ -154,6 +154,16 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   Drawn in a fixed 290 view box (+16 px per side for the 06:00/18:00 labels). Pure part `DayClockGeometry.ts`
   (`place` = ring layout, arcs, wedge; `test/DayClock.test.ts`). Example: `examples/dayclock.html`.
 
+- `netview/` — `NetView` (subpath `jsngraph/netview`): a transformer compressed to fit the browser — one
+  column per block, residual stream folded into `bins` (signed max per bin, scaled median→0 / p95→1 so
+  standing-out dims glow), heads (focus = 1 − H/ln ctx) and MoE experts (picks + prompt load) below, lens
+  top-1 under each column, measurement strip (p(answer) line, Δ residual bars, appears/settles marks).
+  A trace lays the active path (strongest bins block→block, `pathWidth`²curves per gap) over it; sweep +
+  flow dots. Pure parts: `NetCompress` (bins, normalize, strongest, focus, `measure`), `NetLayout`
+  (geometry, `hit`), `NetHugin` (Hugin forward-tool outputs → model + trace); `test/NetView.test.ts`.
+  Cells/curves are batched per colour×alpha bucket (34 → 9 ms/frame for 40 blocks × 256 experts).
+  Example: `examples/netview.html` (simulated traces, drop a Hugin JSON for a real one).
+
 ## Commands
 
 - `npm run dev` — `tsup --watch`. `npm run build` — `dist/index.{js,cjs,d.ts}` (npm) +

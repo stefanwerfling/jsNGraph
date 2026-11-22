@@ -10,6 +10,8 @@ parts that share one camera and one theme, plus small standalone widgets:
   connections, undo, sub-workflows, run status and run replay. Graphics only; what a node
   does stays in your app.
 - **`ModelView`** — a pan/zoom viewer for model architectures with granularity levels.
+- **`NetView`** — a transformer compressed so the browser draws it whole, with one prompt's
+  active path and measurements (logit lens, residual growth, attention focus, expert picks).
 - **Rect kit / `RectBoard`** — DOM+SVG diagram blocks, mini charts and connectors on a pan/zoom
   board, for explainers and wiring diagrams; optionally editable.
 - **Widgets** — `DayClock`, a working day on one 24 h dial (SVG).
@@ -42,7 +44,8 @@ same class whichever path you import it from:
 | `jsngraph/modelview` | `ModelView` | ≈ 26 KB (9 KB) |
 | `jsngraph/workflow` | `WorkflowEditor` and its helpers | ≈ 103 KB (29 KB) |
 | `jsngraph/widget` | `DayClock` | ≈ 9 KB (3 KB) |
-| `jsngraph` | all of it | ≈ 254 KB (76 KB) as a namespace |
+| `jsngraph/netview` | `NetView`, `NetCompress`, `NetHugin` | ≈ 36 KB (12 KB) |
+| `jsngraph` | all of it | ≈ 279 KB (83 KB) as a namespace |
 
 ## Usage
 
@@ -259,6 +262,45 @@ Flows are written between the finest modules; coarser levels are derived by coll
 parents. Top-down layout, residual/skip edges routed beside the main path, "×N" repeats,
 labelled frames around opened parents, a click detail panel. Demo: `examples/modelview.html`.
 
+## Net view
+
+A language model is billions of weights; drawing them all, one line per weight, stops at toy
+networks. `NetView` compresses instead: each block is a column whose residual stream (thousands
+of dimensions) is folded into a few dozen bins, with its attention heads and MoE experts below.
+A trace of one prompt lays the active path over it — the strongest bins of each block linked to
+the strongest of the next — and measures along the way:
+
+```ts
+import { NetView, NetHugin } from 'jsngraph/netview';
+
+const view = new NetView(el, {theme: 'dark', bins: 48, pathWidth: 6});
+
+view.setModel({name: 'my-model', hidden: 2048, blocks: 40, heads: 16, experts: 256, expertsPerToken: 8});
+view.setTrace({
+    tokens: ['The', ' capital', ' of', ' France', ' is'],
+    prediction: {piece: ' Paris', prob: 0.92},
+    blocks: [
+        {block: 0, values: residualAfterBlock0, lens: {top: [{piece: ',', prob: 0.1}]}, l2: 12, update: 3},
+        // … one entry per block: values or topDims, lens, l2/update/cosine, heads, experts
+    ]
+});
+view.getMeasurements(); // {settleBlock, firstSeenBlock, peakUpdateBlock, entropyStart/End, normGrowth, meanFocus, …}
+view.on('blockClick', (e) => console.log(e?.block, e?.data));
+```
+
+- Bins keep the signed value of their strongest dimension and are scaled against the median
+  bin, so standing-out dimensions glow and outliers saturate (`NetCompress`, pure and tested).
+- Drawn per block: lens top-1 under the column (green once it is the final answer), head focus
+  (1 − entropy / ln context), expert picks at the traced token over the prompt's expert load;
+  under all columns the final answer's lens probability and the residual update per block,
+  with "answer appears" / "answer settles" marks. A click opens the block's details.
+- `NetHugin.model(outputs)` / `NetHugin.trace(outputs)` read the outputs of Hugin's forward
+  tools (`logit_lens`, `activations` with `values: true`, `attention_pattern` per block,
+  `expert_usage`, `tokenize`) for the same text.
+- A renderer only: it runs no model. Cells and curves are batched by colour, so a 40-block MoE
+  with 256 experts draws in about 9 ms.
+- Demo: `examples/netview.html` (simulated traces; drop a Hugin JSON on it for a real one).
+
 ## Rect kit and boards
 
 Plain DOM+SVG pieces for explainers and wiring diagrams — blocks (`RectBox`, `RectGroup`),
@@ -339,6 +381,6 @@ model view, rect explainers, the board editor and the day clock.
 
 ## Status
 
-All four parts and the day clock are in use. Not published to npm yet (see Install). There is deliberately no
+All parts and the day clock are in use; `NetView` is new and not yet tried on real Hugin output. Not published to npm yet (see Install). There is deliberately no
 built-in toolbar — pause, label and theme buttons belong to the page; the examples show sample
 ones.
