@@ -187,6 +187,12 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   legend, grid bands. Pure parts: `ChartScale` (nice ticks, mapping, zoom/pan/clamp), `WaterfallGeometry`
   (stack layout, nearest index, segment-distance hit test — vertical distance misses steep peak flanks);
   `test/Chart.test.ts`. Example: `examples/waterfall.html` (in-page radix-2 FFT of a drifting test signal).
+  `RadarChart` (spider/web/Kiviat): `categories` clockwise from the top, `series` (`fill`, `markers`, `dash`,
+  `visible`), `grid` polygon|circle, ring values along the first axis, canvas legend whose boxes toggle series
+  (`toggle` event), vertex tooltip (`hover`, `format`), grow-in animation (`setSeries(…, {animate})`, `replay`),
+  wheel zoom about the pointer / drag pan / double-click reset. Radius leaves room for the measured side labels.
+  `setSeries` keeps the hover while the series exists (live updates). Pure part `RadarGeometry` (angle, point,
+  label alignment, vertex hit). Example: `examples/radar.html` (static comparison + live host-health radar).
 
 ## Commands
 

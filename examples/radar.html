@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — radar chart</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    h2 { font-size: 14px; margin: 0 0 2px; }
+    .lead { color: var(--text-dim); margin: 0 0 16px; font-size: 14px; }
+    .sub { color: var(--text-dim); margin: 0 0 10px; font-size: 12px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; font-size: 13px; }
+    .controls button { background: var(--bg-soft); color: var(--text); border: 1px solid var(--border);
+        border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; }
+    .controls button.on { border-color: var(--accent); color: var(--accent); }
+    .grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 16px; }
+    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+    .card { border: 1px solid var(--border); border-radius: 12px; padding: 14px 14px 8px; background: #121726; }
+    .card.light { background: #ffffff; border-color: #dde3ea; color: #151a23; }
+    #compare { height: 460px; }
+    #health { height: 360px; }
+    #status { margin-top: 10px; font: 12px ui-monospace, monospace; color: var(--text-dim); min-height: 1.4em; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="waterfall.html">Waterfall</a>
+    <a href="radar.html" class="active">Radar</a>
+</nav>
+
+<main>
+    <h1>Radar charts</h1>
+    <p class="lead">One axis per category around a centre, every series a closed profile — also known as spider,
+        web or Kiviat chart. Hover a vertex for its value, click a legend entry to hide a series, wheel zooms,
+        drag pans, double-click resets. <code>new RadarChart(el, {categories, series})</code> — canvas, no dependencies.</p>
+
+    <div class="controls">
+        <button id="theme">Light</button>
+        <button id="shape">Round rings</button>
+        <button id="replay">Replay animation</button>
+        <button id="shuffle">New scores</button>
+        <button id="live" class="on">Live host</button>
+    </div>
+
+    <div class="grid">
+        <div class="card" id="card1">
+            <h2>Storage engines compared</h2>
+            <p class="sub">Scores 0–10, made up for the demo.</p>
+            <div id="compare"></div>
+        </div>
+        <div class="card" id="card2">
+            <h2>Host health — live</h2>
+            <p class="sub">Utilisation in %, now vs. the last hour's average.</p>
+            <div id="health"></div>
+        </div>
+    </div>
+    <div id="status"></div>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+(() => {
+    const {RadarChart} = window.JSNGraph;
+    const status = document.getElementById('status');
+
+    // ---- 1: a static comparison ----------------------------------------------------
+
+    const categories = ['Read speed', 'Write speed', 'Scalability', 'Consistency', 'Tooling', 'Small footprint'];
+    const engines = [
+        {name: 'Row store', values: [7, 6, 5, 10, 9, 6], fill: true},
+        {name: 'Column store', values: [10, 4, 8, 7, 6, 4]},
+        {name: 'Key-value log', values: [6, 10, 9, 5, 4, 9], dash: [5, 4]}
+    ];
+    const compare = new RadarChart(document.getElementById('compare'), {
+        categories, series: engines, range: {min: 0, max: 10}
+    });
+
+    // ---- 2: a live one -------------------------------------------------------------
+
+    const metrics = ['CPU', 'Memory', 'Disk I/O', 'Net in', 'Net out', 'Connections', 'Queue', 'Errors'];
+    const avg = [42, 61, 28, 35, 31, 48, 20, 6];
+    let now = avg.slice();
+    const health = new RadarChart(document.getElementById('health'), {
+        categories: metrics, grid: 'circle', range: {min: 0, max: 100},
+        format: (v) => `${Math.round(v)} %`,
+        series: [
+            {name: 'Hour average', values: avg, color: '#8b97ad', markers: false, dash: [3, 3], width: 1.5},
+            {name: 'Now', values: now, color: '#8bd45f', fill: true}
+        ]
+    });
+
+    const nowColor = (v) => Math.max(...v) > 85 ? '#ff6b6b' : Math.max(...v) > 70 ? '#ffd25e' : '#8bd45f';
+    function tick() {
+        now = now.map((v, i) => {
+            const pull = (avg[i] - v) * 0.15;
+            const spike = Math.random() < 0.04 ? 35 * Math.random() : 0;
+            return Math.max(0, Math.min(100, v + pull + (Math.random() - 0.5) * 12 + spike));
+        });
+        health.setSeries([
+            {name: 'Hour average', values: avg, color: '#8b97ad', markers: false, dash: [3, 3], width: 1.5,
+                visible: health.isVisible(0)},
+            {name: 'Now', values: now, color: nowColor(now), fill: true, visible: health.isVisible(1)}
+        ], {animate: false});
+    }
+    let timer = setInterval(tick, 700);
+
+    // ---- events + controls ---------------------------------------------------------
+
+    const show = (label) => (h) => {
+        status.textContent = h === null ? '' : `${label}: series ${h.series}, axis ${h.axis}, value ${Math.round(h.value * 10) / 10}`;
+    };
+    compare.on('hover', show('compare'));
+    health.on('hover', show('health'));
+    compare.on('toggle', ({series, visible}) => { status.textContent = `${engines[series].name} ${visible ? 'shown' : 'hidden'}`; });
+
+    const themeBtn = document.getElementById('theme');
+    themeBtn.addEventListener('click', () => {
+        const light = themeBtn.classList.toggle('on');
+        document.getElementById('card1').classList.toggle('light', light);
+        document.getElementById('card2').classList.toggle('light', light);
+        compare.setTheme(light ? 'light' : 'dark');
+        health.setTheme(light ? 'light' : 'dark');
+    });
+
+    const shapeBtn = document.getElementById('shape');
+    shapeBtn.addEventListener('click', () => {
+        compare.setGrid(shapeBtn.classList.toggle('on') ? 'circle' : 'polygon');
+    });
+
+    document.getElementById('replay').addEventListener('click', () => compare.replay());
+
+    document.getElementById('shuffle').addEventListener('click', () => {
+        engines.forEach((e, k) => {
+            e.values = e.values.map(() => 2 + Math.round(Math.random() * 8));
+            e.visible = compare.isVisible(k);
+        });
+        compare.setSeries(engines);
+    });
+
+    const liveBtn = document.getElementById('live');
+    liveBtn.addEventListener('click', () => {
+        if (liveBtn.classList.toggle('on')) {
+            timer = setInterval(tick, 700);
+        } else {
+            clearInterval(timer);
+        }
+    });
+})();
+</script>
+</body>
+</html>

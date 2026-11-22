@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ChartScale } from '../src/chart/ChartScale';
 import { WaterfallGeometry } from '../src/chart/WaterfallGeometry';
+import { RadarGeometry } from '../src/chart/RadarGeometry';
 
 describe('ChartScale ticks', () => {
     it('picks round steps', () => {
@@ -91,5 +92,38 @@ describe('WaterfallGeometry', () => {
         const b = WaterfallGeometry.point(l, 1, 2, 10, xr, yr);
         expect(WaterfallGeometry.hit(l, series, (a.x + b.x) / 2 + 2, (a.y + b.y) / 2, xr, yr)).toBe(1);
         expect(WaterfallGeometry.hit(l, series, 5, 5, xr, yr)).toBeNull();
+    });
+});
+
+describe('RadarGeometry', () => {
+    it('starts at the top and runs clockwise', () => {
+        const top = RadarGeometry.point(0, 0, 100, 0, 4, 10, {min: 0, max: 10});
+        const right = RadarGeometry.point(0, 0, 100, 1, 4, 10, {min: 0, max: 10});
+        expect(top.x).toBeCloseTo(0);
+        expect(top.y).toBeCloseTo(-100);
+        expect(right.x).toBeCloseTo(100);
+        expect(right.y).toBeCloseTo(0);
+    });
+
+    it('scales values into the radius and clamps outside the range', () => {
+        expect(RadarGeometry.fraction(5, {min: 0, max: 10})).toBe(0.5);
+        expect(RadarGeometry.fraction(15, {min: 0, max: 10})).toBe(1);
+        expect(RadarGeometry.fraction(-2, {min: 0, max: 10})).toBe(0);
+        expect(RadarGeometry.point(50, 50, 100, 0, 6, 0, {min: 0, max: 10})).toEqual({x: 50, y: 50});
+    });
+
+    it('aligns labels away from the centre', () => {
+        expect(RadarGeometry.labelAlign(0, 6)).toEqual({align: 'center', baseline: 'bottom'});
+        expect(RadarGeometry.labelAlign(1, 6).align).toBe('left');
+        expect(RadarGeometry.labelAlign(3, 6)).toEqual({align: 'center', baseline: 'top'});
+        expect(RadarGeometry.labelAlign(5, 6).align).toBe('right');
+        expect(RadarGeometry.labelAlign(1, 4)).toEqual({align: 'left', baseline: 'middle'});
+    });
+
+    it('hits the nearest vertex, skips hidden series, later series win ties', () => {
+        const pts = [[{x: 0, y: 0}, {x: 50, y: 0}], null, [{x: 0, y: 0}]];
+        expect(RadarGeometry.hit(pts, 1, 1)).toEqual({series: 2, axis: 0});
+        expect(RadarGeometry.hit(pts, 48, 2)).toEqual({series: 0, axis: 1});
+        expect(RadarGeometry.hit(pts, 25, 25)).toBeNull();
     });
 });
