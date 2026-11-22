@@ -146,6 +146,18 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   speed); pure state-at-time in `WorkflowRun.ts` (`test/WorkflowRun.test.ts`).
   Plan + milestones W1–W6: `docs/workflow-editor.md`.
   Example: `examples/workflow.html`.
+  Parameter nodes (W7, for the audio patcher): `render(node, body, ctx)` gets a `WorkflowNodeContext` — `ctx.update(patch,
+  {live})` writes back without rebuilding the body (`live` = no undo step/`change`; the release call commits), plus
+  `toggleCollapsed`/`toggleDisabled`. In a custom body (`.wf-node-custom`) form fields, buttons, links, labels and
+  `[data-wf-interactive]` get the pointer (CSS re-enables them, `isBodyControl` skips press/dblclick/keys).
+  `updateNode(id, patch, {render, commit})`. Node `collapsed` (document data, `setCollapsed`, change kind 'collapse')
+  shrinks to `type.collapsedHeight` (default ≥ 44) via `WorkflowGeometry.nodeSize(type, node)` — layout, group frames
+  and ports follow. Options `colorPorts` (ports in the node colour) and `groupBypass` (header dot toggles members'
+  `disabled`). Dropping onto a wire keeps the drop spot only when free, else `insertNode` places it beside the source;
+  an inserted node joins the group both wire ends share (`WorkflowModel.addToGroup`).
+  Example: `examples/audio.html` — a Web Audio patch editor (11 unit types, live sliders, bypass/collapse, groups,
+  generated drum loop + reverb impulse, Save/Load via localStorage, offline WAV bounce); the page keeps an `Engine`
+  that `sync`s the document into a Web Audio graph (units persist across syncs so sources keep playing).
 
 - `widget/` — small standalone dashboard widgets (SVG, no canvas), subpath `jsngraph/widget`. `DayClock`
   (taken over from kavula's dashboard, without d3/jQuery): a day on one 24 h dial (00:00 top, clockwise), elapsed

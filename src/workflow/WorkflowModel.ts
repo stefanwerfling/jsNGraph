@@ -295,6 +295,22 @@ export class WorkflowModel {
         return this.allGroups().find((g) => g.nodes.includes(nodeId));
     }
 
+    /** Make a node a direct member of a group (leaving any group it was in). */
+    public addToGroup(groupId: string, nodeId: string): boolean {
+        const group = this.groups.get(groupId);
+
+        if (group === undefined || !this.nodes.has(nodeId)) {
+            return false;
+        }
+
+        for (const g of this.groups.values()) {
+            g.nodes = g.nodes.filter((id) => id !== nodeId);
+        }
+        group.nodes.push(nodeId);
+
+        return true;
+    }
+
     /** The groups directly inside a group. */
     public children(groupId: string): WorkflowGroup[] {
         return this.allGroups().filter((g) => g.parent === groupId);
@@ -522,6 +538,26 @@ export class WorkflowModel {
 
             if (node !== undefined && (node.disabled === true) !== disabled) {
                 node.disabled = disabled;
+                changed.push(id);
+            }
+        }
+
+        return changed;
+    }
+
+    /** Set `collapsed` on nodes (false removes the key); returns the ids that changed. */
+    public setCollapsed(ids: Iterable<string>, collapsed: boolean): string[] {
+        const changed: string[] = [];
+
+        for (const id of ids) {
+            const node = this.nodes.get(id);
+
+            if (node !== undefined && (node.collapsed === true) !== collapsed) {
+                if (collapsed) {
+                    node.collapsed = true;
+                } else {
+                    delete node.collapsed;
+                }
                 changed.push(id);
             }
         }

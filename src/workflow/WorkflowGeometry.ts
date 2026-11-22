@@ -37,14 +37,26 @@ export class WorkflowGeometry {
         return port.side ?? (dir === 'in' ? 'left' : 'right');
     }
 
-    /** Node size from the type: explicit size wins, otherwise room for the ports. */
-    public static nodeSize(type: WorkflowNodeType | undefined): {w: number; h: number} {
+    /** Least height of a collapsed node: one header line. */
+    public static readonly COLLAPSED_HEIGHT = 44;
+
+    /**
+     * Node size from the type: explicit size wins, otherwise room for the
+     * ports. A collapsed node (`node.collapsed`) keeps the width and shrinks
+     * to `type.collapsedHeight` (default: room for its side ports, ≥ 44).
+     */
+    public static nodeSize(type: WorkflowNodeType | undefined, node?: {collapsed?: boolean}): {w: number; h: number} {
         const counts = WorkflowGeometry.sideCounts(type);
         const vertical = Math.max(counts.left, counts.right);
         const horizontal = Math.max(counts.top, counts.bottom);
+        const w = type?.width ?? Math.max(WorkflowGeometry.DEFAULT_WIDTH, horizontal * WorkflowGeometry.PORT_GAP_H + 40);
+
+        if (node?.collapsed === true) {
+            return {w, h: type?.collapsedHeight ?? Math.max(WorkflowGeometry.COLLAPSED_HEIGHT, vertical * WorkflowGeometry.PORT_GAP)};
+        }
 
         return {
-            w: type?.width ?? Math.max(WorkflowGeometry.DEFAULT_WIDTH, horizontal * WorkflowGeometry.PORT_GAP_H + 40),
+            w,
             h: type?.height ?? Math.max(WorkflowGeometry.MIN_HEIGHT, vertical * WorkflowGeometry.PORT_GAP + 16)
         };
     }

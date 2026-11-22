@@ -25,6 +25,7 @@ export type {
     WorkflowPortDir,
     WorkflowPortSpec,
     WorkflowNodeType,
+    WorkflowNodeContext,
     WorkflowNodeData,
     WorkflowPortRef,
     WorkflowConnection,

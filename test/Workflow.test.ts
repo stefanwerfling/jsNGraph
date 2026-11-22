@@ -342,3 +342,29 @@ describe('WorkflowEditor.dimConnection', () => {
         expect(WorkflowEditor.dimConnection(loop, nodes, travelled)).toBe(true);
     });
 });
+
+describe('Collapsed nodes', () => {
+    it('shrink to a header line, keep their width and ports in the middle', () => {
+        const tall: WorkflowNodeType = {type: 'eq', label: 'EQ', width: 180, height: 260, inputs: [{id: 'in'}], outputs: [{id: 'out'}]};
+
+        expect(G.nodeSize(tall)).toEqual({w: 180, h: 260});
+        expect(G.nodeSize(tall, {collapsed: true})).toEqual({w: 180, h: G.COLLAPSED_HEIGHT});
+        expect(G.nodeSize({...tall, collapsedHeight: 36}, {collapsed: true})).toEqual({w: 180, h: 36});
+        // Many side ports keep their spacing even when collapsed.
+        expect(G.nodeSize(TYPES[1], {collapsed: true}).h).toBe(Math.max(G.COLLAPSED_HEIGHT, 2 * G.PORT_GAP));
+
+        const places = G.placePorts(tall, {x: 0, y: 0, ...G.nodeSize(tall, {collapsed: true})});
+        expect(places.get('in:in')).toMatchObject({x: 0, y: G.COLLAPSED_HEIGHT / 2});
+    });
+
+    it('setCollapsed only reports real changes and drops the key when expanded', () => {
+        const m = model();
+
+        expect(m.setCollapsed(['if', 's', 'nope'], true)).toEqual(['if', 's']);
+        expect(m.setCollapsed(['if'], true)).toEqual([]);
+        expect(m.node('if')!.collapsed).toBe(true);
+        expect(m.setCollapsed(['if'], false)).toEqual(['if']);
+        expect('collapsed' in m.node('if')!).toBe(false);
+        expect(m.toDocument().nodes.find((n) => n.id === 's')!.collapsed).toBe(true);
+    });
+});

@@ -71,7 +71,7 @@ export class WorkflowGroups {
 
     private static nodeRect(model: WorkflowModel, id: string): RectArea {
         const node = model.node(id)!;
-        const size = WorkflowGeometry.nodeSize(model.getType(node.type));
+        const size = WorkflowGeometry.nodeSize(model.getType(node.type), node);
 
         return {x: node.x, y: node.y, w: size.w, h: size.h};
     }

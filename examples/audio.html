@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — audio patch editor</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    html, body { height: 100%; overflow: hidden; background: #0b1120; }
+    #editor { position: absolute; inset: 45px 0 52px 0; }
+    @media (min-width: 721px) { #editor { left: 168px; } }
+    .hud { position: absolute; z-index: 40; }
+
+    #palette { top: 56px; left: 10px; width: 148px; bottom: 62px; overflow: auto; padding: 6px;
+        background: #0f1629; border: 1px solid #22304d; border-radius: 10px; }
+    #palette .item { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; padding: 7px 8px; border-radius: 8px;
+        font: 600 12.5px system-ui, sans-serif; color: #dbe4f5; cursor: grab; user-select: none; touch-action: none;
+        border: 1.5px solid var(--c); background: color-mix(in srgb, var(--c) 10%, #121a2e); }
+    #palette .item:hover { background: color-mix(in srgb, var(--c) 22%, #121a2e); }
+    @media (max-width: 720px) { #palette { display: none; } }
+
+    #transport { left: 0; right: 0; bottom: 0; height: 52px; display: flex; align-items: center; gap: 10px;
+        padding: 0 12px; background: #0f1629; border-top: 1px solid #22304d; font: 12px system-ui, sans-serif; color: #b9c4da; }
+    #transport button { height: 28px; padding: 0 12px; border-radius: 6px; border: 1px solid #2c3a5c; background: #17213a;
+        color: #dbe4f5; font: 600 12px system-ui, sans-serif; cursor: pointer; }
+    #transport button.play { background: #2f9e57; border-color: #3cb96a; color: #fff; min-width: 74px; }
+    #transport button.play.on { background: #b8433f; border-color: #d0524d; }
+    #transport input[type=range] { width: 110px; accent-color: #4cc2ff; }
+    #status { margin-left: 6px; color: #7f8ba6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+    @media (max-width: 720px) { #status, .wide { display: none; } }
+
+    /* Node bodies (rendered by the host through WorkflowNodeType.render). */
+    .wf-node:has(> .wf-node-custom) { padding: 0; align-items: stretch; }
+    .wf-node-custom { flex-direction: column; align-items: stretch !important; gap: 0 !important; width: 100%;
+        padding: 0 12px 8px; box-sizing: border-box; font: 11px system-ui, sans-serif; color: #c5cfe3; }
+    .au-head { display: flex; align-items: center; gap: 8px; height: 38px; flex: none; }
+    .au-chip { flex: none; height: 20px; padding: 0 6px; border-radius: 5px; border: 0; cursor: pointer;
+        font: 700 10px/20px system-ui, sans-serif; letter-spacing: .03em; color: #0b1120; background: var(--wf-node-color); }
+    .au-title { font: 600 13px system-ui, sans-serif; color: #eef3fb; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .au-bypass { flex: none; width: 13px; height: 13px; padding: 0; border-radius: 50%; cursor: pointer;
+        background: var(--wf-node-color); border: 2px solid #161d2e; box-shadow: 0 0 0 1px var(--wf-node-color); }
+    .wf-disabled .au-bypass { background: transparent; }
+    .au-row { height: 30px; display: grid; grid-template-columns: 1fr auto; grid-template-rows: 13px 15px; align-items: center; }
+    .au-row span:last-of-type { text-align: right; color: #eef3fb; font-variant-numeric: tabular-nums; }
+    .au-row input[type=range] { grid-column: 1 / 3; width: 100%; margin: 0; height: 14px; accent-color: #4cc2ff; cursor: pointer; }
+    .au-line { height: 30px; display: flex; align-items: center; gap: 6px; }
+    .au-line button, .au-line select { height: 21px; padding: 0 8px; border-radius: 5px; border: 1px solid #2c3a5c;
+        background: #1c2640; color: #c5cfe3; font: 11px system-ui, sans-serif; cursor: pointer; }
+    .au-line button.on { background: #4cc2ff; border-color: #4cc2ff; color: #0b1120; }
+    .au-line select { flex: 1; }
+    .au-name { height: 14px; color: #8f9bb6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .au-meter { height: 22px; display: grid; grid-template-rows: 13px 5px; }
+    .au-meter i { display: block; height: 5px; border-radius: 3px; background: #1c2640; overflow: hidden; }
+    .au-meter b { display: block; height: 100%; width: 0; background: var(--wf-node-color); transition: width 60ms linear; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="workflow.html">Workflow</a>
+    <a href="audio.html" class="active">Audio patch</a>
+</nav>
+
+<div id="palette" class="hud"></div>
+<div id="editor"></div>
+
+<div id="transport" class="hud">
+    <button id="play" class="play">▶ Play</button>
+    <label>Master <input id="master" type="range" min="0" max="100" value="50"></label>
+    <span id="masterVal">50%</span>
+    <button id="save" class="wide">Save</button>
+    <button id="load" class="wide">Load</button>
+    <button id="bounce">Bounce to WAV</button>
+    <label class="wide"><input id="tail" type="checkbox" checked> Include tail</label>
+    <span id="status">Drag a node from the palette, wire an output (right) into an input (left), press Play. Click a node's tag to collapse it, its dot to bypass it; Ctrl+G groups.</span>
+</div>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+    // An audio patch editor: every node is a Web Audio unit, every connection an
+    // AudioNode.connect(). jsNGraph's WorkflowEditor draws and edits the patch;
+    // the document it keeps is the single source of truth — this page only turns
+    // it into a Web Audio graph (and back into sound or a WAV file).
+
+    const {WorkflowEditor} = JSNGraph;
+
+    // ---- parameters ----------------------------------------------------------
+
+    const pct = (v) => `${Math.round(v)} %`;
+    const hz = (v) => v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)} kHz` : `${Math.round(v)} Hz`;
+    const db = (v) => `${v.toFixed(1)} dB`;
+    const ms = (v) => `${Math.round(v)} ms`;
+    const pan = (v) => v === 0 ? 'C' : `${Math.abs(Math.round(v))}${v < 0 ? 'L' : 'R'}`;
+    const range = (key, label, min, max, def, fmt, opts = {}) => ({kind: 'range', key, label, min, max, def, fmt, ...opts});
+    const ROW = {range: 30, select: 30, toggle: 30, file: 44, meter: 22};
+
+    // ---- node types: look + parameters + the Web Audio unit they build -------
+
+    const DEFS = [
+        {type: 'osc', label: 'Oscillator', tag: 'OSC', color: '#ff7a45', source: true, params: [
+            {kind: 'select', key: 'wave', def: 'sawtooth', options: ['sine', 'square', 'sawtooth', 'triangle']},
+            range('freq', 'Frequency', 20, 2000, 110, hz, {log: true}),
+            range('detune', 'Detune', -100, 100, 0, (v) => `${Math.round(v)} ct`),
+            range('level', 'Level', 0, 100, 25, pct)
+        ], build(ac) {
+            const out = ac.createGain();
+            let osc = null;
+            const p = {wave: 'sawtooth', freq: 110, detune: 0};
+            return {out,
+                set(k, v) {
+                    if (k === 'level') out.gain.value = v / 100;
+                    else p[k] = v;
+                    if (osc && k === 'wave') osc.type = v;
+                    if (osc && k === 'freq') osc.frequency.value = v;
+                    if (osc && k === 'detune') osc.detune.value = v;
+                },
+                start(at = 0) {
+                    this.stop();
+                    osc = ac.createOscillator();
+                    osc.type = p.wave; osc.frequency.value = p.freq; osc.detune.value = p.detune;
+                    osc.connect(out); osc.start(at);
+                },
+                stop() { if (osc) { try { osc.stop(); } catch (e) { /* not started */ } osc.disconnect(); osc = null; } },
+                end(t) { osc?.stop(t); }
+            };
+        }},
+        {type: 'sample', label: 'Sample', tag: 'SMP', color: '#6c7cff', source: true, params: [
+            {kind: 'file'},
+            {kind: 'toggle', key: 'mode', def: 'loop', options: ['once', 'loop']},
+            range('level', 'Level', 0, 100, 80, pct),
+            range('pitch', 'Pitch', -12, 12, 0, (v) => `${v.toFixed(1)} st`, {step: 0.1})
+        ], build(ac, unit) {
+            const out = ac.createGain();
+            let src = null;
+            const p = {mode: 'loop', pitch: 0};
+            return {out,
+                set(k, v) {
+                    if (k === 'level') out.gain.value = v / 100;
+                    else p[k] = v;
+                    if (src && k === 'pitch') src.playbackRate.value = 2 ** (v / 12);
+                    if (src && k === 'mode') src.loop = v === 'loop';
+                },
+                start(at = 0) {
+                    this.stop();
+                    src = ac.createBufferSource();
+                    src.buffer = sampleBuffer(ac, unit.id);
+                    src.loop = p.mode === 'loop';
+                    src.playbackRate.value = 2 ** (p.pitch / 12);
+                    src.connect(out); src.start(at);
+                },
+                stop() { if (src) { try { src.stop(); } catch (e) { /* not started */ } src.disconnect(); src = null; } },
+                end(t) { src?.stop(t); }
+            };
+        }},
+        {type: 'gain', label: 'Gain', tag: 'AMP', color: '#7bd37b', params: [
+            range('level', 'Level', 0, 200, 100, pct)
+        ], build(ac) {
+            const g = ac.createGain();
+            return {in: g, out: g, set(k, v) { g.gain.value = v / 100; }};
+        }},
+        {type: 'filter', label: 'Filter', tag: 'FLT', color: '#b36bff', params: [
+            {kind: 'select', key: 'shape', def: 'lowpass', options: ['lowpass', 'highpass', 'bandpass', 'notch']},
+            range('freq', 'Cutoff', 20, 18000, 1200, hz, {log: true}),
+            range('q', 'Resonance', 0.1, 20, 1, (v) => v.toFixed(1), {step: 0.1})
+        ], build(ac) {
+            const f = ac.createBiquadFilter();
+            return {in: f, out: f, set(k, v) {
+                if (k === 'shape') f.type = v;
+                if (k === 'freq') f.frequency.value = v;
+                if (k === 'q') f.Q.value = v;
+            }};
+        }},
+        {type: 'eq', label: '3 Band EQ', tag: 'EQ', color: '#ff4fd8', params: [
+            range('f1', 'Band 1 Freq', 20, 1000, 180, hz, {log: true}),
+            range('g1', 'Band 1 Gain', -24, 24, 1, db, {step: 0.5}),
+            range('f2', 'Band 2 Freq', 200, 8000, 1250, hz, {log: true}),
+            range('q2', 'Band 2 Q', 0.1, 10, 2, (v) => v.toFixed(1), {step: 0.1}),
+            range('g2', 'Band 2 Gain', -24, 24, -1, db, {step: 0.5}),
+            range('f3', 'Band 3 Freq', 1000, 16000, 3500, hz, {log: true}),
+            range('g3', 'Band 3 Gain', -24, 24, 1, db, {step: 0.5})
+        ], build(ac) {
+            const lo = ac.createBiquadFilter(), mid = ac.createBiquadFilter(), hi = ac.createBiquadFilter();
+            lo.type = 'lowshelf'; mid.type = 'peaking'; hi.type = 'highshelf';
+            lo.connect(mid); mid.connect(hi);
+            const map = {f1: lo.frequency, g1: lo.gain, f2: mid.frequency, q2: mid.Q, g2: mid.gain, f3: hi.frequency, g3: hi.gain};
+            return {in: lo, out: hi, set(k, v) { map[k].value = v; }};
+        }},
+        {type: 'comp', label: 'Compressor', tag: 'CMP', color: '#ffa53a', params: [
+            range('threshold', 'Threshold', -60, 0, -30, (v) => `${Math.round(v)} dB`),
+            range('knee', 'Knee', 0, 40, 30, (v) => `${Math.round(v)} dB`),
+            range('ratio', 'Ratio', 1, 20, 4.5, (v) => `${v.toFixed(1)} :1`, {step: 0.5}),
+            range('attack', 'Attack', 0, 500, 15, ms),
+            range('release', 'Release', 10, 1000, 50, ms),
+            {kind: 'meter', label: 'Gain Reduction'}
+        ], build(ac) {
+            const c = ac.createDynamicsCompressor();
+            return {in: c, out: c, comp: c, set(k, v) {
+                c[k].value = k === 'attack' || k === 'release' ? v / 1000 : v;
+            }};
+        }},
+        {type: 'dist', label: 'Distortion', tag: 'DST', color: '#ff5a5a', params: [
+            range('drive', 'Drive', 0, 100, 30, pct),
+            range('tone', 'Tone', 500, 12000, 4000, hz, {log: true}),
+            range('level', 'Level', 0, 100, 60, pct)
+        ], build(ac) {
+            const shaper = ac.createWaveShaper(), tone = ac.createBiquadFilter(), out = ac.createGain();
+            shaper.oversample = '4x';
+            shaper.connect(tone); tone.connect(out);
+            return {in: shaper, out, set(k, v) {
+                if (k === 'drive') shaper.curve = driveCurve(v);
+                if (k === 'tone') tone.frequency.value = v;
+                if (k === 'level') out.gain.value = v / 100;
+            }};
+        }},
+        {type: 'delay', label: 'Delay', tag: 'DLY', color: '#35b6ff', params: [
+            range('time', 'Time', 1, 1000, 250, ms),
+            range('feedback', 'Feedback', 0, 95, 30, pct),
+            range('wet', 'Wet', 0, 100, 35, pct),
+            range('dry', 'Dry', 0, 100, 100, pct)
+        ], build(ac) {
+            const inp = ac.createGain(), d = ac.createDelay(1), fb = ac.createGain(), wet = ac.createGain(), dry = ac.createGain(), out = ac.createGain();
+            inp.connect(dry); dry.connect(out);
+            inp.connect(d); d.connect(fb); fb.connect(d); d.connect(wet); wet.connect(out);
+            return {in: inp, out, set(k, v) {
+                if (k === 'time') d.delayTime.value = v / 1000;
+                if (k === 'feedback') fb.gain.value = v / 100;
+                if (k === 'wet') wet.gain.value = v / 100;
+                if (k === 'dry') dry.gain.value = v / 100;
+            }};
+        }},
+        {type: 'reverb', label: 'Reverb', tag: 'RVB', color: '#f5c542', params: [
+            range('decay', 'Decay', 0.2, 6, 2, (v) => `${v.toFixed(1)} s`, {step: 0.1}),
+            range('wet', 'Wet', 0, 100, 35, pct),
+            range('dry', 'Dry', 0, 100, 100, pct)
+        ], build(ac) {
+            const inp = ac.createGain(), conv = ac.createConvolver(), wet = ac.createGain(), dry = ac.createGain(), out = ac.createGain();
+            inp.connect(dry); dry.connect(out); inp.connect(conv); conv.connect(wet); wet.connect(out);
+            let decay = 0;
+            return {in: inp, out, set(k, v) {
+                if (k === 'decay' && v !== decay) { decay = v; conv.buffer = impulse(ac, v); }
+                if (k === 'wet') wet.gain.value = v / 100;
+                if (k === 'dry') dry.gain.value = v / 100;
+            }};
+        }},
+        {type: 'pan', label: 'Panner', tag: 'PAN', color: '#2ec4a6', params: [
+            range('pan', 'Pan', -100, 100, 0, pan)
+        ], build(ac) {
+            const p = ac.createStereoPanner();
+            return {in: p, out: p, set(k, v) { p.pan.value = v / 100; }};
+        }},
+        {type: 'output', label: 'Output', tag: 'OUT', color: '#ff4f8b', sink: true, params: [
+            range('level', 'Level', 0, 100, 80, pct),
+            {kind: 'meter', label: 'Level'}
+        ], build(ac) {
+            const g = ac.createGain(), meter = ac.createAnalyser();
+            meter.fftSize = 512;
+            g.connect(meter);
+            return {in: g, out: g, analyser: meter, set(k, v) { g.gain.value = v / 100; }};
+        }}
+    ];
+    const DEF = Object.fromEntries(DEFS.map((d) => [d.type, d]));
+
+    const defaults = (def) => Object.fromEntries(def.params.filter((p) => p.key).map((p) => [p.key, p.def]));
+
+    // ---- node bodies ----------------------------------------------------------
+
+    const toSlider = (p, v) => p.log ? 1000 * Math.log(v / p.min) / Math.log(p.max / p.min) : v;
+    const fromSlider = (p, s) => p.log ? p.min * (p.max / p.min) ** (s / 1000) : Number(s);
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+
+    function renderBody(def) {
+        return (node, body, ctx) => {
+            const meta = {...defaults(def), ...(node.meta ?? {})};
+            const head = el('div', 'au-head');
+            const chip = el('button', 'au-chip', def.tag);
+            const bypass = el('button', 'au-bypass');
+            chip.type = bypass.type = 'button';
+            chip.title = node.collapsed ? 'Expand' : 'Collapse';
+            bypass.title = node.disabled ? 'Bypassed — click to enable' : 'Bypass';
+            chip.onclick = () => ctx.toggleCollapsed();
+            bypass.onclick = () => ctx.toggleDisabled();
+            head.append(chip, el('span', 'au-title', node.label ?? def.label), bypass);
+            body.appendChild(head);
+
+            if (node.collapsed) return;
+
+            for (const p of def.params) {
+                if (p.kind === 'range') {
+                    const row = el('div', 'au-row');
+                    const value = el('span', '', p.fmt(meta[p.key]));
+                    const input = el('input');
+                    input.type = 'range';
+                    input.min = p.log ? 0 : p.min; input.max = p.log ? 1000 : p.max;
+                    input.step = p.log ? 1 : p.step ?? 1;
+                    input.value = toSlider(p, meta[p.key]);
+                    // live while dragging (no undo step), committed on release
+                    const read = () => { meta[p.key] = fromSlider(p, input.value); value.textContent = p.fmt(meta[p.key]); };
+                    input.oninput = () => { read(); engine?.set(node.id, p.key, meta[p.key]); ctx.update({meta: {...meta}}, {live: true}); };
+                    input.onchange = () => { read(); ctx.update({meta: {...meta}}); };
+                    row.append(el('span', '', p.label), value, input);
+                    body.appendChild(row);
+                } else if (p.kind === 'select') {
+                    const line = el('div', 'au-line');
+                    const select = el('select');
+                    for (const o of p.options) select.appendChild(new Option(o, o, false, o === meta[p.key]));
+                    select.onchange = () => { meta[p.key] = select.value; ctx.update({meta: {...meta}}); };
+                    line.appendChild(select);
+                    body.appendChild(line);
+                } else if (p.kind === 'toggle') {
+                    const line = el('div', 'au-line');
+                    for (const o of p.options) {
+                        const b = el('button', o === meta[p.key] ? 'on' : '', o[0].toUpperCase() + o.slice(1));
+                        b.type = 'button';
+                        b.onclick = () => {
+                            meta[p.key] = o;
+                            line.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+                            ctx.update({meta: {...meta}});
+                        };
+                        line.appendChild(b);
+                    }
+                    body.appendChild(line);
+                } else if (p.kind === 'file') {
+                    const line = el('div', 'au-line');
+                    const pick = el('button', '', 'Load File…');
+                    pick.type = 'button';
+                    pick.onclick = () => loadFile(node.id, ctx, meta);
+                    line.appendChild(pick);
+                    body.append(line, el('div', 'au-name', meta.file ?? 'default sample (generated)'));
+                } else if (p.kind === 'meter') {
+                    const m = el('div', 'au-meter');
+                    const bar = el('i');
+                    const fill = el('b');
+                    fill.dataset.meter = node.id;
+                    bar.appendChild(fill);
+                    m.append(el('span', '', p.label), bar);
+                    body.appendChild(m);
+                }
+            }
+        };
+    }
+
+    const types = DEFS.map((d) => ({
+        type: d.type,
+        label: d.label,
+        color: d.color,
+        width: d.type === 'eq' ? 190 : 180,
+        height: 46 + d.params.reduce((h, p) => h + ROW[p.kind], 0),
+        collapsedHeight: 40,
+        inputs: d.source ? [] : [{id: 'in', kind: 'audio'}],
+        outputs: d.sink ? [] : [{id: 'out', kind: 'audio'}],
+        render: renderBody(d)
+    }));
+
+    // ---- the patch from the screenshot this sample answers -----------------
+
+    const N = (id, type, x, y, meta = {}, label) => ({id, type, x, y, meta: {...defaults(DEF[type]), ...meta}, ...(label ? {label} : {})});
+    const startDoc = {
+        nodes: [
+            N('smp', 'sample', 0, 140),
+            N('eq', 'eq', 280, 60),
+            N('cmp', 'comp', 570, 100),
+            N('panL', 'pan', 860, 60, {pan: -100}),
+            N('dbl', 'delay', 860, 220, {time: 20, feedback: 20, wet: 100, dry: 0}),
+            N('panR', 'pan', 1140, 300, {pan: 100}),
+            N('dly', 'delay', 1440, 120, {time: 150, feedback: 35, wet: 25, dry: 100}),
+            N('rvb', 'reverb', 1720, 150),
+            N('out', 'output', 2000, 190)
+        ],
+        connections: [
+            ['smp', 'eq'], ['eq', 'cmp'], ['cmp', 'panL'], ['cmp', 'dbl'], ['dbl', 'panR'],
+            ['panL', 'dly'], ['panR', 'dly'], ['dly', 'rvb'], ['rvb', 'out']
+        ].map(([a, b], i) => ({id: `c${i + 1}`, from: {node: a, port: 'out'}, to: {node: b, port: 'in'}})),
+        groups: [
+            {id: 'g1', label: 'EQ + Compression', nodes: ['eq', 'cmp'], color: '#c9d3e8'},
+            {id: 'g2', label: 'Doubler', nodes: ['panL', 'dbl', 'panR'], color: '#c9d3e8'},
+            {id: 'g3', label: 'Delay + Reverb', nodes: ['dly', 'rvb'], color: '#c9d3e8'}
+        ]
+    };
+
+    const editor = new WorkflowEditor(document.getElementById('editor'), {
+        types,
+        document: startDoc,
+        colorPorts: true,
+        groupBypass: true,
+        canConnect: (from, to) => from.node === to.node ? 'a unit cannot feed itself' : true
+    });
+    editor.setStyleVars({
+        bg: '#0b1120', grid: '#1a2440', 'node-bg': '#141c30', 'node-border': '#26324f',
+        edge: '#4cc2ff', text: '#e6edf9', subtext: '#8f9bb6', 'port-bg': '#0b1120'
+    });
+
+    // ---- palette -----------------------------------------------------------
+
+    for (const d of DEFS) {
+        const item = el('div', 'item');
+        item.style.setProperty('--c', d.color);
+        const chip = el('span', 'au-chip', d.tag);
+        chip.style.setProperty('--wf-node-color', d.color);
+        item.append(chip, d.label);
+        item.addEventListener('pointerdown', (e) => editor.beginDrag(d.type, e));
+        document.getElementById('palette').appendChild(item);
+    }
+
+    // ---- sound material (generated, no audio files in the repo) -----------
+
+    const SR = 44100;
+    const loaded = new Map();          // node id → AudioBuffer of a loaded file (not in the document)
+    let loop = null;                   // the generated default loop, [L, R]
+
+    function makeLoop() {
+        const beat = 0.5, len = Math.round(SR * beat * 8);
+        const L = new Float32Array(len), R = new Float32Array(len);
+        const add = (i, l, r = l) => { if (i >= 0 && i < len) { L[i] += l; R[i] += r; } };
+        let seed = 7;
+        const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1;
+
+        for (let b = 0; b < 8; b++) {
+            const t0 = Math.round(b * beat * SR);
+            // kick
+            for (let i = 0, ph = 0; i < SR * 0.35; i++) {
+                const t = i / SR;
+                ph += 2 * Math.PI * (45 + 90 * Math.exp(-t * 28)) / SR;
+                add(t0 + i, Math.sin(ph) * Math.exp(-t * 9) * 0.9);
+            }
+            // snare on 2 and 4
+            if (b % 2 === 1) {
+                for (let i = 0; i < SR * 0.2; i++) {
+                    const t = i / SR;
+                    add(t0 + i, (rnd() * 0.5 + Math.sin(2 * Math.PI * 190 * t) * 0.3) * Math.exp(-t * 22));
+                }
+            }
+            // hats on eighths
+            for (const off of [0, beat / 2]) {
+                let prev = 0;
+                for (let i = 0; i < SR * 0.05; i++) {
+                    const n = rnd(), h = (n - prev) * 0.12 * Math.exp(-i / SR * 80);
+                    prev = n;
+                    add(t0 + Math.round(off * SR) + i, h * 0.7, h);
+                }
+            }
+            // bass (A A C G), plus a minor stab off the beat
+            const f = [55, 55, 65.41, 49][b % 4];
+            for (let i = 0, lp = 0; i < SR * beat * 0.9; i++) {
+                const t = i / SR, saw = 2 * ((t * f) % 1) - 1;
+                lp += (saw - lp) * 0.08;
+                add(t0 + i, lp * 0.35 * Math.min(1, t * 200) * Math.exp(-t * 2));
+            }
+            for (const [k, n] of [[0, 220], [1, 261.63], [2, 329.63]].entries()) {
+                for (let i = 0; i < SR * 0.18; i++) {
+                    const t = i / SR, s = Math.sin(2 * Math.PI * n[1] * t) * 0.07 * Math.exp(-t * 14);
+                    add(t0 + Math.round(beat / 2 * SR) + i, s * (1 - k * 0.3), s * (0.4 + k * 0.3));
+                }
+            }
+        }
+        let peak = 0;
+        for (let i = 0; i < len; i++) peak = Math.max(peak, Math.abs(L[i]), Math.abs(R[i]));
+        for (let i = 0; i < len; i++) { L[i] *= 0.85 / peak; R[i] *= 0.85 / peak; }
+        return [L, R];
+    }
+
+    function sampleBuffer(ac, id) {
+        if (loaded.has(id)) return loaded.get(id);
+        loop = loop ?? makeLoop();
+        const buf = ac.createBuffer(2, loop[0].length, SR);
+        buf.copyToChannel(loop[0], 0);
+        buf.copyToChannel(loop[1], 1);
+        return buf;
+    }
+
+    function impulse(ac, seconds) {
+        const len = Math.round(ac.sampleRate * seconds), buf = ac.createBuffer(2, len, ac.sampleRate);
+        for (let c = 0; c < 2; c++) {
+            const d = buf.getChannelData(c);
+            for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 3;
+        }
+        return buf;
+    }
+
+    function driveCurve(amount) {
+        const k = amount * 0.6, n = 1024, curve = new Float32Array(n);
+        for (let i = 0; i < n; i++) {
+            const x = i * 2 / n - 1;
+            curve[i] = (1 + k) * x / (1 + k * Math.abs(x));
+        }
+        return curve;
+    }
+
+    function loadFile(id, ctx, meta) {
+        const input = el('input');
+        input.type = 'file';
+        input.accept = 'audio/*';
+        input.onchange = async () => {
+            const file = input.files[0];
+            if (!file) return;
+            try {
+                const ac = audio() ?? new OfflineAudioContext(2, 1, SR);
+                loaded.set(id, await ac.decodeAudioData(await file.arrayBuffer()));
+                ctx.update({meta: {...meta, file: file.name}});
+                editor.updateNode(id, {}, {commit: false});    // re-render the body with the new name
+                status(`loaded ${file.name}`);
+                engine?.restart(id);
+            } catch (e) {
+                status(`could not decode ${file.name}`);
+            }
+        };
+        input.click();
+    }
+
+    // ---- the engine: document → Web Audio graph ----------------------------
+
+    /** One placed node as Web Audio: input → (unit | bypass) → output. */
+    class Unit {
+        constructor(ac, node) {
+            this.id = node.id;
+            this.type = node.type;
+            this.def = DEF[node.type];
+            this.input = this.def.source ? null : ac.createGain();
+            this.output = ac.createGain();
+            this.fx = this.def.build(ac, this);
+            this.fx.out.connect(this.output);
+            this.bypassed = null;
+        }
+        apply(node) {
+            const meta = {...defaults(this.def), ...(node.meta ?? {})};
+            for (const p of this.def.params) if (p.key) this.fx.set(p.key, meta[p.key]);
+            this.setBypass(node.disabled === true);
+        }
+        setBypass(off) {
+            if (off === this.bypassed) return;
+            this.bypassed = off;
+            if (this.input) {
+                this.input.disconnect();
+                this.input.connect(off ? this.output : this.fx.in);
+            } else {
+                this.output.gain.value = off ? 0 : 1;
+            }
+        }
+        dispose() { this.fx.stop?.(); this.output.disconnect(); this.input?.disconnect(); }
+    }
+
+    /**
+     * Keeps a Web Audio graph in step with the document. `sync` reuses the
+     * units that still exist (sources keep playing), creates new ones, drops
+     * removed ones, re-applies parameters and re-wires every connection.
+     */
+    class Engine {
+        constructor(ac, destination) {
+            this.ac = ac;
+            this.destination = destination;
+            this.units = new Map();
+            this.playing = false;
+        }
+        sync(doc) {
+            const ids = new Set(doc.nodes.map((n) => n.id));
+            for (const [id, u] of this.units) {
+                if (!ids.has(id)) { u.dispose(); this.units.delete(id); }
+            }
+            for (const n of doc.nodes) {
+                if (!DEF[n.type]) continue;
+                let u = this.units.get(n.id);
+                if (!u || u.type !== n.type) {
+                    u?.dispose();
+                    u = new Unit(this.ac, n);
+                    this.units.set(n.id, u);
+                    if (this.playing) u.fx.start?.();
+                }
+                u.apply(n);
+            }
+            for (const u of this.units.values()) u.output.disconnect();
+            for (const c of doc.connections) {
+                const a = this.units.get(c.from.node), b = this.units.get(c.to.node);
+                if (a && b?.input) a.output.connect(b.input);
+            }
+            for (const u of this.units.values()) if (u.def.sink) u.output.connect(this.destination);
+        }
+        set(id, key, value) { this.units.get(id)?.fx.set(key, value); }
+        start(at) { this.playing = true; for (const u of this.units.values()) u.fx.start?.(at); }
+        stop() { this.playing = false; for (const u of this.units.values()) u.fx.stop?.(); }
+        restart(id) { if (this.playing) this.units.get(id)?.fx.start?.(); }
+    }
+
+    // ---- transport -----------------------------------------------------------
+
+    let ac = null, master = null, engine = null;
+    const audio = () => ac;
+    const $ = (id) => document.getElementById(id);
+    const status = (text) => { $('status').textContent = text; };
+
+    editor.on('change', (c) => {
+        engine?.sync(editor.getDocument());
+        if (c.kind === 'connect') status('connected');
+    });
+    editor.on('connectRefused', (e) => status(`not connected: ${e.reason}`));
+
+    $('play').onclick = async () => {
+        if (!ac) {
+            ac = new AudioContext();
+            master = ac.createGain();
+            master.gain.value = $('master').value / 100;
+            master.connect(ac.destination);
+            engine = new Engine(ac, master);
+            engine.sync(editor.getDocument());
+        }
+        if (engine.playing) {
+            engine.stop();
+            status('stopped');
+        } else {
+            await ac.resume();
+            engine.start();
+            status('playing — move a slider, rewire, bypass: the sound follows the document');
+            meters();
+        }
+        $('play').classList.toggle('on', engine.playing);
+        $('play').textContent = engine.playing ? '■ Stop' : '▶ Play';
+    };
+
+    $('master').oninput = () => {
+        $('masterVal').textContent = `${$('master').value}%`;
+        if (master) master.gain.value = $('master').value / 100;
+    };
+
+    // Output level and compressor gain reduction, drawn into the node bodies.
+    function meters() {
+        if (!engine?.playing) {
+            document.querySelectorAll('[data-meter]').forEach((m) => { m.style.width = '0'; });
+            return;
+        }
+        const data = new Float32Array(512);
+        for (const u of engine.units.values()) {
+            const bar = editor.element.querySelector(`[data-meter="${u.id}"]`);
+            if (!bar) continue;
+            let v = 0;
+            if (u.fx.analyser) {
+                u.fx.analyser.getFloatTimeDomainData(data);
+                let sum = 0;
+                for (const s of data) sum += s * s;
+                v = Math.min(1, Math.sqrt(sum / data.length) * 3);
+            } else if (u.fx.comp) {
+                v = Math.min(1, -u.fx.comp.reduction / 20);
+            }
+            bar.style.width = `${Math.round(v * 100)}%`;
+        }
+        requestAnimationFrame(meters);
+    }
+
+    // ---- save / load / bounce --------------------------------------------------
+
+    const KEY = 'jsngraph-audio-patch';
+    $('save').onclick = () => {
+        try { localStorage.setItem(KEY, JSON.stringify(editor.getDocument())); status('patch saved in this browser'); }
+        catch (e) { status('could not save (storage blocked)'); }
+    };
+    $('load').onclick = () => {
+        let doc = null;
+        try { doc = JSON.parse(localStorage.getItem(KEY) ?? 'null'); } catch (e) { /* blocked or broken */ }
+        if (!doc) { status('nothing saved yet'); return; }
+        editor.setDocument(doc);
+        status('patch loaded');
+    };
+
+    $('bounce').onclick = async () => {
+        const doc = editor.getDocument();
+        const sampleIds = doc.nodes.filter((n) => n.type === 'sample').map((n) => n.id);
+        const base = Math.max(4, ...sampleIds.map((id) => loaded.get(id)?.duration ?? 0));
+        const seconds = base + ($('tail').checked ? 3 : 0);
+        status('bouncing…');
+
+        const off = new OfflineAudioContext(2, Math.ceil(SR * seconds), SR);
+        const out = off.createGain();
+        out.gain.value = $('master').value / 100;
+        out.connect(off.destination);
+        const offline = new Engine(off, out);
+        offline.sync(doc);
+        offline.start(0);
+        // sources end with the material, so delay and reverb tails ring out after it
+        for (const u of offline.units.values()) u.fx.end?.(base);
+        const rendered = await off.startRendering();
+
+        const a = el('a');
+        a.href = URL.createObjectURL(new Blob([wav(rendered)], {type: 'audio/wav'}));
+        a.download = 'patch.wav';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+        status(`bounced ${seconds.toFixed(1)} s to patch.wav`);
+    };
+
+    /** 16-bit PCM WAV of an AudioBuffer. */
+    function wav(buf) {
+        const ch = buf.numberOfChannels, n = buf.length, bytes = 44 + n * ch * 2;
+        const v = new DataView(new ArrayBuffer(bytes));
+        const str = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+        str(0, 'RIFF'); v.setUint32(4, bytes - 8, true); str(8, 'WAVE'); str(12, 'fmt ');
+        v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, ch, true);
+        v.setUint32(24, buf.sampleRate, true); v.setUint32(28, buf.sampleRate * ch * 2, true);
+        v.setUint16(32, ch * 2, true); v.setUint16(34, 16, true); str(36, 'data'); v.setUint32(40, n * ch * 2, true);
+        const data = [...Array(ch)].map((_, c) => buf.getChannelData(c));
+        for (let i = 0, o = 44; i < n; i++) {
+            for (let c = 0; c < ch; c++, o += 2) v.setInt16(o, Math.max(-1, Math.min(1, data[c][i])) * 0x7fff, true);
+        }
+        return v.buffer;
+    }
+</script>
+</body>
+</html>

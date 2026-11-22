@@ -271,3 +271,42 @@ describe('WorkflowGroups', () => {
         expect(WorkflowGroups.isInternal({id: 'y', from: {node: 't', port: 'main'}, to: {node: 'a', port: 'main'}}, hidden)).toBe(false);
     });
 });
+
+describe('Groups around collapsed nodes', () => {
+    it('the frame shrinks with a collapsed member', () => {
+        const types: WorkflowNodeType[] = [{type: 'big', label: 'Big', height: 300, inputs: [{id: 'in'}], outputs: [{id: 'out'}]}];
+        const m = new WorkflowModel(types);
+
+        m.addNode({id: 'a', type: 'big', x: 0, y: 0});
+        m.addNode({id: 'b', type: 'big', x: 300, y: 0});
+
+        const g = m.addGroup({nodes: ['a', 'b']});
+        const open = WorkflowGroups.frameOf(m, m.group(g.id)!)!;
+
+        m.setCollapsed(['a', 'b'], true);
+
+        const shut = WorkflowGroups.frameOf(m, m.group(g.id)!)!;
+        expect(shut.h).toBeLessThan(open.h - 200);
+        expect(shut.w).toBe(open.w);
+    });
+});
+
+describe('WorkflowModel.addToGroup', () => {
+    it('moves a node into a group and out of its old one', () => {
+        const types: WorkflowNodeType[] = [{type: 'n', label: 'N', inputs: [{id: 'in'}], outputs: [{id: 'out'}]}];
+        const m = new WorkflowModel(types);
+
+        for (const id of ['a', 'b', 'c']) {
+            m.addNode({id, type: 'n', x: 0, y: 0});
+        }
+
+        const g1 = m.addGroup({nodes: ['a']});
+        const g2 = m.addGroup({nodes: ['b']});
+
+        expect(m.addToGroup(g2.id, 'a')).toBe(true);
+        expect(m.group(g2.id)!.nodes).toEqual(['b', 'a']);
+        expect(m.group(g1.id)?.nodes ?? []).toEqual([]);
+        expect(m.addToGroup('nope', 'c')).toBe(false);
+        expect(m.addToGroup(g2.id, 'nope')).toBe(false);
+    });
+});

@@ -28,10 +28,36 @@ export interface WorkflowNodeType {
     color?: string;
     width?: number;
     height?: number;
+    /** Height of a collapsed node (`WorkflowNodeData.collapsed`). Default: room for the
+     *  ports, at least 44 — a header line. */
+    collapsedHeight?: number;
     inputs?: WorkflowPortSpec[];
     outputs?: WorkflowPortSpec[];
-    /** Replace the default body (icon + labels) with your own content. */
-    render?: (node: WorkflowNodeData, body: HTMLElement) => void;
+    /**
+     * Replace the default body (icon + labels) with your own content —
+     * parameters, sliders, buttons. Form fields, buttons, links, labels and
+     * elements marked `data-wf-interactive` inside the body get the pointer;
+     * everything else still drags/selects the node. `ctx` writes back.
+     */
+    render?: (node: WorkflowNodeData, body: HTMLElement, ctx: WorkflowNodeContext) => void;
+}
+
+/**
+ * Handed to a custom node body (`WorkflowNodeType.render`) so its controls can
+ * write back into the document without rebuilding the body under the pointer.
+ */
+export interface WorkflowNodeContext {
+    readonly readOnly: boolean;
+    /**
+     * Patch the node (usually `meta`). The body is NOT rebuilt. `live: true`
+     * (while a slider moves) changes the document only; without it the change
+     * is committed — one undo step and one `change` event (kind 'updateNode').
+     */
+    update(patch: Partial<Omit<WorkflowNodeData, 'id'>>, options?: {live?: boolean}): void;
+    /** Collapse/expand this node (undoable; the body is rebuilt). */
+    toggleCollapsed(): void;
+    /** Bypass on/off (`disabled`; undoable). */
+    toggleDisabled(): void;
 }
 
 export interface WorkflowNodeData {
@@ -44,6 +70,8 @@ export interface WorkflowNodeData {
     label?: string;
     sublabel?: string;
     disabled?: boolean;
+    /** Drawn small (type.collapsedHeight); a custom body reads it to show its header only. */
+    collapsed?: boolean;
     /** Free slot for the host (parameters etc.); the editor copies it along. */
     meta?: unknown;
 }
@@ -146,6 +174,7 @@ export type WorkflowChangeKind =
     | 'reconnect'
     | 'remove'
     | 'disable'
+    | 'collapse'
     | 'paste'
     | 'insertNode'
     | 'addNote'
@@ -192,6 +221,10 @@ export interface WorkflowEditorOptions {
     editConnectionLabels?: boolean;
     /** Show the overview map. Default false. */
     minimap?: boolean;
+    /** Ports take their node's colour instead of the edge colour. Default false. */
+    colorPorts?: boolean;
+    /** A bypass button in each group header (toggles `disabled` on all members). Default false. */
+    groupBypass?: boolean;
 }
 
 /** Clipboard/fragment format of copy, cut and paste. */

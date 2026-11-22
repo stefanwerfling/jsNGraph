@@ -55,7 +55,7 @@ export class WorkflowLayout {
         }
 
         const boxes = new Map<string, Box>(nodes.map((n) => {
-            const size = WorkflowGeometry.nodeSize(model.getType(n.type));
+            const size = WorkflowGeometry.nodeSize(model.getType(n.type), n);
             return [n.id, {id: n.id, w: size.w, h: size.h, x: n.x, y: n.y}];
         }));
         const flow: WorkflowConnection[] = [];

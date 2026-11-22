@@ -18,6 +18,7 @@ import {
     WorkflowEditorOptions,
     WorkflowFragment,
     WorkflowGroup,
+    WorkflowNodeContext,
     WorkflowNodeData,
     WorkflowNodeStatus,
     WorkflowNodeStatusInfo,
@@ -133,6 +134,7 @@ export class WorkflowEditor {
     private readonly grid: number;
     private readonly fitOnLoad: boolean;
     private readonly reconnectOnDelete: boolean;
+    private readonly groupBypass: boolean;
     private readonly editConnectionLabels: boolean;
     private readonly tools: HTMLDivElement;
     private readonly labelLayer: HTMLDivElement;
@@ -197,6 +199,7 @@ export class WorkflowEditor {
         this.grid = options.grid ?? 20;
         this.fitOnLoad = options.fitOnLoad ?? true;
         this.reconnectOnDelete = options.reconnectOnDelete ?? true;
+        this.groupBypass = options.groupBypass ?? false;
         this.editConnectionLabels = options.editConnectionLabels ?? true;
         this.readOnlyFlag = options.readOnly ?? false;
         this.camera = new Camera(options.minScale ?? 0.2, options.maxScale ?? 2.5);
@@ -208,6 +211,7 @@ export class WorkflowEditor {
         this.root.tabIndex = 0;
         this.root.dataset.wfTheme = options.theme ?? 'dark';
         this.root.classList.toggle('wf-editable', !this.readOnlyFlag);
+        this.root.classList.toggle('wf-color-ports', options.colorPorts === true);
 
         this.stage = document.createElement('div');
         this.stage.className = 'wf-stage';
@@ -325,18 +329,51 @@ export class WorkflowEditor {
         return structuredClone(node);
     }
 
-    /** Patch label/position/disabled/meta …; the node re-renders. */
-    public updateNode(id: string, patch: Partial<Omit<WorkflowNodeData, 'id'>>): boolean {
+    /**
+     * Patch label/position/disabled/meta …; the node re-renders. With
+     * `render: false` the element stays as it is (a control inside the body
+     * already shows the new value); with `commit: false` there is no undo
+     * step or `change` event yet — for live slider moves, followed by one
+     * committing call when the gesture ends.
+     */
+    public updateNode(id: string, patch: Partial<Omit<WorkflowNodeData, 'id'>>,
+        options: {render?: boolean; commit?: boolean} = {}): boolean {
         if (!this.model.updateNode(id, patch)) {
             return false;
         }
 
-        const node = this.model.node(id)!;
-        this.renderNode(node);
-        this.renderConnections();
-        this.commit('updateNode', [id], []);
+        if (options.render !== false) {
+            this.renderNode(this.model.node(id)!);
+            this.renderConnections();
+        }
+        if (patch.disabled !== undefined) {
+            this.refreshGroupBypass();
+        }
+        if (options.commit !== false) {
+            this.commit('updateNode', [id], []);
+        }
 
         return true;
+    }
+
+    /**
+     * Collapse nodes to their header (`type.collapsedHeight`) or expand them;
+     * without `collapsed`, toggle as a group. One undo step.
+     */
+    public setCollapsed(ids: Iterable<string>, collapsed?: boolean): void {
+        const list = [...ids].filter((id) => this.model.node(id) !== undefined);
+        const value = collapsed ?? !list.every((id) => this.model.node(id)!.collapsed === true);
+        const changed = this.model.setCollapsed(list, value);
+
+        if (changed.length === 0) {
+            return;
+        }
+
+        for (const id of changed) {
+            this.renderNode(this.model.node(id)!);
+        }
+        this.renderConnections();
+        this.commit('collapse', changed, []);
     }
 
     /**
@@ -370,6 +407,7 @@ export class WorkflowEditor {
             this.renderNode(this.model.node(id)!);
         }
         this.renderConnections();
+        this.refreshGroupBypass();
         this.commit('disable', changed, []);
     }
 
@@ -465,13 +503,21 @@ export class WorkflowEditor {
             conns.push(this.model.connect({node: node.id, port: outPort}, conn.to).id);
         }
 
+        // A wire inside a group: the new node joins that group.
+        const group = this.model.groupOf(conn.from.node);
+        const joins = group !== undefined && group === this.model.groupOf(conn.to.node) && this.model.addToGroup(group.id, node.id);
+
         if (this.selectedConn === connectionId) {
             this.selectedConn = null;
         }
-        this.renderNode(node);
+        if (joins) {
+            this.renderGroups();     // the frame's member count changes
+        } else {
+            this.renderNode(node);
+        }
         this.renderConnections();
         this.setSelection(new Set([node.id]), null);
-        this.commit('insertNode', [node.id, conn.from.node, conn.to.node, ...moved], conns);
+        this.commit('insertNode', [node.id, conn.from.node, conn.to.node, ...moved], conns, [], joins ? [group!.id] : []);
 
         return structuredClone(node);
     }
@@ -847,7 +893,12 @@ export class WorkflowEditor {
         const conn = this.connectionAt(clientX, clientY, input.type);
 
         if (conn !== null) {
-            return this.insertNode(conn, {...input, x, y});
+            // Where it was dropped if that spot is free; otherwise beside the
+            // source, moving what follows out of the way (insertNode's own placement).
+            const spot = {x: x - 20, y: y - 20, w: size.w + 40, h: size.h + 40};
+            const free = ![...this.nodeViews.values()].some((v) => RectBoardGeometry.overlaps(spot, v.rect));
+
+            return this.insertNode(conn, free ? {...input, x, y} : input);
         }
 
         const node = this.addNode({...input, x, y});
@@ -1638,6 +1689,19 @@ export class WorkflowEditor {
         count.className = 'wf-group-count';
         count.textContent = `${n} node${n === 1 ? '' : 's'}`;
         head.append(toggle, label, count);
+
+        if (this.groupBypass) {
+            const members = this.model.expandGroups([group.id]).filter((id) => this.model.node(id) !== undefined);
+            const off = members.length > 0 && members.every((id) => this.model.node(id)!.disabled === true);
+            const bypass = document.createElement('button');
+
+            bypass.type = 'button';
+            bypass.className = 'wf-group-bypass';
+            bypass.dataset.wfGroupBypass = group.id;
+            bypass.classList.toggle('wf-off', off);
+            bypass.title = off ? 'Bypassed — click to enable' : 'Bypass';
+            head.appendChild(bypass);
+        }
         el.appendChild(head);
         this.groupLayer.appendChild(el);
         this.groupViews.set(group.id, {el, rect: {x: 0, y: 0, w: 0, h: 0}});
@@ -1736,7 +1800,7 @@ export class WorkflowEditor {
         }
 
         const type = this.model.getType(node.type);
-        const size = WorkflowGeometry.nodeSize(type);
+        const size = WorkflowGeometry.nodeSize(type, node);
         const view = this.buildNode(node, type, {x: node.x, y: node.y, w: size.w, h: size.h});
         const old = this.nodeViews.get(node.id);
 
@@ -1796,6 +1860,7 @@ export class WorkflowEditor {
         el.style.width = `${size.w}px`;
         el.style.height = `${size.h}px`;
         el.classList.toggle('wf-disabled', node.disabled === true);
+        el.classList.toggle('wf-collapsed', node.collapsed === true);
         el.classList.toggle('wf-unknown', type === undefined);
         el.classList.toggle('wf-selected', this.selected.has(node.id));
         if (type?.color !== undefined) {
@@ -1805,8 +1870,9 @@ export class WorkflowEditor {
         const body = document.createElement('div');
         body.className = 'wf-node-body';
 
-        if (type?.render !== undefined) {
-            type.render(structuredClone(node), body);
+        if (type?.render !== undefined && !proxy) {
+            body.classList.add('wf-node-custom');
+            type.render(structuredClone(node), body, this.nodeContext(node.id));
         } else {
             WorkflowEditor.defaultBody(node, type, body);
         }
@@ -1849,6 +1915,50 @@ export class WorkflowEditor {
         }
 
         return view;
+    }
+
+    /** Group header bypass buttons follow their members' `disabled` state. */
+    private refreshGroupBypass(): void {
+        if (!this.groupBypass) {
+            return;
+        }
+
+        for (const [id, frame] of this.groupViews) {
+            const button = frame.el.querySelector<HTMLButtonElement>('[data-wf-group-bypass]');
+            const members = this.model.expandGroups([id]).filter((m) => this.model.node(m) !== undefined);
+            const off = members.length > 0 && members.every((m) => this.model.node(m)!.disabled === true);
+
+            if (button !== null) {
+                button.classList.toggle('wf-off', off);
+                button.title = off ? 'Bypassed — click to enable' : 'Bypass';
+            }
+        }
+    }
+
+    /** The write-back handle a custom node body gets. */
+    private nodeContext(id: string): WorkflowNodeContext {
+        const readOnly = (): boolean => this.readOnlyFlag;
+
+        return {
+            get readOnly(): boolean {
+                return readOnly();
+            },
+            update: (patch, options = {}) => {
+                if (!this.readOnlyFlag) {
+                    this.updateNode(id, patch, {render: false, commit: options.live !== true});
+                }
+            },
+            toggleCollapsed: () => {
+                if (!this.readOnlyFlag) {
+                    this.setCollapsed([id]);
+                }
+            },
+            toggleDisabled: () => {
+                if (!this.readOnlyFlag) {
+                    this.setDisabled([id]);
+                }
+            }
+        };
     }
 
     /** (Re)build one sticky note's element. */
@@ -2402,8 +2512,9 @@ export class WorkflowEditor {
 
         const target = e.target as Element;
 
-        // Form fields (a note being edited, inputs in a custom node body) keep their own input.
-        if (WorkflowEditor.isField(target)) {
+        // Form fields (a note being edited, inputs in a custom node body) and
+        // controls in a custom body (buttons, links, data-wf-interactive) keep their own input.
+        if (WorkflowEditor.isField(target) || WorkflowEditor.isBodyControl(target)) {
             return;
         }
 
@@ -2416,6 +2527,16 @@ export class WorkflowEditor {
             e.stopPropagation();
             if (!this.readOnlyFlag) {
                 this.pressButton(e, addEl, toolEl);
+            }
+            return;
+        }
+
+        const bypassEl = target.closest<HTMLButtonElement>('[data-wf-group-bypass]');
+
+        if (bypassEl !== null) {
+            e.stopPropagation();
+            if (!this.readOnlyFlag) {
+                this.setDisabled([bypassEl.dataset.wfGroupBypass!]);
             }
             return;
         }
@@ -3040,7 +3161,10 @@ export class WorkflowEditor {
         const target = (under !== null && this.root.contains(under) ? under : e.target) as Element;
         const noteEl = target.closest<HTMLDivElement>('[data-wf-note]');
 
-        if (WorkflowEditor.isField(target)) {
+        if (WorkflowEditor.isField(target) || WorkflowEditor.isBodyControl(target)) {
+            return;
+        }
+        if (target.closest('[data-wf-group-bypass]') !== null) {
             return;
         }
         if (noteEl !== null) {
@@ -3088,7 +3212,7 @@ export class WorkflowEditor {
         const mod = e.ctrlKey || e.metaKey;
         const key = e.key.toLowerCase();
 
-        if (WorkflowEditor.isField(e.target as Element)) {
+        if (WorkflowEditor.isField(e.target as Element) || WorkflowEditor.isBodyControl(e.target as Element)) {
             return;
         }
 
@@ -3144,6 +3268,12 @@ export class WorkflowEditor {
     /** Text inputs and editable content: the editor leaves their keys and clicks alone. */
     private static isField(el: Element | null): boolean {
         return el !== null && el.closest('textarea, input, select, [contenteditable=""], [contenteditable="true"]') !== null;
+    }
+
+    /** A button, link, label or `data-wf-interactive` element inside a custom node body. */
+    private static isBodyControl(el: Element | null): boolean {
+        return el !== null && el.closest('.wf-node-custom') !== null
+            && el.closest('button, a[href], label, [data-wf-interactive]') !== null;
     }
 
     private static refKey(ref: WorkflowPortRef): string {
