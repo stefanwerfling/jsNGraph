@@ -3,7 +3,8 @@
  * hover/select and a draggable slice marker), RadarChart (spider / web chart),
  * StorylineChart (who was where, when), StreamChart (streamgraph with small
  * multiples), LineChart, BarChart, UnitHistogram, AreaChart, TimeSeriesChart
- * (price history with zoom presets) and DepthChart (order book depth).
+ * (price history with zoom presets), DepthChart (order book depth) and RadarScope
+ * (radar PPI with sweep, echoes and clusters).
  * Importing this subpath alone keeps the other parts out of a bundle;
  * `jsngraph` itself still exports everything.
  */
@@ -56,3 +57,7 @@ export { DepthChart } from './chart/DepthChart';
 export type { DepthChartOptions, DepthChartEvents } from './chart/DepthChart';
 export { DepthLayout } from './chart/DepthLayout';
 export type { DepthOrder, DepthLevel, DepthBook } from './chart/DepthLayout';
+export { RadarScope } from './chart/RadarScope';
+export type { RadarScopeOptions, RadarScopeEvents, ScopeTarget, ScopeKind, ScopeSector, ScopeShape, ScopeColors } from './chart/RadarScope';
+export { ScopeGeometry } from './chart/ScopeGeometry';
+export type { ScopePoint } from './chart/ScopeGeometry';

@@ -1,0 +1,857 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — whale watching off La Gomera</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    html, body { background: #ffffff; }
+    main { max-width: 1440px; margin: 0 auto; padding: 12px 16px 24px; color: #1b2b38; }
+    h1 { font-size: 20px; margin: 4px 0 2px; }
+    .sub { margin: 0 0 10px; color: #4d5d6b; font-size: 13px; max-width: 980px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font: 12px system-ui, sans-serif;
+        color: #4d5d6b; margin-bottom: 8px; }
+    .controls button { background: #f1f5f8; color: #1b2b38; border: 1px solid #cfd9e1; border-radius: 5px; padding: 4px 10px;
+        font: inherit; cursor: pointer; }
+    .controls button.on { border-color: #e4572e; color: #c2401c; }
+    .controls label { display: inline-flex; align-items: center; gap: 5px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .layout { display: grid; grid-template-columns: 1fr 290px; gap: 14px; }
+    .stage { position: relative; height: min(84vh, 860px); min-height: 640px; }
+    #scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    #radar { position: absolute; left: 0; bottom: 0; width: min(36%, 340px); aspect-ratio: 1; border-radius: 50%;
+        filter: drop-shadow(0 6px 18px rgba(0, 30, 60, .35)); }
+    #info { position: absolute; right: 12px; top: 10px; font: 600 12px system-ui, sans-serif; color: #16324a;
+        background: rgba(255, 255, 255, .9); border-radius: 6px; padding: 4px 8px; max-width: 46%; }
+    #info:empty { display: none; }
+    aside { font: 13px system-ui, sans-serif; border: 1px solid #dbe3ea; border-radius: 8px; padding: 12px 14px;
+        background: #f8fafc; align-self: start; }
+    aside h2 { font-size: 14px; margin: 0 0 6px; }
+    #clock { font: 600 28px ui-monospace, monospace; color: #16324a; }
+    #status { color: #4d5d6b; margin: 2px 0 10px; min-height: 1.3em; }
+    .bar { height: 4px; background: #dbe3ea; border-radius: 2px; overflow: hidden; margin-bottom: 12px; }
+    .bar i { display: block; height: 100%; width: 0; background: #e4572e; }
+    #sightings { list-style: none; margin: 0; padding: 0; }
+    #sightings li { padding: 7px 8px; border-radius: 6px; border-left: 4px solid var(--c); background: #fff; margin-bottom: 6px;
+        cursor: default; }
+    #sightings li.hot { background: #fff3e8; }
+    #sightings b { display: block; font-size: 13px; }
+    #sightings span { color: #5d6b78; font-size: 12px; }
+    #empty { color: #7a8894; font-size: 12px; }
+    .credit { color: #7a8894; font-size: 11px; margin-top: 6px; }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } #radar { width: 48%; } }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="seabird-radar.html">Seabird radar</a>
+    <a href="gomera.html" class="active">Whale watching</a>
+</nav>
+
+<main>
+    <h1>A morning whale-watching trip off La Gomera</h1>
+    <p class="sub">The boat leaves the harbour of Vueltas in Valle Gran Rey, follows its route along the west coast and comes back
+        three hours later. Its radar (bottom left, north up, the coast in yellow) picks up blows, splashes and the shearwaters
+        that give a feeding school away; every group the boat comes close to goes into the sightings log.</p>
+    <div class="controls">
+        <button id="pause">Pause</button>
+        <button data-speed="1" class="on">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button>
+        <label><input type="checkbox" data-kind="pilot" checked><span class="dot" style="background:#ff9ac0"></span> Pilot whales</label>
+        <label><input type="checkbox" data-kind="sperm" checked><span class="dot" style="background:#ff5c8a"></span> Sperm whale</label>
+        <label><input type="checkbox" data-kind="spotted" checked><span class="dot" style="background:#7cf0c8"></span> Spotted dolphins</label>
+        <label><input type="checkbox" data-kind="bottlenose" checked><span class="dot" style="background:#4fd1e8"></span> Bottlenose</label>
+        <label><input type="checkbox" data-kind="bird" checked><span class="dot" style="background:#ffd166"></span> Shearwaters</label>
+        <label><input id="labels" type="checkbox" checked> Labels</label>
+    </div>
+    <div class="layout">
+        <div class="stage">
+            <canvas id="scene"></canvas>
+            <div id="radar"></div>
+            <div id="info"></div>
+        </div>
+        <aside>
+            <h2>Trip</h2>
+            <div id="clock">09:50</div>
+            <div id="status">In port</div>
+            <div class="bar"><i id="progress"></i></div>
+            <h2>Sightings</h2>
+            <ol id="sightings"></ol>
+            <div id="empty">Nothing logged yet.</div>
+        </aside>
+    </div>
+    <p class="credit">Illustration drawn live on canvas: the island is a made-up height field shaped after La Gomera (heights ×3),
+        animals, route and echoes are invented; the species are the ones commonly seen on these trips.</p>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script src="ocean-art.js"></script>
+<script>
+(() => {
+    const {RadarScope, ScopeGeometry} = window.JSNGraph;
+    const Art = window.OceanArt;
+    const canvas = document.getElementById('scene');
+    const ctx = canvas.getContext('2d');
+    const info = document.getElementById('info');
+    const D2R = Math.PI / 180;
+    let W = 0, H = 0, F = 1, DPR = 1;
+
+    // ---- world: metres, x east, z north, y up; the island's centre is the origin ----------------
+    const EXAG = 3;                     // heights above the water
+    const TEX = 1.8;                    // Tenerife, far away, needs less
+    const UW = 3.5;                     // depths on the cut
+    const XW = -17500, XE = 15000, ZS = -14500, ZN = 12500, CUT = 3000;   // sea box (front cut at x = XW)
+    const cam = {x: -29000, y: 12500, z: -3200, yaw: 90 * D2R, pitch: 0};
+    const SY = Math.sin(cam.yaw), CY = Math.cos(cam.yaw);
+    let CP = 1, SP = 0;
+    const P = (x, y, z) => {
+        const dx = x - cam.x, dy = y - cam.y, dz = z - cam.z;
+        const f = dx * SY + dz * CY, r = dx * CY - dz * SY;
+        const d = f * CP - dy * SP, u = dy * CP + f * SP;
+        const k = F / d;
+        return {x: W * 0.5 + r * k, y: H * 0.56 - u * k, k, d};
+    };
+    const W2 = (z, depth) => P(XW, -depth * UW, z);    // a point on the cut, depth in real metres
+
+    let seed = 7;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+    // ---- the island: a radial height field with barrancos; Valle Gran Rey opens to the west ------
+    const R0 = 10500;
+    const radius = (th) => R0 * (1 + 0.06 * Math.sin(3 * th + 0.5) + 0.04 * Math.sin(5 * th + 2.1) + 0.025 * Math.sin(9 * th + 1));
+    const BARR = [[198, 0.96, 1.2], [150, 0.75, 0.6], [172, 0.7, 0.55], [222, 0.78, 0.6], [246, 0.7, 0.55], [270, 0.72, 0.6],
+        [292, 0.65, 0.5], [318, 0.74, 0.6], [342, 0.66, 0.55], [8, 0.72, 0.6], [34, 0.66, 0.5], [62, 0.74, 0.6], [88, 0.68, 0.55],
+        [112, 0.74, 0.6], [132, 0.64, 0.5]];
+    const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+    const carve = (x, z, d, th, t, b) => {
+        const lat = Math.abs(angDiff(th, b[0] * D2R)) * d;
+        const width = (900 - 560 * t) * b[2];
+        return Math.exp(-((lat / width) ** 2)) * clamp(1 - t / 0.85, 0, 1) ** 0.8;
+    };
+    const height = (x, z) => {
+        const d = Math.hypot(x, z), th = Math.atan2(z, x), t = 1 - d / radius(th);
+        if (t <= 0) return 0;
+        const u = clamp(t / 0.62, 0, 1);
+        let h = 1450 * (0.16 + 0.84 * u * u * (3 - 2 * u)) - (t > 0.62 ? 0 : 0);
+        h += 140 * Math.exp(-(((x - 1500) ** 2 + (z - 500) ** 2) / 2.2e6));          // Garajonay
+        for (const b of BARR) h *= 1 - b[1] * carve(x, z, d, th, t, b);
+        h += t * 110 * Math.sin(x / 520 + z / 900) * Math.sin(z / 610 - x / 1300);
+        return Math.max(h, 4);
+    };
+    const vgr = (x, z) => { const d = Math.hypot(x, z), th = Math.atan2(z, x); return carve(x, z, d, th, 1 - d / radius(th), BARR[0]); };
+    const coastAt = (th, f = 1) => ({x: Math.cos(th) * radius(th) * f, z: Math.sin(th) * radius(th) * f});
+    const COAST = Array.from({length: 240}, (_, i) => coastAt(i / 240 * Math.PI * 2));
+    const harbour = coastAt(201 * D2R);
+    const dock = coastAt(201 * D2R, 1.045);
+
+    // ---- route: out of Vueltas, south-west to the pilot whales, west to the sperm whale, north, back --
+    // trips stay within a few km of the coast; the sperm whale is out over deep water
+    const near = (x, z) => ({x: x * 0.86, z: z * 0.86});
+    const WAY = [dock, near(-12000, -4600), near(-13600, -6900), near(-16300, -9400), near(-18900, -8200),
+        near(-18700, -4600), near(-16500, -1900), near(-14200, 300), near(-12500, -2500)];
+    const route = [];
+    {
+        const n = WAY.length, SEG = 28;
+        const cr = (a, b, c, d, t) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (-a + 3 * b - 3 * c + d) * t * t * t);
+        for (let i = 0; i < n; i++) {
+            const p0 = WAY[(i - 1 + n) % n], p1 = WAY[i], p2 = WAY[(i + 1) % n], p3 = WAY[(i + 2) % n];
+            for (let j = 0; j < SEG; j++) {
+                const t = j / SEG;
+                route.push({x: cr(p0.x, p1.x, p2.x, p3.x, t), z: cr(p0.z, p1.z, p2.z, p3.z, t)});
+            }
+        }
+        route.push({...WAY[0]});
+    }
+
+    // ---- animal groups ------------------------------------------------------------------------------
+    const GROUPS = {
+        pilot: {label: 'Short-finned pilot whales', short: 'Pilot whales', base: near(-14300, -6200), color: '#ff9ac0', kind: 'pilot'},
+        sperm: {label: 'Sperm whale', short: 'Sperm whale', base: near(-18000, -9600), color: '#ff5c8a', kind: 'sperm'},
+        spotted: {label: 'Atlantic spotted dolphins', short: 'Spotted dolphins', base: near(-17300, -2700), color: '#2fc79a', kind: 'spotted'},
+        bird: {label: "Cory's shearwaters over the dolphins", short: "Cory's shearwaters", base: null, color: '#e0a800', kind: 'bird'},
+        bottlenose: {label: 'Bottlenose dolphins', short: 'Bottlenose dolphins', base: near(-13400, -700), color: '#22a9c4', kind: 'bottlenose'}
+    };
+    const centreOf = (g, t) => {
+        if (g === 'bird') return centreOf('spotted', t);
+        const b = GROUPS[g].base, i = g.length;
+        return {x: b.x + Math.sin(t * 0.021 + i) * 320, z: b.z + Math.cos(t * 0.017 + i * 2) * 320};
+    };
+    const pilots = Array.from({length: 9}, (_, i) => ({id: 'pilot-' + i, ox: (rnd() - 0.5) * 1800, oz: (rnd() - 0.5) * 2400, per: 8 + rnd() * 3, ph: rnd() * 10, dir: rnd() < 0.5 ? -1 : 1}));
+    const spotted = Array.from({length: 10}, (_, i) => ({id: 'spotted-' + i, ox: (rnd() - 0.5) * 1600, oz: (rnd() - 0.5) * 2200, per: 2.4 + rnd() * 0.8, ph: rnd() * 3}));
+    const bottle = Array.from({length: 6}, (_, i) => ({id: 'bottlenose-' + i, ox: (rnd() - 0.5) * 1200, oz: (rnd() - 0.5) * 1600, per: 4 + rnd() * 1.5, ph: rnd() * 5}));
+    const birds = Array.from({length: 8}, (_, i) => ({id: 'bird-' + i, a: rnd() * Math.PI * 2, r: 700 + rnd() * 700, alt: 200 + rnd() * 220, sp: (0.35 + rnd() * 0.25) * (rnd() < 0.3 ? -1 : 1)}));
+    const bait = Array.from({length: 90}, () => ({a: rnd() * Math.PI * 2, r: 60 + rnd() * 260, y: 40 + rnd() * 70, s: 0.6 + rnd() * 0.8}));
+    const splashes = [], blow = [], wake = [];
+
+    // ---- boat timing: slower near the animals, a stop in port between trips ---------------------
+    const TRIP = 150, DOCK = 6;
+    const cum = [0];
+    for (let i = 1; i < route.length; i++) {
+        const a = route[i - 1], b = route[i], mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
+        let slow = 0;
+        for (const g of ['pilot', 'sperm', 'spotted', 'bottlenose']) {
+            const c = GROUPS[g].base;
+            slow = Math.max(slow, Math.exp(-((Math.hypot(c.x - mx, c.z - mz) / 1500) ** 2)));
+        }
+        slow = Math.max(slow, 0.6 * Math.exp(-((Math.hypot(dock.x - mx, dock.z - mz) / 900) ** 2)));
+        cum.push(cum[i - 1] + Math.hypot(b.x - a.x, b.z - a.z) / (1 - 0.8 * slow));
+    }
+    const routeAt = (frac) => {
+        const target = clamp(frac, 0, 1) * cum[cum.length - 1];
+        let lo = 0, hi = cum.length - 1;
+        while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] <= target) lo = m; else hi = m; }
+        const u = (target - cum[lo]) / Math.max(1e-9, cum[hi] - cum[lo]);
+        const a = route[lo], b = route[hi];
+        return {x: a.x + (b.x - a.x) * u, z: a.z + (b.z - a.z) * u, i: lo, hx: b.x - a.x, hz: b.z - a.z};
+    };
+
+    // ---- radar on the boat ------------------------------------------------------------------------
+    const radar = new RadarScope(document.getElementById('radar'), {
+        theme: {background: 'rgba(0,0,0,0)'},
+        maxRange: 10000, rings: 4, sweepSpeed: 72, cluster: 900,
+        rangeFormat: (r) => (r / 1000).toFixed(0) + ' km',
+        kinds: {
+            pilot: {label: 'pilot whales', color: '#ff9ac0'},
+            sperm: {label: 'sperm whale blow', color: '#ff5c8a'},
+            spotted: {label: 'spotted dolphins', color: '#7cf0c8'},
+            bottlenose: {label: 'bottlenose dolphins', color: '#4fd1e8'},
+            bird: {label: 'shearwaters', color: '#ffd166'}
+        }
+    });
+    window.scope = radar;
+    const groupOf = (id) => id.split('-')[0];
+    const FEED = 'feeding';
+    const members = (g) => g === FEED ? ['spotted', 'bird'] : [g];
+    let hoverGroup = null, echoGroup = null, clusterGroup = null;
+    const syncRadarHover = () => setHover(echoGroup ?? clusterGroup, 'radar');
+    radar.on('targetHover', (h) => { echoGroup = h ? groupOf(h.target.id) : null; syncRadarHover(); });
+    radar.on('clusterHover', (h) => {
+        const gs = h ? new Set(h.targets.map((x) => groupOf(x.id))) : null;
+        clusterGroup = gs === null ? null : gs.size === 1 ? [...gs][0] : gs.has('spotted') && gs.has('bird') ? FEED : [...gs][0];
+        syncRadarHover();
+    });
+
+    // ---- simulation ------------------------------------------------------------------------------------
+    let t = 0, last = 0, paused = false, speed = 1, wakeClock = 0;
+    const state = {targets: [], world: new Map(), hits: [], boat: null, trip: 0, tripNo: -1, log: [], under: []};
+
+    const sperm = (time) => {
+        const u = time % 44, c = centreOf('sperm', time);
+        if (u < 20) return {...c, phase: 'surface', u};
+        if (u < 23) return {...c, phase: 'fluke', k: (u - 20) / 3, u};
+        return {...c, phase: 'deep', depth: 760 * Math.sin(Math.PI * (u - 23) / 21), u, down: u < 33.5};
+    };
+    const addBlow = (x, z, lean, n = 60, power = 1) => {
+        for (let i = 0; i < n; i++) {
+            blow.push({x, z, y: 30, vy: (360 + rnd() * 240) * power, vx: lean * 300 * power + (rnd() - 0.5) * 80, vz: (rnd() - 0.5) * 80,
+                t0: t, life: 1.4 + rnd() * 0.9});
+        }
+    };
+
+    function step(dt) {
+        t += dt;
+        const targets = [];
+        const put = (id, x, z, size, kind, label, extra = {}) => { targets.push({id, x, z, size, kind, label, ...extra}); };
+
+        // boat
+        const cycle = TRIP + DOCK, tt = t % cycle, tripNo = Math.floor(t / cycle);
+        if (tripNo !== state.tripNo) { state.tripNo = tripNo; state.log = []; renderLog(); wake.length = 0; }
+        state.trip = tt < DOCK ? 0 : (tt - DOCK) / TRIP;
+        const b = routeAt(state.trip);
+        state.boat = {x: b.x, z: b.z, i: b.i, hx: b.hx, hz: b.hz, docked: tt < DOCK};
+        wakeClock += dt;
+        if (wakeClock > 0.2 && !state.boat.docked) { wakeClock = 0; wake.push({x: b.x, z: b.z, t0: t}); }
+        while (wake.length && t - wake[0].t0 > 6) wake.shift();
+
+        // pilot whales: a resting pod, rolling at the surface, short shallow dives
+        const pc = centreOf('pilot', t);
+        for (const p of pilots) {
+            const u = ((t + p.ph) % p.per) / p.per;
+            p.x = pc.x + p.ox; p.z = pc.z + p.oz;
+            p.surface = u < 0.55; p.rise = p.surface ? Math.sin(Math.PI * u / 0.55) : 0;
+            p.depth = p.surface ? 0 : 40 + 170 * Math.sin(Math.PI * (u - 0.55) / 0.45);
+            if (p.surface && u * p.per < dt * 1.01 + 0.0001) addBlow(p.x, p.z, 0, 16, 0.45);
+            if (p.surface) put(p.id, p.x, p.z, 225, 'pilot', 'Pilot whale');
+        }
+        // sperm whale: logs at the surface blowing forward-left, flukes up, dives deep for squid
+        const s = sperm(t);
+        state.sperm = s;
+        if (s.phase === 'surface' && s.u % 4.5 < dt) addBlow(s.x + 120, s.z + 220, -0.8, 70, 0.9);
+        if (s.phase !== 'deep') put('sperm-0', s.x, s.z, 390, 'sperm', s.phase === 'fluke' ? 'Sperm whale (fluking)' : 'Sperm whale (blow)');
+        // spotted dolphins leaping around a bait ball, shearwaters circling low over them
+        const sc = centreOf('spotted', t);
+        for (const d of spotted) {
+            const u = ((t + d.ph) % d.per) / d.per;
+            d.x = sc.x + d.ox; d.z = sc.z + d.oz + Math.sin(t * 0.3 + d.ph) * 120;
+            d.jump = u < 0.36 ? u / 0.36 : -1;
+            if (d.jump >= 0 && !d.s0) { splashes.push({x: d.x, z: d.z - 320, t0: t}); d.s0 = true; }
+            if (d.jump > 0.94 && !d.s1) { splashes.push({x: d.x, z: d.z + 320, t0: t}); d.s1 = true; }
+            if (d.jump < 0) { d.s0 = false; d.s1 = false; }
+            if (d.jump >= 0 || u < 0.5) put(d.id, d.x, d.z, 165, 'spotted', 'Spotted dolphin splash');
+        }
+        for (const bd of birds) {
+            bd.a += dt * bd.sp;
+            bd.x = sc.x + Math.cos(bd.a) * bd.r; bd.z = sc.z + Math.sin(bd.a) * bd.r * 0.8;
+            put(bd.id, bd.x, bd.z, 135, 'bird', "Cory's shearwater");
+        }
+        // bottlenose dolphins: slower, fewer leaps
+        const bc = centreOf('bottlenose', t);
+        for (const d of bottle) {
+            const u = ((t + d.ph) % d.per) / d.per;
+            d.x = bc.x + d.ox; d.z = bc.z + d.oz;
+            d.jump = u < 0.26 ? u / 0.26 : -1;
+            if (d.jump >= 0 && !d.s0) { splashes.push({x: d.x, z: d.z - 250, t0: t}); d.s0 = true; }
+            if (d.jump > 0.94 && !d.s1) { splashes.push({x: d.x, z: d.z + 250, t0: t}); d.s1 = true; }
+            if (d.jump < 0) { d.s0 = false; d.s1 = false; }
+            if (d.jump >= 0 || u < 0.45) put(d.id, d.x, d.z, 165, 'bottlenose', 'Bottlenose dolphin');
+        }
+
+        for (const p of blow) { p.x += p.vx * dt; p.z += p.vz * dt; p.y += p.vy * dt; p.vy -= 180 * dt; p.vx *= 1 - dt * 0.6; }
+        while (blow.length && t - blow[0].t0 > blow[0].life) blow.shift();
+        while (splashes.length && t - splashes[0].t0 > 2.4) splashes.shift();
+
+        // radar view: everything relative to the boat
+        state.world = new Map(targets.map((x) => [x.id, x]));
+        state.targets = targets.map((x) => {
+            const p = ScopeGeometry.fromPlane({x: x.x - b.x, y: x.z - b.z});
+            return {id: x.id, bearing: p.bearing, range: p.range, size: x.size, kind: x.kind, label: x.label};
+        }).filter((x) => x.range < 10200);
+
+        // sightings
+        if (!state.boat.docked) {
+            for (const g of ['pilot', 'sperm', 'spotted', 'bird', 'bottlenose']) {
+                if (state.log.some((e) => e.group === g)) continue;
+                const c = centreOf(g, t);
+                const dist = Math.hypot(c.x - b.x, c.z - b.z);
+                const seen = targets.some((x) => groupOf(x.id) === g);
+                if (dist < 2600 && seen) {
+                    const p = ScopeGeometry.fromPlane({x: c.x - b.x, y: c.z - b.z});
+                    const n = targets.filter((x) => groupOf(x.id) === g).length;
+                    state.log.push({group: g, time: clock(), x: c.x, z: c.z, count: g === 'sperm' ? 1 : Math.max(n, {pilot: 9, spotted: 10, bird: 8, bottlenose: 6}[g]),
+                        bearing: p.bearing, dist});
+                    renderLog();
+                }
+            }
+        }
+    }
+
+    const clock = () => {
+        const cycle = TRIP + DOCK, tt = t % cycle;
+        const min = tt < DOCK ? 590 + tt / DOCK * 10 : 600 + (tt - DOCK) / TRIP * 180;
+        return String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(Math.floor(min % 60)).padStart(2, '0');
+    };
+    const compass = (b) => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(b / 45) % 8];
+
+    // ---- static layers: sky + Tenerife + sea top, and the island (re-rendered on resize) -----------
+    let bgLayer = null, islandLayer = null;
+    const layer = () => { const c = document.createElement('canvas'); c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); const g = c.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); return [c, g]; };
+    const topFace = () => [P(XE, 0, ZN), P(XE, 0, ZS), P(XW, 0, ZS), P(XW, 0, ZN)];
+    const poly = (g, pts) => { g.beginPath(); pts.forEach((p, i) => (i === 0 ? g.moveTo(p.x, p.y) : g.lineTo(p.x, p.y))); g.closePath(); };
+
+    function renderBackground() {
+        const [c, g] = layer();
+        const sky = g.createLinearGradient(0, 0, 0, H * 0.45);
+        sky.addColorStop(0, '#ffffff'); sky.addColorStop(1, '#e6f1f9');
+        g.fillStyle = sky; g.fillRect(0, 0, W, H);
+        // Tenerife on the horizon with Teide above a sea of clouds
+        const TX = 58000, prof = (z) => {
+            const dz = z - 18000;
+            const teide = 3715 * Math.exp(-((dz / 2600) ** 2)) * 0.45 + 2100 * Math.exp(-((dz / 7500) ** 2));
+            const ridge = 1500 * Math.exp(-(((z - 30000) / 6000) ** 2)) + 900 * Math.exp(-(((z - 6000) / 5000) ** 2));
+            return Math.max(teide, ridge);
+        };
+        g.beginPath();
+        for (let z = -2000; z <= 40000; z += 400) {
+            const p = P(TX - Math.abs(z - 18000) * 0.15, prof(z) * TEX, z);
+            z === -2000 ? g.moveTo(p.x, p.y) : g.lineTo(p.x, p.y);
+        }
+        const e0 = P(TX, 0, 40000), e1 = P(TX, 0, -2000);
+        g.lineTo(e0.x, e0.y); g.lineTo(e1.x, e1.y); g.closePath();
+        const tg = g.createLinearGradient(0, P(TX, 3715 * TEX, 18000).y, 0, e1.y);
+        tg.addColorStop(0, '#9fb4c8'); tg.addColorStop(1, '#c9d8e5');
+        g.fillStyle = tg; g.fill();
+        const top = P(TX, 3715 * TEX * 0.98, 18000);
+        g.fillStyle = 'rgba(255,255,255,0.85)';
+        g.beginPath(); g.moveTo(top.x, top.y - 1); g.lineTo(top.x - 9, top.y + 9); g.lineTo(top.x - 3, top.y + 7); g.lineTo(top.x + 2, top.y + 10); g.lineTo(top.x + 8, top.y + 8); g.closePath(); g.fill();
+        // sea of clouds
+        for (let i = 0; i < 26; i++) {
+            const z = -4000 + i * 1800, p = P(TX - 3000, 1500 * TEX + Math.sin(i * 1.7) * 400, z);
+            const r = 2600 * p.k * (1 + 0.4 * Math.sin(i * 2.3));
+            const cg = g.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+            cg.addColorStop(0, 'rgba(255,255,255,0.95)'); cg.addColorStop(1, 'rgba(255,255,255,0)');
+            g.fillStyle = cg; g.beginPath(); g.ellipse(p.x, p.y, r * 1.6, r * 0.6, 0, 0, Math.PI * 2); g.fill();
+        }
+        // sea top
+        const [a, b, cc, d] = topFace();
+        const sea = g.createLinearGradient(0, a.y, 0, d.y);
+        sea.addColorStop(0, '#2a7fba'); sea.addColorStop(0.5, '#1f93d0'); sea.addColorStop(1, '#3fb0e4');
+        g.fillStyle = sea; poly(g, [a, b, cc, d]); g.fill();
+        bgLayer = c;
+    }
+
+    function renderIsland() {
+        const [c, g] = layer();
+        const L = (() => { const v = [-0.5, 0.75, -0.45], n = Math.hypot(...v); return v.map((x) => x / n); })();
+        const mix = (a, b, u) => a.map((x, i) => x + (b[i] - x) * clamp(u, 0, 1));
+        const DRY = [178, 140, 94], ROCK = [138, 112, 86], GREEN = [96, 130, 68], LAUREL = [50, 92, 56], VALLEY = [110, 150, 72];
+        const quads = [];
+        const STEP = 320, N = Math.ceil(25000 / STEP);
+        const vert = [];
+        for (let i = 0; i <= N; i++) {
+            const row = [];
+            for (let j = 0; j <= N; j++) {
+                let x = -12500 + i * STEP, z = -12500 + j * STEP;
+                const d = Math.hypot(x, z), th = Math.atan2(z, x), R = radius(th) * 0.998, out = d > R;
+                if (out) { x = Math.cos(th) * R; z = Math.sin(th) * R; }
+                row.push({x, z, h: height(x, z), out});
+            }
+            vert.push(row);
+        }
+        for (let i = 0; i < N; i++) {
+            for (let j = 0; j < N; j++) {
+                const q = [vert[i][j], vert[i + 1][j], vert[i + 1][j + 1], vert[i][j + 1]];
+                if (q.every((v) => v.out)) continue;
+                const pts = q.map((v) => P(v.x, v.h * EXAG, v.z));
+                // normal from the diagonals (world space, heights exaggerated)
+                const ax = q[2].x - q[0].x, ay = (q[2].h - q[0].h) * EXAG, az = q[2].z - q[0].z;
+                const bx = q[3].x - q[1].x, by = (q[3].h - q[1].h) * EXAG, bz = q[3].z - q[1].z;
+                let nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+                if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; }
+                const nl = Math.hypot(nx, ny, nz) || 1;
+                const lam = Math.max(0.15, (nx * L[0] + ny * L[1] + nz * L[2]) / nl);
+                const cx = (q[0].x + q[2].x) / 2, cz = (q[0].z + q[2].z) / 2, h = q.reduce((s, v) => s + v.h, 0) / 4;
+                const north = clamp(0.5 + 0.5 * cz / Math.max(1, Math.hypot(cx, cz)), 0, 1), hn = h / 1450;
+                let col = mix(DRY, ROCK, hn * 0.7);
+                col = mix(col, GREEN, north * (0.15 + 0.7 * hn));
+                if (hn > 0.68) col = mix(col, LAUREL, (hn - 0.68) / 0.3);
+                const t0 = 1 - Math.hypot(cx, cz) / radius(Math.atan2(cz, cx));
+                col = mix(col, VALLEY, vgr(cx, cz) * clamp(1 - t0 / 0.4, 0, 1) * 0.9);
+                const sh = 0.5 + 0.7 * lam;
+                quads.push({d: P(cx, h * EXAG, cz).d, pts, fill: `rgb(${col.map((v) => Math.round(clamp(v * sh, 0, 255))).join(',')})`});
+            }
+        }
+        // the cliffs: coast top down to the water
+        const NC = 360;
+        for (let i = 0; i < NC; i++) {
+            const t0 = i / NC * Math.PI * 2, t1 = (i + 1) / NC * Math.PI * 2;
+            const a = coastAt(t0, 0.998), b = coastAt(t1, 0.998), a0 = coastAt(t0), b0 = coastAt(t1);
+            const ha = height(a.x, a.z), hb = height(b.x, b.z);
+            const pts = [P(a.x, ha * EXAG, a.z), P(b.x, hb * EXAG, b.z), P(b0.x, 0, b0.z), P(a0.x, 0, a0.z)];
+            const nx = Math.cos((t0 + t1) / 2), nz = Math.sin((t0 + t1) / 2);
+            const lam = Math.max(0.1, nx * L[0] + nz * L[2] + 0.3);
+            const base = (ha + hb) / 2 < 40 ? [96, 90, 84] : [120, 96, 76];
+            quads.push({d: P(a0.x, 0, a0.z).d, pts, fill: `rgb(${base.map((v) => Math.round(v * (0.55 + 0.6 * lam))).join(',')})`});
+        }
+        quads.sort((u, v) => v.d - u.d);
+        g.lineJoin = 'round'; g.lineWidth = 0.6;
+        for (const q of quads) { poly(g, q.pts); g.fillStyle = q.fill; g.strokeStyle = q.fill; g.fill(); g.stroke(); }
+
+        // Valle Gran Rey: white houses on the valley floor, the harbour mole at Vueltas
+        let s2 = 11;
+        const r2 = () => { s2 = (s2 * 16807) % 2147483647; return (s2 - 1) / 2147483646; };
+        for (let i = 0; i < 70; i++) {
+            const th = (196.5 + r2() * 4) * D2R, f = 0.995 - r2() * r2() * 0.3;
+            const x = Math.cos(th) * radius(th) * f, z = Math.sin(th) * radius(th) * f;
+            const p = P(x, height(x, z) * EXAG, z), sz = 1.2 + r2() * 1.6;
+            g.fillStyle = '#ffffff'; g.fillRect(p.x - sz, p.y - sz * 1.4, sz * 2, sz * 1.4);
+            g.fillStyle = '#c0583a'; g.fillRect(p.x - sz, p.y - sz * 1.6, sz * 2, sz * 0.4);
+        }
+        const m0 = P(harbour.x, 0, harbour.z), m1 = P(dock.x - 100, 0, dock.z - 250);
+        g.strokeStyle = '#c9ced2'; g.lineWidth = 3; g.beginPath(); g.moveTo(m0.x, m0.y); g.lineTo(m1.x, m1.y); g.stroke();
+
+        // trade-wind clouds on the northern slopes
+        for (let i = 0; i < 22; i++) {
+            const x = -4000 + r2() * 12000, z = 3500 + r2() * 7000, p = P(x, (1200 + r2() * 600) * EXAG, z);
+            const r = (900 + r2() * 900) * p.k;
+            const cg = g.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+            cg.addColorStop(0, 'rgba(255,255,255,0.8)'); cg.addColorStop(1, 'rgba(255,255,255,0)');
+            g.fillStyle = cg; g.beginPath(); g.ellipse(p.x, p.y, r * 1.5, r * 0.7, 0, 0, Math.PI * 2); g.fill();
+        }
+        islandLayer = c;
+    }
+
+    function resize() {
+        const r = canvas.getBoundingClientRect();
+        DPR = window.devicePixelRatio || 1;
+        W = r.width; H = r.height;
+        canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        F = Math.min(W * 0.92, H * 1.0);
+        const pitch = Math.atan2(cam.y, -9000 - cam.x);
+        CP = Math.cos(pitch); SP = Math.sin(pitch);
+        renderBackground();
+        renderIsland();
+    }
+
+    // ---- per-frame drawing ------------------------------------------------------------------------------
+    const surfaceLoop = (pts, y = 0) => { ctx.beginPath(); pts.forEach((q, i) => { const p = P(q.x, y, q.z); i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y); }); };
+    const ring = (x, z, r, y = 0) => { surfaceLoop(Array.from({length: 37}, (_, i) => ({x: x + Math.cos(i / 36 * Math.PI * 2) * r, z: z + Math.sin(i / 36 * Math.PI * 2) * r})), y); };
+    const waterline = (p, s, fn) => { ctx.save(); ctx.beginPath(); ctx.rect(p.x - s * 2, p.y - s * 2, s * 4, s * 2); ctx.clip(); fn(); ctx.restore(); };
+
+    function draw() {
+        state.hits = [];
+        ctx.clearRect(0, 0, W, H);
+        ctx.drawImage(bgLayer, 0, 0, W, H);
+        const [a, b, c, d] = topFace();
+
+        // swell, route, wake, splashes on the water (under the island layer)
+        ctx.save(); poly(ctx, [a, b, c, d]); ctx.clip();
+        ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.lineWidth = 1;
+        for (let zz = XW + 600; zz < XE; zz += 1500) {
+            ctx.beginPath();
+            for (let z = ZS; z <= ZN; z += 600) {
+                const p = P(zz + Math.sin(z / 1700 + t * 0.6 + zz / 2000) * 150, 0, z);
+                z === ZS ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
+            }
+            ctx.stroke();
+        }
+        const boat = state.boat;
+        // route: done part solid, the rest dashed
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.setLineDash([6, 6]); ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 2;
+        surfaceLoop(route.slice(boat.i)); ctx.stroke();
+        ctx.setLineDash([]);
+        if (!boat.docked) {
+            ctx.strokeStyle = '#e4572e'; ctx.lineWidth = 3.5;
+            surfaceLoop([...route.slice(0, boat.i + 1), boat]); ctx.stroke();
+        }
+        // direction chevrons on the planned part
+        for (let i = boat.i + 14; i < route.length - 4; i += 28) {
+            const p = P(route[i].x, 0, route[i].z), q = P(route[i + 2].x, 0, route[i + 2].z);
+            const ang = Math.atan2(q.y - p.y, q.x - p.x);
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(ang);
+            ctx.beginPath(); ctx.moveTo(5, 0); ctx.lineTo(-4, -4); ctx.lineTo(-2, 0); ctx.lineTo(-4, 4); ctx.closePath(); ctx.fill();
+            ctx.restore();
+        }
+        // wake
+        for (let i = 1; i < wake.length; i++) {
+            const age = (t - wake[i].t0) / 6, p0 = P(wake[i - 1].x, 0, wake[i - 1].z), p1 = P(wake[i].x, 0, wake[i].z);
+            ctx.strokeStyle = `rgba(255,255,255,${0.7 * (1 - age)})`; ctx.lineWidth = 1.5 + age * 7;
+            ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
+        }
+        for (const s of splashes) {
+            const age = t - s.t0;
+            for (let k = 0; k < 3; k++) {
+                ring(s.x, s.z, (age * 220 + k * 70));
+                ctx.strokeStyle = `rgba(255,255,255,${Math.max(0, 0.75 - age / 2.4) * (1 - k * 0.25)})`; ctx.lineWidth = 1.3; ctx.stroke();
+            }
+        }
+        // footprints of animals logging at the surface
+        for (const p of pilots) if (p.surface) { ring(p.x, p.z, 160); ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1; ctx.stroke(); }
+        // radar clusters as loops on the water (positions relative to the boat → world)
+        const clusters = radar.getClusters().map((ids) => ids.map((id) => state.world.get(id)).filter(Boolean));
+        for (const cl of clusters) {
+            if (cl.length < 2) continue;
+            const loop = ScopeGeometry.loop(cl.map((m) => ({x: m.x, y: m.z})), 500).map((q) => ({x: q.x, z: q.y}));
+            surfaceLoop(loop); ctx.closePath();
+            ctx.strokeStyle = hoverGroup === FEED ? '#ff8a00' : 'rgba(243,154,43,0.95)'; ctx.lineWidth = hoverGroup === FEED ? 5 : 3.5; ctx.stroke();
+        }
+        ctx.restore();
+
+        ctx.drawImage(islandLayer, 0, 0, W, H);
+
+        // the cut
+        const e = W2(ZS, CUT / UW), f = W2(ZN, CUT / UW);
+        const front = ctx.createLinearGradient(0, d.y, 0, f.y);
+        front.addColorStop(0, '#5cc4f0'); front.addColorStop(0.2, '#2a94d0'); front.addColorStop(0.6, '#0f5a95'); front.addColorStop(1, '#06264a');
+        ctx.fillStyle = front; poly(ctx, [d, c, e, f]); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(c.x, c.y); ctx.stroke();
+        ctx.save(); poly(ctx, [{x: d.x, y: d.y + 1}, {x: c.x, y: c.y + 1}, e, f]); ctx.clip();
+        drawUnderwater();
+        ctx.restore();
+        // depth scale at the left edge of the cut
+        ctx.font = '10px system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        for (const m of [250, 500, 750]) {
+            const p = W2(ZN, m);
+            ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 6, p.y); ctx.stroke();
+            ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fillText(m + ' m', p.x + 9, p.y);
+        }
+
+        drawAbove(clusters);
+        if (document.getElementById('labels').checked) drawLabels();
+        if (hoverGroup !== null) {
+            ctx.strokeStyle = '#ff8a00'; ctx.lineWidth = 2.5;
+            for (const h of state.hits) {
+                if (!members(hoverGroup).includes(h.group)) continue;
+                ctx.beginPath(); ctx.arc(h.x, h.y, h.r + 5, 0, Math.PI * 2); ctx.stroke();
+            }
+        }
+    }
+
+    function drawUnderwater() {
+        // light rays
+        ctx.fillStyle = 'rgba(255,255,255,0.05)';
+        for (let i = 0; i < 8; i++) {
+            const z0 = ZS + (i + 0.5) * (ZN - ZS) / 8 + Math.sin(t * 0.3 + i) * 500;
+            const p0 = W2(z0, 0), p1 = W2(z0 + 1800, 900), p2 = W2(z0 + 600, 900);
+            ctx.beginPath(); ctx.moveTo(p0.x - 8, p0.y); ctx.lineTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p0.x + 8, p0.y); ctx.fill();
+        }
+        // bait ball under the feeding group
+        const sc = centreOf('spotted', t);
+        for (const fsh of bait) {
+            const ang = fsh.a + t * (0.9 / fsh.s);
+            const p = W2(sc.z + Math.cos(ang) * fsh.r, fsh.y + Math.sin(ang * 2) * 12);
+            ctx.fillStyle = `rgba(225,240,250,${0.5 + 0.4 * Math.sin(ang * 3) ** 2})`;
+            ctx.beginPath(); ctx.ellipse(p.x, p.y, 2.6, 0.9, Math.cos(ang) > 0 ? -0.3 : 0.3, 0, Math.PI * 2); ctx.fill();
+        }
+        const bb = W2(sc.z, 80);
+        state.hits.push({group: 'spotted', x: bb.x, y: bb.y, r: 18});
+        // dolphins between leaps
+        for (const [list, sp] of [[spotted, 'spotted'], [bottle, 'bottlenose']]) {
+            for (const dd of list) {
+                if (dd.jump >= 0) continue;
+                const p = W2(dd.z, 25 + ((dd.ox * 7) % 60 + 60) % 60);
+                Art.dolphin(ctx, p.x, p.y, 1200 * p.k, 0.05 * Math.sin(t * 3 + dd.ph), 1, 0.8, sp);
+                state.hits.push({group: sp, x: p.x, y: p.y, r: 10});
+            }
+        }
+        // pilot whales on short dives
+        for (const pw of pilots) {
+            if (pw.surface) continue;
+            const p = W2(pw.z, pw.depth);
+            Art.pilot(ctx, p.x, p.y, 1600 * p.k, pw.dir, 0, 0.85);
+            state.hits.push({group: 'pilot', x: p.x, y: p.y, r: 12});
+        }
+        // the sperm whale's deep dive, a squid waiting near the bottom of it
+        const s = state.sperm;
+        const sq = W2(s.z - 900, 790 + Math.sin(t * 0.5) * 20);
+        Art.squid(ctx, sq.x, sq.y, 1300 * sq.k, t);
+        if (s.phase === 'deep') {
+            const p = W2(s.z, s.depth);
+            Art.sperm(ctx, p.x, p.y, 2600 * p.k, -1, s.down ? -0.55 : 0.5, 0.95);
+            state.hits.push({group: 'sperm', x: p.x, y: p.y, r: 24});
+        }
+    }
+
+    function drawAbove(clusters) {
+        const items = [];
+        const add = (wx, wy, wz, fn, bias = 0) => { const p = P(wx, wy, wz); items.push({d: p.d + bias, draw: () => fn(p)}); return p; };
+        // boat
+        const boat = state.boat;
+        {
+            const ahead = P(boat.x + boat.hx, 0, boat.z + boat.hz), p0 = P(boat.x, 0, boat.z);
+            const dir = ahead.x - p0.x >= 0 ? 1 : -1;
+            const p = add(boat.x, 0, boat.z, (q) => Art.boat(ctx, q.x, q.y - 1900 * q.k * 0.04, 1900 * q.k, dir, radar.getSweep() * D2R));
+            state.hits.push({group: 'boat', x: p.x, y: p.y - 10, r: 16});
+        }
+        // pilot whales: backs and fins rolling at the surface
+        for (const pw of pilots) {
+            if (!pw.surface) continue;
+            const p = add(pw.x, 0, pw.z, (q) => {
+                const s = 1600 * q.k;
+                waterline(q, s, () => Art.pilot(ctx, q.x, q.y + s * (0.17 - 0.1 * pw.rise), s, pw.dir));
+            });
+            state.hits.push({group: 'pilot', x: p.x, y: p.y, r: 12});
+        }
+        // sperm whale
+        const s = state.sperm;
+        if (s.phase !== 'deep') {
+            const p = add(s.x, 0, s.z, (q) => {
+                const sz = 3400 * q.k;
+                if (s.phase === 'surface') {
+                    const rise = Math.min(1, s.u / 1.2) * (1 - Math.max(0, (s.u - 19) / 1));
+                    waterline(q, sz, () => Art.sperm(ctx, q.x, q.y + sz * (0.1 - 0.06 * rise), sz, -1));
+                    ring(s.x, s.z, 520); ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1.5; ctx.stroke();
+                } else {
+                    Art.fluke(ctx, q.x + sz * 0.3, q.y, sz * 0.7, s.k, '#3b3632');
+                }
+            });
+            state.hits.push({group: 'sperm', x: p.x, y: p.y - 6, r: 22});
+        }
+        // blow particles
+        for (const bp of blow) {
+            const age = (t - bp.t0) / bp.life;
+            add(bp.x, bp.y, bp.z, (q) => {
+                ctx.fillStyle = `rgba(255,255,255,${0.7 * (1 - age)})`;
+                ctx.beginPath(); ctx.arc(q.x, q.y, (15 + age * 70) * q.k, 0, Math.PI * 2); ctx.fill();
+            }, -1);
+        }
+        // leaping dolphins
+        for (const [list, sp, hgt, len] of [[spotted, 'spotted', 320, 640], [bottle, 'bottlenose', 240, 500]]) {
+            for (const dd of list) {
+                if (dd.jump < 0) continue;
+                const u = dd.jump, z = dd.z - len / 2 + u * len, y = Math.sin(Math.PI * u) * hgt;
+                const nz = dd.z - len / 2 + Math.min(1, u + 0.03) * len, ny = Math.sin(Math.PI * Math.min(1, u + 0.03)) * hgt;
+                const p = add(dd.x, y, z, (q) => {
+                    const q2 = P(dd.x, ny, nz);
+                    const ang = Math.atan2(q2.y - q.y, q2.x - q.x);
+                    const flip = Math.cos(ang) < 0;
+                    Art.dolphin(ctx, q.x, q.y, 1200 * q.k, flip ? ang + Math.PI : ang, flip ? -1 : 1, 1, sp);
+                });
+                state.hits.push({group: sp, x: p.x, y: p.y, r: 12});
+            }
+        }
+        // shearwaters gliding low over the feeding dolphins
+        for (const bd of birds) {
+            const y = bd.alt + Math.sin(t * 1.4 + bd.a * 3) * 40;
+            const p = add(bd.x, y, bd.z, (q) => {
+                const vz = Math.cos(bd.a) * bd.sp;     // lateral motion on screen = −z
+                Art.shearwater(ctx, q.x, q.y, 1000 * q.k, vz > 0 ? -1 : 1, Math.sin(bd.a * 2 + t) * 0.6);
+            });
+            state.hits.push({group: 'bird', x: p.x, y: p.y, r: 10});
+        }
+        // cluster loops at shearwater height when birds are in it
+        for (const cl of clusters) {
+            if (!cl.some((m) => m.kind === 'bird')) continue;
+            const loop = ScopeGeometry.loop(cl.map((m) => ({x: m.x, y: m.z})), 500).map((q) => ({x: q.x, z: q.y}));
+            const cx = cl.reduce((u, m) => u + m.x, 0) / cl.length, cz = cl.reduce((u, m) => u + m.z, 0) / cl.length;
+            add(cx, 220, cz, () => {
+                surfaceLoop(loop, 220); ctx.closePath();
+                ctx.strokeStyle = hoverGroup === FEED ? '#ff8a00' : 'rgba(243,154,43,0.95)'; ctx.lineWidth = hoverGroup === FEED ? 5 : 3.5; ctx.stroke();
+                ctx.setLineDash([3, 4]); ctx.strokeStyle = 'rgba(30,40,50,0.45)'; ctx.lineWidth = 1;
+                for (const q of [loop[0], loop[Math.floor(loop.length / 2)]]) {
+                    const p0 = P(q.x, 220, q.z), p1 = P(q.x, 0, q.z);
+                    ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
+                }
+                ctx.setLineDash([]);
+            }, 2000);
+        }
+        // sighting pins
+        for (const e of state.log) {
+            if (e.group === 'bird') continue;
+            add(e.x, 0, e.z, (q) => {
+                const top = P(e.x, 700, e.z);
+                ctx.strokeStyle = GROUPS[e.group].color; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(q.x, q.y); ctx.lineTo(top.x, top.y); ctx.stroke();
+                ctx.fillStyle = GROUPS[e.group].color;
+                ctx.beginPath(); ctx.arc(top.x, top.y, 4, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.ellipse(q.x, q.y, 5, 2, 0, 0, Math.PI * 2); ctx.fill();
+                if (document.getElementById('labels').checked) {
+                    const text = GROUPS[e.group].short + ' · ' + e.time;
+                    ctx.font = '600 11px system-ui, sans-serif';
+                    const w = ctx.measureText(text).width + 12;
+                    ctx.fillStyle = 'rgba(255,255,255,0.93)'; ctx.strokeStyle = GROUPS[e.group].color;
+                    ctx.beginPath(); ctx.roundRect(top.x - w / 2, top.y - 26, w, 18, 9); ctx.fill(); ctx.stroke();
+                    ctx.fillStyle = '#16324a'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText(text, top.x, top.y - 16.5);
+                }
+            }, -3000);
+        }
+        items.sort((u, v) => v.d - u.d);
+        for (const it of items) it.draw();
+    }
+
+    function drawLabels() {
+        const tag = (text, x, y, tx, ty, strong) => {
+            ctx.font = (strong ? '700 13px' : '600 12px') + ' system-ui, sans-serif';
+            const w = ctx.measureText(text).width + 14;
+            ctx.strokeStyle = 'rgba(20,40,60,0.55)'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(tx, ty); ctx.stroke();
+            ctx.fillStyle = 'rgba(255,255,255,0.92)';
+            ctx.beginPath(); ctx.roundRect(tx - w / 2, ty - 11, w, 22, 11); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#16324a'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(text, tx, ty + 0.5);
+        };
+        const top = P(1500, 1450 * EXAG, 500);
+        tag('La Gomera', top.x, top.y, top.x + 30, top.y - 40, true);
+        const td = P(58000, 3715 * TEX, 18000);
+        tag('Teide, Tenerife', td.x, td.y + 6, td.x + 90, td.y + 34);
+        const vg = P(-8200, 200 * EXAG, -2600);
+        tag('Valle Gran Rey', vg.x, vg.y, vg.x + 60, vg.y - 50);
+        const hb = P(harbour.x, 0, harbour.z);
+        tag('Vueltas harbour', hb.x, hb.y, hb.x - 110, hb.y - 6);
+        const bt = P(state.boat.x, 300, state.boat.z);
+        tag('Our boat', bt.x, bt.y, bt.x - 50, bt.y - 40);
+    }
+
+    // ---- sightings log + hover ----------------------------------------------------------------------
+    const list = document.getElementById('sightings');
+    function renderLog() {
+        list.innerHTML = '';
+        document.getElementById('empty').style.display = state.log.length ? 'none' : '';
+        for (const e of state.log) {
+            const li = document.createElement('li');
+            li.style.setProperty('--c', GROUPS[e.group].color);
+            li.dataset.group = e.group;
+            li.innerHTML = `<b>${e.time} · ${GROUPS[e.group].label}</b><span>${e.count === 1 ? 'one animal' : '~' + e.count + ' animals'}, ` +
+                `${(e.dist / 1000).toFixed(1)} km ${compass(e.bearing)} of the boat</span>`;
+            li.addEventListener('pointerenter', () => setHover(e.group, 'log'));
+            li.addEventListener('pointerleave', () => setHover(null, 'log'));
+            list.appendChild(li);
+        }
+        markLog();
+    }
+    const markLog = () => { for (const li of list.children) li.classList.toggle('hot', hoverGroup !== null && members(hoverGroup).includes(li.dataset.group)); };
+
+    function setHover(group, from) {
+        if (group === hoverGroup) return;
+        hoverGroup = group;
+        if (from !== 'radar') {
+            const ids = group === null ? [] : state.targets.filter((x) => members(group).includes(groupOf(x.id))).map((x) => x.id);
+            radar.highlight(ids.length ? ids : null);
+        }
+        info.textContent = group === null ? '' : group === FEED ? 'Feeding: spotted dolphins and shearwaters over one bait ball'
+            : group === 'boat' ? 'Whale-watching boat out of Vueltas, radar on the mast' : GROUPS[group]?.label ?? '';
+        markLog();
+    }
+    canvas.addEventListener('pointermove', (e) => {
+        const r = canvas.getBoundingClientRect();
+        const x = e.clientX - r.left, y = e.clientY - r.top;
+        let best = null, bd = Infinity;
+        for (const h of state.hits) {
+            const dd = Math.hypot(h.x - x, h.y - y);
+            if (dd < h.r + 6 && dd < bd) { bd = dd; best = h.group; }
+        }
+        setHover(best, 'scene');
+        canvas.style.cursor = best ? 'pointer' : '';
+    });
+    canvas.addEventListener('pointerleave', () => setHover(null, 'scene'));
+
+    // ---- loop ------------------------------------------------------------------------------------------
+    const clockEl = document.getElementById('clock'), statusEl = document.getElementById('status'), bar = document.getElementById('progress');
+    const status = () => {
+        const b = state.boat;
+        if (b.docked) return 'In port at Vueltas, boarding';
+        if (state.trip > 0.93) return 'Back into the harbour';
+        let near = null, nd = Infinity;
+        for (const g of ['pilot', 'sperm', 'spotted', 'bottlenose']) {
+            const c = centreOf(g, t), dd = Math.hypot(c.x - b.x, c.z - b.z);
+            if (dd < nd) { nd = dd; near = g; }
+        }
+        if (nd < 1800) return 'Slow, watching: ' + GROUPS[near].short.toLowerCase();
+        return state.trip < 0.08 ? 'Leaving Valle Gran Rey' : 'Searching along the coast';
+    };
+    let pushed = 0;
+    function frame(now) {
+        const dt = last === 0 ? 0 : Math.min(0.05, (now - last) / 1000);
+        last = now;
+        if (!paused) step(dt * speed);
+        if (now - pushed > 100) {
+            pushed = now;
+            radar.setTargets(state.targets);
+            radar.setShapes([{points: COAST.map((q) => ({x: q.x - state.boat.x, y: q.z - state.boat.z}))}]);
+            clockEl.textContent = clock();
+            statusEl.textContent = status();
+            bar.style.width = (state.trip * 100).toFixed(1) + '%';
+        }
+        draw();
+        requestAnimationFrame(frame);
+    }
+    new ResizeObserver(resize).observe(canvas);
+    resize();
+    step(0);
+    const skip = Number(new URLSearchParams(location.search).get('t')) || 0;
+    for (let k = 0; k < skip * 20; k++) step(0.05);
+    renderLog();
+    requestAnimationFrame(frame);
+
+    // ---- controls ---------------------------------------------------------------------------------------
+    const pauseBtn = document.getElementById('pause');
+    pauseBtn.addEventListener('click', () => { paused = !paused; pauseBtn.textContent = paused ? 'Play' : 'Pause'; radar.setPaused(paused); });
+    for (const b of document.querySelectorAll('[data-speed]')) {
+        b.addEventListener('click', () => {
+            speed = Number(b.dataset.speed);
+            document.querySelectorAll('[data-speed]').forEach((x) => x.classList.toggle('on', x === b));
+            radar.setSweepSpeed(72 * speed);
+        });
+    }
+    for (const cb of document.querySelectorAll('[data-kind]')) cb.addEventListener('change', () => radar.setKindVisible(cb.dataset.kind, cb.checked));
+})();
+</script>
+</body>
+</html>

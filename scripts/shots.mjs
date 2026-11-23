@@ -18,7 +18,9 @@ const width = 1280;
 const height = 800;
 const nav = 36;
 /** Extra settle time for pages that load data or grow over time (ms). */
-const waits = {atlas: 6000, vault: 5000, livingmap: 6000, knowledge: 4000, monitoring: 4000, netview: 4000};
+// pages that look best a little into their animation get a query string
+const query = {gomera: '?t=95'};
+const waits = {atlas: 6000, vault: 5000, livingmap: 6000, knowledge: 4000, monitoring: 4000, netview: 4000, 'seabird-radar': 6200, gomera: 6000};
 
 const which = (...names) => {
     for (const n of names) {
@@ -80,7 +82,7 @@ try {
     await send('Emulation.setDeviceMetricsOverride', {width, height, deviceScaleFactor: 1, mobile: false});
 
     for (const page of pages) {
-        await send('Page.navigate', {url: `http://localhost:${httpPort}/examples/${page}.html`});
+        await send('Page.navigate', {url: `http://localhost:${httpPort}/examples/${page}.html${query[page] ?? ''}`});
         await sleep(waits[page] ?? 2500);
         const shot = await send('Page.captureScreenshot', {
             format: 'png',

@@ -260,6 +260,26 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   names the level that sets the depth ("n buy orders at p or higher"). Tests: `test/Market.test.ts`. Example:
   `examples/market.html` (made-up trading card, two years of prices, live book).
 
+  `RadarScope` (canvas, `jsngraph/chart`): radar PPI — compass bezel (2° ticks, labels every `bearingStep`), dashed range
+  rings (+ `rangeFormat`), shaded `sectors`, a beam turning at `sweepSpeed` °/s with an afterglow trail; an echo lights when
+  the beam passes its bearing and fades over `persistence` (default one turn; glow kept by target id across
+  `setTargets`), irregular blob per id, kind colours, sea clutter re-rolled each turn; echoes within `cluster` range units
+  are joined (single link) and outlined by an orange rounded loop. Hover/click echoes and clusters (`clusterHover` also
+  fires while an echo inside it is hovered), `highlight(ids)`, `setKindVisible`, `setPaused`, `getSweep`, `getClusters`.
+  A transparent `theme.background` lets it sit over a page. Pure part `ScopeGeometry` (bearing ↔ plane, `sweepAge`,
+  `cluster`, `hull`, `loop` = offset hull with round corners, `blob`, `hash`; `test/Scope.test.ts`). Example:
+  `examples/seabird-radar.html` — an illustrated ocean cut-away drawn in the page (own projection, painter-sorted
+  sprites: gannets circling and plunging, bait ball + tuna seen through the cut, a humpback that swims up, blows and
+  shows its fluke, leaping common dolphins, gulls, the ship with a turning antenna), the scope's clusters drawn back
+  into the scene as loops on the water and at flight height, hover linked both ways (`window.scope` for poking).
+  `shapes` / `setShapes` (`ScopeShape`): fixed filled outlines such as a coastline, relative to the centre (move them when
+  the centre moves), drawn under the echoes. The animal/boat sprites of both ocean pages live in `examples/ocean-art.js`
+  (`window.OceanArt`: gannet, gull, tuna, dolphin common/bottlenose/spotted, humpback, pilot, sperm, fluke, shearwater,
+  boat, squid). `examples/gomera.html`: a whale-watching trip off La Gomera — height-field island (radial barrancos,
+  Valle Gran Rey, ×3 heights, rendered once per resize into a cached layer), Teide over a sea of clouds, the boat follows a
+  Catmull-Rom route out of Vueltas (slower near animals, route done/planned on the water, wake), radar centred on the
+  boat with the coast as a shape, sightings log + pins, trip clock; `?t=seconds` fast-forwards.
+
 - `records/` — `RecordGraph` (subpath `jsngraph/records`): cards with a header (icon, title, subtitle) and a table of
   rows (`label`, `value`), links run row → row (`RecordLink {from: {node,row}, to}`), cards may sit in group frames
   (`RecordGroup`, `collapsed` folds a group into one box; merged links keep all `ids`). Pure `RecordLayout`: columns =
