@@ -20,7 +20,7 @@ const nav = 36;
 /** Extra settle time for pages that load data or grow over time (ms). */
 // pages that look best a little into their animation get a query string
 const query = {gomera: '?t=95'};
-const waits = {atlas: 6000, vault: 5000, livingmap: 6000, knowledge: 4000, monitoring: 4000, netview: 4000, 'seabird-radar': 6200, gomera: 6000, moonphase: 2500, smartcity: 2500, encounters: 4000, socialsky: 2500};
+const waits = {atlas: 6000, vault: 5000, livingmap: 6000, knowledge: 4000, monitoring: 4000, netview: 4000, 'seabird-radar': 6200, gomera: 6000, moonphase: 2500, smartcity: 2500, encounters: 4000, socialsky: 2500, sightingcloud: 3000};
 
 const which = (...names) => {
     for (const n of names) {

@@ -329,6 +329,20 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   three species, 11 units arriving/leaving, alliances, transients, calves; time slider + play, HWI sliders, an
   individual card with a dorsal fin drawn from its seed, sighting lifeline and associates, unit list).
 
+  `VolumeView` (WebGL2 + canvas, `jsngraph/chart`): a 4-channel density volume (RGBA8 3D texture, x fastest, `dims`,
+  world proportions `size`) ray-marched in one fragment shader over a full-screen triangle — `mode` glow
+  (emission/absorption above `threshold`, `density`), mip (brightest sample) or iso (first sample ≥ threshold, shaded by
+  the central-difference gradient). Channels have colour/visible/gain (weights in the shader). Three stacked layers in
+  the ChartSurface root: floor canvas (background, grid, the `floor(ctx, at(u, v))` callback), the WebGL canvas, the base
+  canvas on top (box + clip-box edges, axis ticks on the edges facing the viewer / leftmost vertical, tooltip with a drop
+  line). `setClip(min, max)` in texture coords (the ray is intersected with the clip box), orbit drag / wheel distance /
+  double-click reset, `autoRotate` (°/s, keeps the loop running). Hover picks on the CPU: the strongest weighted sample
+  along the pointer ray (`VolumeMath.strongest`, trilinear like GL LINEAR). No WebGL2 / lost context → a message,
+  `isSupported()` false. Pure `VolumeMath` (perspective/lookAt/multiply/invert/transform, `orbit`, `rayBox`, `sample`,
+  `strongest`, `splat` = Gaussian splatting of points into the RGBA volume, per-channel peak → 255, optional `wrapZ` for
+  cyclic axes; `test/Volume.test.ts`). Example: `examples/sightingcloud.html` (invented island + canyon on the floor, four
+  species with their own season/place patterns over ten years, mode/threshold/density, season and west-edge cuts, presets).
+
 - `records/` — `RecordGraph` (subpath `jsngraph/records`): cards with a header (icon, title, subtitle) and a table of
   rows (`label`, `value`), links run row → row (`RecordLink {from: {node,row}, to}`), cards may sit in group frames
   (`RecordGroup`, `collapsed` folds a group into one box; merged links keep all `ids`). Pure `RecordLayout`: columns =

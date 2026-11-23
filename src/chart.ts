@@ -84,3 +84,7 @@ export type {
 } from './chart/AssociationSky';
 export { AssociationIndex } from './chart/AssociationIndex';
 export type { AssociationEncounter, AssociationPair, AssociationTally } from './chart/AssociationIndex';
+export { VolumeView } from './chart/VolumeView';
+export type { VolumeViewOptions, VolumeViewEvents, VolumeChannel, VolumeAxis, VolumeMode, VolumeCamera, VolumeHit } from './chart/VolumeView';
+export { VolumeMath } from './chart/VolumeMath';
+export type { Mat4, Vec3, VolumePoint } from './chart/VolumeMath';

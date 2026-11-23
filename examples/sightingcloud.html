@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — sighting cloud</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    html, body { background: #070a14; }
+    main { max-width: 1480px; margin: 0 auto; padding: 12px 16px 28px; color: #cbd4ee; font-family: system-ui, sans-serif; }
+    h1 { font-size: 20px; margin: 4px 0 2px; font-weight: 600; }
+    .sub { margin: 0 0 12px; color: #8792b4; font-size: 13px; max-width: 1060px; line-height: 1.45; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 16px; align-items: start; }
+    @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+    #cloud { height: min(80vh, 800px); min-height: 520px; border: 1px solid #1a2140; border-radius: 6px; background: #070a14; }
+    aside { display: flex; flex-direction: column; gap: 12px; font-size: 12px; }
+    .box { background: #0d1226; border: 1px solid #1a2140; border-radius: 6px; padding: 10px 12px; }
+    .box h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #8792b4; margin: 0 0 8px; font-weight: 600; }
+    .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .row + .row { margin-top: 7px; }
+    button, .chip { background: #070a14; color: #cbd4ee; border: 1px solid #28305a; border-radius: 4px; padding: 4px 9px;
+        font: 12px system-ui, sans-serif; cursor: pointer; }
+    button.on { border-color: #a7b8ff; color: #fff; background: #1b2350; }
+    .chip { display: inline-flex; gap: 6px; align-items: center; }
+    .chip i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+    .chip.off { opacity: .35; }
+    .row input[type=range] { flex: 1; accent-color: #a7b8ff; min-width: 100px; }
+    .lbl { color: #6b7699; min-width: 64px; }
+    .val { font: 600 12px ui-monospace, monospace; color: #fff; min-width: 74px; text-align: right; }
+    .muted { color: #5f6a8f; }
+    .note { color: #8792b4; line-height: 1.45; margin: 0; }
+    .credit { color: #4c5680; font-size: 11px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="socialsky.html">Social sky</a>
+    <a href="sightingcloud.html" class="active">Sighting cloud</a>
+</nav>
+
+<main>
+    <h1>Sighting cloud — ten seasons as one volume</h1>
+    <p class="sub">Every sighting of ten invented years around an invented island becomes a puff of light in a box: east and
+        north on the floor, the day of the year going up. Where a species keeps coming back to the same place at the same
+        time, the puffs add up into a glowing body — resident pilot whales are a column standing in the canyon, Bryde's
+        whales a summer cloud drifting east, common dolphins a winter band along the north coast. The picture is ray-marched
+        on the GPU from a 3D texture: cut the box, look through it, or turn it into solid surfaces.</p>
+    <div class="layout">
+        <div>
+            <div id="cloud"></div>
+            <p class="credit">Drag to orbit, wheel to zoom, double-click to reset; hover the cloud for the densest point under the
+                pointer. Island, canyon, species patterns and all sightings are invented.</p>
+        </div>
+        <aside>
+            <div class="box">
+                <h2>Rendering</h2>
+                <div class="row" id="modes">
+                    <button data-mode="glow" class="on">Glow</button>
+                    <button data-mode="mip">Brightest</button>
+                    <button data-mode="iso">Surfaces</button>
+                    <button id="spin" class="on">Rotate</button>
+                </div>
+                <div class="row"><span class="lbl">threshold</span><input id="thr" type="range" min="0" max="80" value="15"><span class="val" id="thr-v">0.15</span></div>
+                <div class="row"><span class="lbl">density</span><input id="den" type="range" min="10" max="400" value="60"><span class="val" id="den-v">0.6</span></div>
+            </div>
+            <div class="box">
+                <h2>Species <span class="muted">(each scaled to its own peak)</span></h2>
+                <div class="row" id="species"></div>
+            </div>
+            <div class="box">
+                <h2>Cut</h2>
+                <div class="row"><span class="lbl">from</span><input id="z0" type="range" min="0" max="365" value="0"><span class="val" id="z0-v"></span></div>
+                <div class="row"><span class="lbl">to</span><input id="z1" type="range" min="0" max="365" value="365"><span class="val" id="z1-v"></span></div>
+                <div class="row"><span class="lbl">west edge</span><input id="x0" type="range" min="0" max="95" value="0"><span class="val" id="x0-v">0 km</span></div>
+                <div class="row">
+                    <button data-preset="year">Whole year</button>
+                    <button data-preset="summer">Summer</button>
+                    <button data-preset="winter">Winter</button>
+                    <button data-preset="canyon">Canyon cut</button>
+                </div>
+            </div>
+            <div class="box"><p class="note" id="readout">Hover the cloud.</p></div>
+        </aside>
+    </div>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+(() => {
+    const {VolumeView, VolumeMath} = window.JSNGraph;
+
+    let seed = 77;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const normal = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
+    const KM = [36, 28];                       // box floor in km
+    const DIMS = [72, 56, 64];
+    const MONTH0 = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dateOf = (day) => { const d = Math.max(0, Math.min(364, Math.round(day))); let m = 11; while (MONTH0[m] > d) m--; return `${d - MONTH0[m] + 1} ${MONTHS[m]}`; };
+
+    // ---- an invented island (u = east 0…1, v = north 0…1) -------------------------------------------------------
+    const IC = [0.56, 0.6], IR = 0.17;
+    const wob = Array.from({length: 7}, () => [rnd() * 0.25, rnd() * Math.PI * 2]);
+    const islandR = (a) => IR * (1 + wob.reduce((s, [amp, ph], k) => s + amp * Math.sin((k + 2) * a + ph) / (k + 1), 0));
+    const onLand = (u, v) => {
+        const dx = (u - IC[0]) * KM[0], dy = (v - IC[1]) * KM[1];
+        const a = Math.atan2(dy, dx), d = Math.hypot(dx, dy) / Math.max(KM[0], KM[1]);
+        return d < islandR(a) * 1.08;
+    };
+    const coast = Array.from({length: 120}, (_, i) => {
+        const a = i / 120 * Math.PI * 2, r = islandR(a) * Math.max(KM[0], KM[1]);
+        return [IC[0] + Math.cos(a) * r / KM[0], IC[1] + Math.sin(a) * r / KM[1]];
+    });
+    const HARBOUR = coast[Math.round(120 * 0.6)];
+    // a submarine canyon running south-west from the coast
+    const canyon = Array.from({length: 12}, (_, i) => [0.44 - i * 0.033 + Math.sin(i * 0.9) * 0.015, 0.47 - i * 0.034]);
+    const along = (pts, t) => { const f = t * (pts.length - 1), i = Math.min(pts.length - 2, Math.floor(f)), r = f - i;
+        return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * r, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * r]; };
+
+    // ---- species models: where (u, v) on which day -----------------------------------------------------------------
+    const SPECIES = [
+        {name: 'Short-finned pilot whale', color: '#b48cff', per: 520,
+            where: () => { const [u, v] = along(canyon, Math.pow(rnd(), 0.8)); return [u + normal() * 0.025, v + normal() * 0.025, rnd() * 365]; }},
+        {name: "Bryde's whale", color: '#3ee0c8', per: 160,
+            where: () => { const day = 165 + normal() * 32; const drift = (day - 165) / 220;
+                return [0.3 + drift * 0.55 + normal() * 0.06, 0.16 + normal() * 0.05, day]; }},
+        {name: 'Sperm whale', color: '#ff8a5c', per: 110,
+            where: () => { const spring = rnd() < 0.7; const day = spring ? 105 + normal() * 25 : 290 + normal() * 18;
+                return [0.08 + Math.abs(normal()) * 0.05, 0.25 + normal() * 0.14 + (spring ? 0 : 0.25), day]; }},
+        {name: 'Common dolphin', color: '#ffd25e', per: 380,
+            where: () => { const winter = rnd() < 0.8; const day = winter ? (365 + 20 + normal() * 45) % 365 : 120 + normal() * 20;
+                const a = Math.PI * (0.2 + rnd() * 0.6), r = islandR(a) * Math.max(KM[0], KM[1]) + 1.5 + Math.abs(normal()) * 2.5;
+                return [IC[0] + Math.cos(a) * r / KM[0], IC[1] + Math.sin(a) * r / KM[1], day]; }}
+    ];
+    const points = [];
+    let total = 0;
+    SPECIES.forEach((sp, c) => {
+        for (let year = 0; year < 10; year++) {
+            const n = Math.round(sp.per / 5 * (0.75 + rnd() * 0.5));
+            for (let k = 0; k < n; k++) {
+                const [u, v, day] = sp.where();
+                if (u < 0 || u > 1 || v < 0 || v > 1 || onLand(u, v)) continue;
+                const z = ((day % 365) + 365) % 365 / 365;
+                points.push({x: u, y: v, z, channel: c, weight: 0.6 + Math.log1p(2 + rnd() * 10) / 3});
+                total++;
+            }
+        }
+    });
+    const {data} = VolumeMath.splat(points, DIMS, [1.7, 1.7, 2.3], {wrapZ: true});
+
+    // ---- view -------------------------------------------------------------------------------------------------------
+    const channels = SPECIES.map((s) => ({name: s.name, color: s.color}));
+    const view = new VolumeView(document.getElementById('cloud'), {
+        data, dims: DIMS, size: [KM[0], KM[1], 26],
+        channels, threshold: 0.15, density: 0.6, autoRotate: 6,
+        camera: {yaw: -32, pitch: 22, distance: 2.5},
+        axes: {
+            x: {label: 'km east', ticks: [0, 10, 20, 30].map((k) => ({at: k / KM[0], label: String(k)}))},
+            y: {label: 'km north', ticks: [0, 10, 20].map((k) => ({at: k / KM[1], label: String(k)}))},
+            z: {label: 'day of year', ticks: MONTH0.map((d, i) => ({at: d / 365, label: MONTHS[i]}))}
+        },
+        floor: (ctx, at) => {
+            // canyon
+            ctx.setLineDash([3, 4]);
+            ctx.strokeStyle = 'rgba(180,140,255,0.45)';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            canyon.forEach(([u, v], i) => { const p = at(u, v); i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
+            ctx.stroke();
+            ctx.setLineDash([]);
+            const cl = at(...canyon[canyon.length - 1]);
+            ctx.fillStyle = 'rgba(180,140,255,0.7)';
+            ctx.font = '10px system-ui, sans-serif';
+            ctx.fillText('canyon', cl.x + 4, cl.y);
+            // island
+            ctx.beginPath();
+            coast.forEach(([u, v], i) => { const p = at(u, v); i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(60,72,92,0.85)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(190,205,235,0.7)';
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+            const h = at(...HARBOUR);
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath(); ctx.arc(h.x, h.y, 2.5, 0, Math.PI * 2); ctx.fill();
+            ctx.fillText('harbour', h.x + 5, h.y + 3);
+        },
+        format: (hit, ch) => {
+            const order = hit.values.map((v, i) => [v, i]).filter(([v, i]) => v > 0.03 && ch[i].visible !== false).sort((a, b) => b[0] - a[0]);
+            return [`${dateOf(hit.w * 365)} · ${(hit.u * KM[0]).toFixed(1)} km E, ${(hit.v * KM[1]).toFixed(1)} km N`,
+                ...order.map(([v, i]) => `${ch[i].name}: ${Math.round(v * 100)} % of its peak`)];
+        }
+    });
+    window.view = view;
+    if (!view.isSupported()) document.getElementById('readout').textContent = 'This browser has no WebGL2 — the cloud needs it.';
+
+    // ---- controls ------------------------------------------------------------------------------------------------------
+    const $ = (id) => document.getElementById(id);
+    document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => {
+        view.setMode(b.dataset.mode);
+        document.querySelectorAll('[data-mode]').forEach((x) => x.classList.toggle('on', x === b));
+        if (b.dataset.mode === 'iso' && Number($('thr').value) < 20) { $('thr').value = 30; $('thr').dispatchEvent(new Event('input')); }
+    }));
+    let spinning = true;
+    $('spin').addEventListener('click', () => { spinning = !spinning; view.setAutoRotate(spinning ? 6 : 0); $('spin').classList.toggle('on', spinning); });
+    $('thr').addEventListener('input', () => { view.setThreshold($('thr').value / 100); $('thr-v').textContent = ($('thr').value / 100).toFixed(2); });
+    $('den').addEventListener('input', () => { view.setDensity($('den').value / 100); $('den-v').textContent = ($('den').value / 100).toFixed(1); });
+    SPECIES.forEach((sp, i) => {
+        const c = document.createElement('span');
+        c.className = 'chip';
+        const n = points.filter((p) => p.channel === i).length;
+        c.innerHTML = `<i style="background:${sp.color}"></i>${sp.name} <span class="muted">${n}</span>`;
+        c.addEventListener('click', () => { c.classList.toggle('off'); view.setChannelVisible(i, !c.classList.contains('off')); });
+        $('species').appendChild(c);
+    });
+
+    function cut() {
+        let a = Number($('z0').value), b = Number($('z1').value);
+        if (a > b) [a, b] = [b, a];
+        $('z0-v').textContent = dateOf(a);
+        $('z1-v').textContent = dateOf(b);
+        $('x0-v').textContent = `${Math.round($('x0').value / 100 * KM[0])} km`;
+        view.setClip([$('x0').value / 100, 0, a / 365], [1, 1, Math.max(a + 2, b) / 365]);
+    }
+    ['z0', 'z1', 'x0'].forEach((id) => $(id).addEventListener('input', cut));
+    const PRESETS = {year: [0, 365, 0], summer: [152, 273, 0], winter: [0, 90, 0], canyon: [0, 365, 30]};
+    document.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => {
+        const [a, z, x] = PRESETS[b.dataset.preset];
+        $('z0').value = a; $('z1').value = z; $('x0').value = x;
+        cut();
+    }));
+    cut();
+
+    view.on('hover', (h) => {
+        if (!h) { $('readout').textContent = 'Hover the cloud.'; return; }
+        const best = h.values.map((v, i) => [v, i]).sort((a, b) => b[0] - a[0])[0];
+        $('readout').innerHTML = `Densest point under the pointer: <b style="color:#fff">${dateOf(h.w * 365)}</b>,
+            ${(h.u * KM[0]).toFixed(1)} km east, ${(h.v * KM[1]).toFixed(1)} km north — mostly
+            <b style="color:${SPECIES[best[1]].color}">${SPECIES[best[1]].name}</b>.`;
+    });
+    $('readout').textContent = `${total.toLocaleString('en-GB')} invented sightings in a ${DIMS.join(' × ')} volume. Hover the cloud.`;
+})();
+</script>
+</body>
+</html>
