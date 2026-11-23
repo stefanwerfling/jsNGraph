@@ -1,7 +1,8 @@
 /**
  * jsngraph/chart — scientific x/y charts on canvas: WaterfallChart (stacked
  * spectra with hover/select and a draggable slice marker), RadarChart
- * (spider / web chart), StorylineChart (who was where, when) and LineChart.
+ * (spider / web chart), StorylineChart (who was where, when), StreamChart
+ * (streamgraph with small multiples) and LineChart.
  * Importing this subpath alone keeps the other parts out of a bundle;
  * `jsngraph` itself still exports everything.
  */
@@ -26,3 +27,9 @@ export { ChartTheme } from './chart/ChartTheme';
 export type { ChartThemeTokens } from './chart/ChartTheme';
 export { WaterfallGeometry } from './chart/WaterfallGeometry';
 export type { ChartSeriesData, WaterfallLayout } from './chart/WaterfallGeometry';
+export { StreamChart } from './chart/StreamChart';
+export type { StreamChartOptions, StreamChartEvents, StreamMark, StreamAnnotation } from './chart/StreamChart';
+export { StreamLayout } from './chart/StreamLayout';
+export type {
+    StreamLayer, StreamPanel, StreamData, StreamOffset, StreamOrder, StreamLayoutOptions, StreamPanelResult, StreamResult
+} from './chart/StreamLayout';

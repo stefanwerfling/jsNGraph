@@ -220,6 +220,16 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   outline + dim others, click band / legend chip = `focusEntity` (its events + everyone in them), click event =
   `focusSeries`, double-click background = `reset`; DOM legend chips. Example: `examples/storyline.html`
   (made-up open-source project, 22 people × 30 events).
+  `StreamChart` (streamgraph, small multiples): `{x, layers (color, group), panels (label, values[layer][i])}`. Pure
+  `StreamLayout`: every layer resampled (`resolution` per x step) and smoothed by a Gaussian convolution Σ vᵢ·K·Δᵢ
+  (`bandwidth` in x units, default 1.2 × median step; outside the data it falls to 0, so streams taper over a domain
+  padded by 3 × bandwidth), one order for all panels (`given`/`reverse`/`insideOut` from the totals), offsets
+  `silhouette`/`wiggle` (d3's minimum-wiggle, re-centred)/`zero`/`expand`; hidden layers become 0 so toggles morph;
+  `layerAt` hit test (`test/Stream.test.ts`). Chart: `sharedScale` (panel height ∝ its range, a small floor) or equal
+  panels, dotted `marks` with labels over the top, `annotations` (DOM note boxes pinned to panel/x/y, `**bold**`, kept
+  below the mark labels), outline in the background colour (stronger on the silhouette), hover = dim others + tooltip
+  with the raw value at the nearest x, DOM legend grouped by `layer.group` (hover highlights, click hides), x zoom/pan,
+  morph on offset/order/visibility. Example: `examples/stream.html` (made-up podcast, 5 voices × studio/remote, 4 panels).
 
 - `records/` — `RecordGraph` (subpath `jsngraph/records`): cards with a header (icon, title, subtitle) and a table of
   rows (`label`, `value`), links run row → row (`RecordLink {from: {node,row}, to}`), cards may sit in group frames
