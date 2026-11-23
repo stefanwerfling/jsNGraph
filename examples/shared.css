@@ -104,7 +104,20 @@ a:hover { text-decoration: underline; }
     background: var(--bg-soft);
     border: 1px solid var(--border);
     border-radius: 12px;
+    overflow: hidden;
     transition: border-color 0.15s, transform 0.15s;
+}
+
+/* thumbnail (scripts/shots.mjs) bleeds to the card edges */
+.card .shot {
+    display: block;
+    width: calc(100% + 36px);
+    margin: -18px -18px 14px;
+    aspect-ratio: 1280 / 764;
+    object-fit: cover;
+    object-position: top left;
+    background: #0b0f17;
+    border-bottom: 1px solid var(--border);
 }
 
 .card:hover { border-color: var(--accent); transform: translateY(-2px); text-decoration: none; }

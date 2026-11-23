@@ -223,6 +223,9 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
 - `npm run typecheck` — `tsc --noEmit`. `npm test` — Vitest (`test/**/*.test.ts`).
 - `examples/` — open any page directly in a browser after `npm run build` (each references
   `../dist/jsngraph.global.js`, no bundler needed; shared chrome in `shared.css`).
+  Card thumbnails live in `examples/shots/*.webp`; `node scripts/shots.mjs [page …]` regenerates them (headless
+  Chrome over the DevTools protocol with real waits — `--virtual-time-budget` leaves rAF canvases blank; needs a
+  build, python3, ImageMagick; new cards in `index.html` are picked up automatically).
   `index.html` is a gallery hub linking to: `monitoring.html` (force layout, the network-
   monitoring demo with theme/label toggles, simulated-failure/recover, a jittered load loop),
   `layered.html` (layered + curved edges with a live barycenter-`sweeps` slider and crossing
