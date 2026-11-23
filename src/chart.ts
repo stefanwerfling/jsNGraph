@@ -65,3 +65,10 @@ export { PhaseRing } from './chart/PhaseRing';
 export type { PhaseRingOptions, PhaseRingEvents, PhaseSeries, PhaseNote, PhaseLegend, PhaseHover } from './chart/PhaseRing';
 export { PhaseRingGeometry } from './chart/PhaseRingGeometry';
 export type { RingView, RingPoint, RingSample } from './chart/PhaseRingGeometry';
+export { HoloTable } from './chart/HoloTable';
+export type {
+    HoloTableOptions, HoloTableEvents, HoloScene, HoloPanel, HoloLine, HoloArea, HoloBar, HoloRidge, HoloMarker, HoloText, HoloCard,
+    HoloHit, HoloKind
+} from './chart/HoloTable';
+export { HoloGeometry } from './chart/HoloGeometry';
+export type { HoloCamera, HoloFrame, HoloPoint } from './chart/HoloGeometry';

@@ -291,6 +291,19 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   `test/PhaseRing.test.ts`). Example: `examples/moonphase.html` (invented four years of La Gomera trips by lunar day,
   ±1 day window, species/metric/layout switches, table by the eight phases linked to the ring).
 
+  `HoloTable` (canvas, `jsngraph/chart`): a dark table in perspective with glowing dashboard content, all plain data in
+  `HoloScene` (scene coords: x right, y towards the viewer, z up): `panels` (framed tiles, corner glow, title printed on the
+  table), `lines` (roads/routes, `glow` = three added strokes, `flow` dots travelling along), `areas` (districts), `bars`
+  (boxes, only faces turned to the eye, grow on `setScene`), `ridges` (one wall per row over x, hovered row/column),
+  `markers` (pin/ring/dot/turbine, `pulse`), `cards` (KPI boxes), `texts` (printed via a local affine fit of the perspective,
+  or `standing`). Camera orbits a point on the table: drag orbit, right/Shift-drag pan (unproject), wheel zoom, double-click
+  reset, `focus(panelId | 'all')` / `setCamera` fly (eased, yaw the short way, distance in log space); auto-fits until the
+  user moves it. Hover/click pick the best of per-item tests (screen polygons for 3D items, the table point under the
+  pointer for flat ones); `highlight(ids)`, `setPaused`. Pure `HoloGeometry` (`frame`, `project`, `unproject`,
+  `fitDistance`, `lerp`, `boxFaces`, `inPolygon`, `polylineDistance`, `along`; `test/Holo.test.ts`). Example:
+  `examples/smartcity.html` (made-up city Veldmark: energy ridges, traffic arteries by congestion + junction counters, a
+  motorway, district incidents with pins, turbines/solar/storage, an hour slider driving every panel, fly-to buttons).
+
 - `records/` — `RecordGraph` (subpath `jsngraph/records`): cards with a header (icon, title, subtitle) and a table of
   rows (`label`, `value`), links run row → row (`RecordLink {from: {node,row}, to}`), cards may sit in group frames
   (`RecordGroup`, `collapsed` folds a group into one box; merged links keep all `ids`). Pure `RecordLayout`: columns =

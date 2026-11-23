@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — smart city table</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    html, body { background: #05080c; }
+    main { max-width: 1500px; margin: 0 auto; padding: 12px 16px 24px; color: #cfe9f5; font-family: system-ui, sans-serif; }
+    h1 { font-size: 20px; margin: 4px 0 2px; font-weight: 600; letter-spacing: .02em; }
+    .sub { margin: 0 0 10px; color: #7f98a8; font-size: 13px; max-width: 980px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; font-size: 12px; color: #7f98a8; margin-bottom: 8px; }
+    .group { display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+    button { background: #0a141c; color: #bfe6f7; border: 1px solid #1f3b4d; border-radius: 4px; padding: 4px 11px;
+        font: 12px system-ui, sans-serif; cursor: pointer; letter-spacing: .03em; }
+    button.on { border-color: #3cc8ff; color: #3cc8ff; box-shadow: 0 0 8px rgba(60, 200, 255, .35); }
+    input[type=range] { width: 220px; accent-color: #3cc8ff; }
+    #hour-label { font: 600 15px ui-monospace, monospace; color: #e6f7ff; min-width: 52px; }
+    #table { height: min(78vh, 820px); min-height: 560px; border: 1px solid #12212c; border-radius: 6px; }
+    #info { min-height: 1.4em; margin-top: 8px; font-size: 13px; color: #9fc3d6; }
+    #info b { color: #e6f7ff; }
+    .credit { color: #4f6676; font-size: 11px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="moonphase.html">Moon phase</a>
+    <a href="smartcity.html" class="active">Smart city</a>
+</nav>
+
+<main>
+    <h1>Veldmark city operations table</h1>
+    <p class="sub">A made-up city on one glowing table: power use per district over the day, traffic on the main roads,
+        incidents and response times, wind and solar. Drag to orbit, right-drag or Shift-drag to pan, wheel to zoom,
+        click a panel to fly to it, double-click for the whole table. The hour drives every panel.</p>
+    <div class="controls">
+        <div class="group" id="views">
+            <button data-view="all" class="on">Overview</button>
+            <button data-view="energy">Energy</button>
+            <button data-view="traffic">Traffic</button>
+            <button data-view="safety">Public safety</button>
+            <button data-view="renew">Renewables</button>
+        </div>
+        <div class="group">
+            <span>Hour</span><input id="hour" type="range" min="0" max="23" value="8"><span id="hour-label">08:00</span>
+            <button id="play">Play day</button>
+            <button id="pause">Pause motion</button>
+        </div>
+    </div>
+    <div id="table"></div>
+    <div id="info">Hover anything on the table.</div>
+    <p class="credit">Veldmark, its districts, roads and every number are invented for this demo.</p>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+(() => {
+    const {HoloTable} = window.JSNGraph;
+
+    let seed = 31;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const gauss = (x, m, s) => Math.exp(-(((x - m) / s) ** 2));
+    const lerpStops = (stops, t) => {
+        const u = Math.max(0, Math.min(1, t)) * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(u)), f = u - i;
+        const a = stops[i].match(/\w\w/g).map((h) => parseInt(h, 16)), b = stops[i + 1].match(/\w\w/g).map((h) => parseInt(h, 16));
+        return '#' + a.map((v, k) => Math.round(v + (b[k] - v) * f).toString(16).padStart(2, '0')).join('');
+    };
+    const CONGEST = ['#2bff88', '#d9ff3a', '#ffb000', '#ff3b2e'];
+    const hh = (h) => String(h).padStart(2, '0') + ':00';
+
+    // ---- panels ---------------------------------------------------------------------------------------
+    const P = {
+        energy: {id: 'energy', x: 40, y: 40, w: 500, h: 430, title: 'Energy consumption', color: '#39ff88'},
+        traffic: {id: 'traffic', x: 580, y: 40, w: 980, h: 430, title: 'Traffic', color: '#3cc8ff'},
+        renew: {id: 'renew', x: 40, y: 510, w: 500, h: 450, title: 'Wind & solar', color: '#7dd3fc'},
+        safety: {id: 'safety', x: 580, y: 510, w: 980, h: 450, title: 'Public safety', color: '#4f8dff'}
+    };
+    const inPanel = (p, u, v, top = 56, pad = 22) => [p.x + pad + u * (p.w - 2 * pad), p.y + top + v * (p.h - top - pad)];
+
+    // ---- one road network for the city (unit square), drawn into traffic and safety --------------------
+    const GX = 13, GY = 7;
+    const node = [];
+    for (let i = 0; i <= GX; i++) {
+        node.push([]);
+        for (let j = 0; j <= GY; j++) {
+            const edge = i === 0 || j === 0 || i === GX || j === GY;
+            node[i].push([(i + (edge ? 0 : (rnd() - 0.5) * 0.5)) / GX, (j + (edge ? 0 : (rnd() - 0.5) * 0.5)) / GY]);
+        }
+    }
+    const streets = [];
+    for (let i = 0; i <= GX; i++) for (let j = 0; j <= GY; j++) {
+        if (i < GX && rnd() < 0.86) streets.push([node[i][j], node[i + 1][j]]);
+        if (j < GY && rnd() < 0.86) streets.push([node[i][j], node[i][j + 1]]);
+        if (i < GX && j < GY && rnd() < 0.12) streets.push([node[i][j], node[i + 1][j + 1]]);
+    }
+    const ARTERIES = [
+        {id: 'a-ring', name: 'Ring road', pts: [...Array.from({length: GX + 1}, (_, i) => node[i][1]), ...Array.from({length: GY - 1}, (_, j) => node[GX - 1][j + 1])], factor: 1.0},
+        {id: 'a-harbour', name: 'Harbour avenue', pts: Array.from({length: GX + 1}, (_, i) => node[i][5]), factor: 0.85},
+        {id: 'a-north', name: 'North street', pts: Array.from({length: GY + 1}, (_, j) => node[4][j]), factor: 0.7},
+        {id: 'a-bridge', name: 'Bridge road', pts: Array.from({length: GY + 1}, (_, j) => node[9][j]), factor: 0.9},
+        {id: 'a-diag', name: 'Market diagonal', pts: Array.from({length: 7}, (_, k) => node[2 + k][k]), factor: 0.6}
+    ];
+    const JUNCTIONS = [[4, 1], [9, 1], [4, 5], [9, 5], [2, 3], [11, 3], [6, 6], [12, 2]].map(([i, j], k) => ({id: 'j' + k, i, j, factor: 0.6 + rnd() * 0.6}));
+
+    // ---- districts: a coarse jittered grid, 4 × 2 ----------------------------------------------------------
+    const DX = 4, DY = 2;
+    const corner = Array.from({length: DX + 1}, (_, i) => Array.from({length: DY + 1}, (_, j) => {
+        const edge = i === 0 || j === 0 || i === DX || j === DY;
+        return [(i + (edge ? 0 : (rnd() - 0.5) * 0.35)) / DX, (j + (edge ? 0 : (rnd() - 0.5) * 0.3)) / DY];
+    }));
+    const NAMES = ['Altmarkt', 'Nordwall', 'Kesselberg', 'Lindenhof', 'Hafenkai', 'Weidenau', 'Brückfeld', 'Südtor'];
+    const DISTRICTS = [];
+    for (let j = 0; j < DY; j++) for (let i = 0; i < DX; i++) {
+        DISTRICTS.push({
+            id: 'd' + DISTRICTS.length, name: NAMES[DISTRICTS.length],
+            quad: [corner[i][j], corner[i + 1][j], corner[i + 1][j + 1], corner[i][j + 1]],
+            homes: 0.4 + rnd() * 0.6, shops: 0.3 + rnd() * 0.7, risk: 0.5 + rnd(), response: 1.6 + rnd() * 2.4
+        });
+    }
+
+    // ---- per hour models (invented) ---------------------------------------------------------------------------
+    const traffic = (h) => 0.18 + 0.75 * gauss(h, 8, 1.5) + 0.7 * gauss(h, 17.5, 1.8) + 0.25 * gauss(h, 13, 2.5);
+    const power = (d, h) => Math.round(18 + d.homes * (14 * gauss(h, 7.5, 1.3) + 24 * gauss(h, 19.5, 2.2)) + d.shops * 26 * gauss(h, 13, 4.2) + 6 * Math.sin(h + d.homes * 9));
+    const incidents = (d, h) => Math.max(0, Math.round(d.risk * (1.2 + 3.4 * gauss((h + 4) % 24, 3, 3) + 1.2 * gauss(h, 17, 3))));
+    const wind = (h) => 26 + 14 * Math.sin((h + 3) / 24 * Math.PI * 2) + 4 * Math.sin(h * 1.7);
+    const solar = (h) => Math.max(0, 31 * Math.sin((h - 6) / 13 * Math.PI));
+
+    // ---- static scene parts ------------------------------------------------------------------------------------
+    const streetLines = (panel, color, prefix) => streets.map(([a, b], k) => ({points: [inPanel(panel, ...a), inPanel(panel, ...b)], color, width: 0.9}));
+    const turbines = Array.from({length: 9}, (_, k) => {
+        const [x, y] = inPanel(P.renew, 0.08 + (k % 3) * 0.16 + (Math.floor(k / 3) % 2) * 0.08, 0.12 + Math.floor(k / 3) * 0.3);
+        return {id: 'turbine-' + k, x, y, k};
+    });
+    const solarFields = Array.from({length: 6}, (_, k) => {
+        const [x, y] = inPanel(P.renew, 0.6 + (k % 2) * 0.2, 0.08 + Math.floor(k / 2) * 0.24);
+        return {id: 'solar-' + k, x, y, w: 80, h: 52, k};
+    });
+
+    // ---- build the scene for an hour ----------------------------------------------------------------------------
+    function sceneAt(h) {
+        const panels = Object.values(P);
+        const lines = [], areas = [], bars = [], markers = [], texts = [], cards = [];
+
+        // energy: one wall per district over the day, the hour marked by a line across
+        const ridge = {
+            id: 'power', x: P.energy.x + 40, y: P.energy.y + 110, w: P.energy.w - 80, depth: P.energy.h - 150,
+            rows: DISTRICTS.map((d) => ({name: d.name, values: Array.from({length: 24}, (_, k) => power(d, k))})),
+            height: 150, color: '#39ff88', labels: Array.from({length: 24}, (_, k) => hh(k) + ' MW')
+        };
+        const hx = ridge.x + ridge.w * h / 23;
+        lines.push({points: [[hx, ridge.y - 10], [hx, ridge.y + ridge.depth + 10]], color: '#ffffff', width: 1.2, glow: true});
+        texts.push({x: hx, y: ridge.y + ridge.depth + 34, text: hh(h), size: 16, color: '#ffffff', align: 'center', weight: 700});
+        for (const k of [0, 6, 12, 18, 23]) texts.push({x: ridge.x + ridge.w * k / 23, y: ridge.y + ridge.depth + 22, text: hh(k), size: 11, color: '#5fae7f', align: 'center'});
+        const total = DISTRICTS.reduce((s, d) => s + power(d, h), 0);
+        const peakHour = Array.from({length: 24}, (_, k) => DISTRICTS.reduce((s, d) => s + power(d, k), 0)).reduce((b, v, k, all) => (v > all[b] ? k : b), 0);
+        cards.push({id: 'card-power', x: P.energy.x + 300, y: P.energy.y + 40, w: 170, h: 58, color: '#39ff88',
+            lines: [{text: total + ' MW', size: 22, weight: 700}, {text: 'peak today ' + hh(peakHour), size: 11, color: '#9cf5c4'}],
+            label: `City load ${total} MW at ${hh(h)}\nPeak today at ${hh(peakHour)}`});
+
+        // traffic: streets, arteries coloured by congestion, counters at junctions
+        lines.push(...streetLines(P.traffic, 'rgba(60,200,255,0.35)'));
+        const level = traffic(h);
+        for (const a of ARTERIES) {
+            const c = Math.min(1, level * a.factor);
+            const speed = Math.round(60 - c * 42);
+            lines.push({id: a.id, points: a.pts.map((p) => inPanel(P.traffic, ...p)), color: lerpStops(CONGEST, c), width: 2.6, glow: true,
+                flow: Math.round(3 + c * 14), speed: 3 + (1 - c) * 6, label: `${a.name}\nLoad ${Math.round(c * 100)} % · ${speed} km/h average`});
+        }
+        for (const jn of JUNCTIONS) {
+            const [x, y] = inPanel(P.traffic, ...node[jn.i][jn.j]);
+            const cars = Math.round(level * jn.factor * 2400);
+            bars.push({id: jn.id, x: x - 8, y: y - 8, size: 16, height: 6 + cars / 34, color: '#ffc21a', label: `Counter ${jn.id.toUpperCase()}\n${cars.toLocaleString('en-GB')} vehicles / h`});
+        }
+        cards.push({id: 'card-traffic', x: P.traffic.x + P.traffic.w - 210, y: P.traffic.y + 14, w: 190, h: 34, color: '#3cc8ff',
+            lines: [{text: `Average load ${Math.round(level * 75)} %`, size: 15, weight: 600}]});
+
+        // the motorway crossing the table
+        lines.push({id: 'motorway', points: [[0, 300], [420, 330], [700, 250], [1000, 285], [1300, 180], [1600, 150]], color: '#ff8a1e', width: 3.4, glow: true,
+            flow: 10, speed: 4, label: 'A7 motorway\nthrough traffic'});
+
+        // public safety: districts by incidents, streets over them, open incidents as pins
+        let all = 0, resp = 0;
+        DISTRICTS.forEach((d) => {
+            const n = incidents(d, h);
+            all += n; resp += d.response * n;
+            areas.push({id: d.id, points: d.quad.map((p) => inPanel(P.safety, ...p)), fill: `rgba(40,110,255,${0.12 + Math.min(0.5, n * 0.07)})`,
+                stroke: 'rgba(120,170,255,0.6)', width: 1, label: `${d.name}\n${n} incidents this hour · response ${d.response.toFixed(1)} min`});
+            const [cx, cy] = inPanel(P.safety, (d.quad[0][0] + d.quad[2][0]) / 2, (d.quad[0][1] + d.quad[2][1]) / 2);
+            texts.push({x: cx, y: cy, text: d.name, size: 13, color: 'rgba(170,205,255,0.9)', align: 'center', weight: 600});
+            let s = (h + 1) * 97 + d.id.length * 13 + Number(d.id.slice(1)) * 31;
+            for (let k = 0; k < n; k++) {
+                s = (s * 16807) % 2147483647;
+                const u = d.quad[0][0] + ((s % 1000) / 1000 * 0.8 + 0.1) * (d.quad[1][0] - d.quad[0][0]);
+                s = (s * 16807) % 2147483647;
+                const v = d.quad[0][1] + ((s % 1000) / 1000 * 0.6 + 0.3) * (d.quad[3][1] - d.quad[0][1]);
+                const [x, y] = inPanel(P.safety, u, v);
+                const kind = ['Burglary', 'Traffic accident', 'Noise complaint', 'Fire alarm', 'Medical'][s % 5];
+                markers.push({id: `inc-${d.id}-${k}`, x, y, color: kind === 'Fire alarm' ? '#ffb000' : '#ff3b5c', shape: 'pin', size: 9, pulse: k === 0,
+                    label: `${kind} · ${d.name}\nreported ${hh(h).slice(0, 2)}:${String((s % 6) * 10).padStart(2, '0')}`});
+            }
+        });
+        lines.push(...streetLines(P.safety, 'rgba(150,200,255,0.28)'));
+        const avgResp = all ? resp / all : 0;
+        const yesterday = DISTRICTS.reduce((s, d) => s + incidents(d, (h + 23) % 24), 0);
+        const change = yesterday ? Math.round((all - yesterday) / yesterday * 100) : 0;
+        cards.push({id: 'card-incidents', x: P.safety.x + P.safety.w - 230, y: P.safety.y + P.safety.h - 92, w: 210, h: 74, color: '#4f8dff',
+            lines: [{text: `Incidents ${change > 0 ? '+' : ''}${change} %`, size: 20, weight: 700}, {text: `${all} open · vs. the hour before`, size: 11, color: '#a9c6ff'},
+                {text: `Response time ${avgResp.toFixed(1)} min`, size: 12, color: '#d6e4ff'}]});
+
+        // renewables: turbines, solar fields, storage
+        const w = wind(h), sun = solar(h);
+        for (const t of turbines) {
+            markers.push({id: t.id, x: t.x, y: t.y, color: '#d8f2ff', shape: 'turbine', size: 12, label: `Wind turbine ${t.k + 1}\n${(w / 9).toFixed(1)} MW`});
+        }
+        for (const f of solarFields) {
+            const out = sun / 6;
+            areas.push({id: f.id, points: [[f.x, f.y], [f.x + f.w, f.y], [f.x + f.w, f.y + f.h], [f.x, f.y + f.h]],
+                fill: `rgba(60,140,255,${0.15 + out / 9})`, stroke: '#7dd3fc', width: 1, label: `Solar field ${f.k + 1}\n${out.toFixed(1)} MW`});
+            for (let r = 1; r < 4; r++) lines.push({points: [[f.x + 4, f.y + f.h * r / 4], [f.x + f.w - 4, f.y + f.h * r / 4]], color: 'rgba(125,211,252,0.5)', width: 0.6});
+        }
+        const storage = Math.round(40 + 35 * Math.sin((h - 9) / 24 * Math.PI * 2));
+        for (let k = 0; k < 4; k++) {
+            const [x, y] = inPanel(P.renew, 0.1 + k * 0.12, 0.86);
+            const lvl = Math.max(5, storage + (k - 1.5) * 6);
+            bars.push({id: 'battery-' + k, x, y: y - 12, size: 24, height: lvl * 1.4, color: '#39ff88', label: `Battery ${k + 1}\n${lvl} % charged`});
+        }
+        texts.push({x: inPanel(P.renew, 0.1, 0.86)[0], y: inPanel(P.renew, 0.1, 0.86)[1] + 36, text: 'STORAGE', size: 11, color: '#5fae7f', weight: 700});
+        cards.push({id: 'card-renew', x: P.renew.x + 300, y: P.renew.y + P.renew.h - 100, w: 180, h: 80, color: '#7dd3fc',
+            lines: [{text: `Wind ${w.toFixed(0)} MW`, size: 16, weight: 700}, {text: `Solar ${sun.toFixed(0)} MW`, size: 16, weight: 700},
+                {text: `${Math.round((w + sun) / total * 100)} % of the load`, size: 11, color: '#bfe6f7'}]});
+
+        return {width: 1600, height: 1000, panels, lines, areas, bars, ridges: [ridge], markers, texts, cards};
+    }
+
+    // ---- table + controls ---------------------------------------------------------------------------------------
+    let hour = 8;
+    const table = new HoloTable(document.getElementById('table'), {scene: sceneAt(hour), format: (v) => v + ' MW'});
+    window.table = table;
+    const info = document.getElementById('info');
+    const views = document.querySelectorAll('[data-view]');
+    const setView = (v) => { views.forEach((b) => b.classList.toggle('on', b.dataset.view === v)); table.focus(v); };
+    views.forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
+
+    table.on('hover', (h) => {
+        if (h === null || h.kind === 'panel') { info.innerHTML = h ? `<b>${h.label}</b> — click to fly there` : 'Hover anything on the table.'; return; }
+        const [first, ...rest] = h.label.split('\n');
+        info.innerHTML = `<b>${first}</b>${rest.length ? ' — ' + rest.join(' · ') : ''}`;
+        if (h.kind === 'ridge') info.innerHTML = `<b>${first}</b> — ${hh(h.index)}: ${table.getScene().ridges[0].rows[h.row].values[h.index]} MW`;
+    });
+    table.on('click', (h) => {
+        if (h.kind === 'panel') setView(h.id);
+        else if (h.kind === 'ridge') setHour(h.index);
+    });
+
+    const slider = document.getElementById('hour'), label = document.getElementById('hour-label');
+    const setHour = (h) => {
+        hour = h; slider.value = h; label.textContent = hh(h);
+        const s = sceneAt(h);
+        table.setScene(s);
+    };
+    slider.addEventListener('input', () => setHour(Number(slider.value)));
+    let timer = null;
+    const playBtn = document.getElementById('play');
+    playBtn.addEventListener('click', () => {
+        if (timer) { clearInterval(timer); timer = null; playBtn.classList.remove('on'); playBtn.textContent = 'Play day'; return; }
+        playBtn.classList.add('on'); playBtn.textContent = 'Stop';
+        timer = setInterval(() => setHour((hour + 1) % 24), 1600);
+    });
+    let paused = false;
+    const pauseBtn = document.getElementById('pause');
+    pauseBtn.addEventListener('click', () => { paused = !paused; table.setPaused(paused); pauseBtn.classList.toggle('on', paused); });
+})();
+</script>
+</body>
+</html>
