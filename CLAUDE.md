@@ -249,6 +249,17 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   after 3 px so clicks still reach regions). Pure parts tested in `test/Newsroom.test.ts`. Example: `examples/newsroom.html`
   (made-up country Nordhavn; the map is 201 Voronoi cells clipped to a generated island, the majority bar counts them).
 
+  Market set (canvas, `jsngraph/chart`): `TimeSeriesChart` — lines over ms timestamps on a calendar axis (`TimeScale`,
+  pure: `step` picks minute…100-year steps for a tick budget, `ticks` on round local positions — multi-day steps restart
+  on the 1st, weeks on Mondays —, `label` detail follows the step, `decimate` = min/max per pixel column, binary-search
+  `nearest`); zoom presets (DOM buttons, eased `go`), wheel/drag/double-click, y axis eases to the visible data, crosshair
+  tooltip, optional volume pane and overview strip (`setNavigator`; drag window, its edges, or click to jump). `setSeries`
+  keeps following the end when the view ended at the newest point (live). `DepthChart` — `DepthLayout.book` merges orders
+  into levels and sums outwards from the spread (bids ≥ p, asks ≤ p), drawn as filled staircases (or lines), spread
+  marker, linear/log, `window` (range or ± share of mid), price zoom/pan, the quantity axis eases on live updates; hover
+  names the level that sets the depth ("n buy orders at p or higher"). Tests: `test/Market.test.ts`. Example:
+  `examples/market.html` (made-up trading card, two years of prices, live book).
+
 - `records/` — `RecordGraph` (subpath `jsngraph/records`): cards with a header (icon, title, subtitle) and a table of
   rows (`label`, `value`), links run row → row (`RecordLink {from: {node,row}, to}`), cards may sit in group frames
   (`RecordGroup`, `collapsed` folds a group into one box; merged links keep all `ids`). Pure `RecordLayout`: columns =

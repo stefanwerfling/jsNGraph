@@ -2,7 +2,8 @@
  * jsngraph/chart — x/y charts on canvas: WaterfallChart (stacked spectra with
  * hover/select and a draggable slice marker), RadarChart (spider / web chart),
  * StorylineChart (who was where, when), StreamChart (streamgraph with small
- * multiples), LineChart, BarChart, UnitHistogram and AreaChart.
+ * multiples), LineChart, BarChart, UnitHistogram, AreaChart, TimeSeriesChart
+ * (price history with zoom presets) and DepthChart (order book depth).
  * Importing this subpath alone keeps the other parts out of a bundle;
  * `jsngraph` itself still exports everything.
  */
@@ -47,3 +48,11 @@ export { AreaChart } from './chart/AreaChart';
 export type { AreaChartOptions, AreaChartEvents, AreaSeries, AreaMark } from './chart/AreaChart';
 export { AreaLayout } from './chart/AreaLayout';
 export type { AreaStack, AreaBand } from './chart/AreaLayout';
+export { TimeSeriesChart } from './chart/TimeSeriesChart';
+export type { TimeSeriesChartOptions, TimeSeriesChartEvents, TimeSeries, TimeVolume, TimePreset } from './chart/TimeSeriesChart';
+export { TimeScale } from './chart/TimeScale';
+export type { TimeStep } from './chart/TimeScale';
+export { DepthChart } from './chart/DepthChart';
+export type { DepthChartOptions, DepthChartEvents } from './chart/DepthChart';
+export { DepthLayout } from './chart/DepthLayout';
+export type { DepthOrder, DepthLevel, DepthBook } from './chart/DepthLayout';

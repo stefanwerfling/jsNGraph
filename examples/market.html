@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — market charts</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    :root { --page: #1a2433; --panel: #101822; --line: #26364a; --ink: #c6d4df; --dim: #8f98a0; --accent: #9ccc1a; }
+    html.light { --page: #eef1f4; --panel: #ffffff; --line: #d8dee5; --ink: #1d2733; --dim: #5d6873; --accent: #4f8a10; }
+    html, body { background: var(--page); }
+    main { max-width: 1040px; margin: 0 auto; padding: 16px 18px 28px; color: var(--ink); }
+    .item { display: flex; gap: 16px; align-items: center; margin-bottom: 14px; }
+    .art { width: 72px; height: 72px; border-radius: 8px; flex: none; display: grid; place-items: center;
+        font: 800 22px system-ui, sans-serif; color: #fff; letter-spacing: .04em;
+        background: radial-gradient(circle at 30% 25%, #ffd36e, #c0569b 55%, #3a2b7a); box-shadow: 0 0 0 2px var(--line); }
+    .item h1 { margin: 0; font-size: 20px; }
+    .item p { margin: 3px 0 0; color: var(--dim); font-size: 13px; }
+    .stats { display: flex; gap: 26px; margin-left: auto; text-align: right; }
+    .stats div { font-size: 12px; color: var(--dim); }
+    .stats b { display: block; font-size: 18px; color: var(--ink); }
+    .stats .ask b { color: var(--accent); }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 10px 6px; margin-bottom: 14px; }
+    .head { display: flex; align-items: center; gap: 10px; margin: 0 4px 4px; font-size: 13px; color: var(--dim); }
+    .head span { margin-right: auto; }
+    .head button, .bar button { background: transparent; color: var(--ink); border: 1px solid var(--line); border-radius: 4px;
+        padding: 3px 9px; font: 12px system-ui, sans-serif; cursor: pointer; }
+    .head button.on, .bar button.on { border-color: var(--accent); color: var(--accent); }
+    #history { height: 360px; }
+    #depth { height: 300px; }
+    .bar { display: flex; gap: 8px; justify-content: flex-end; margin-bottom: 10px; }
+    #log { color: var(--dim); font: 12px ui-monospace, monospace; min-height: 1.4em; margin: 4px 4px 0; }
+    @media (max-width: 700px) { .item { flex-wrap: wrap; } .stats { margin-left: 0; text-align: left; } }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="newsroom.html">Newsroom charts</a>
+    <a href="market.html" class="active">Market charts</a>
+</nav>
+
+<main>
+    <div class="bar"><button id="live" class="on">Live ●</button><button id="theme">Light</button></div>
+
+    <div class="item">
+        <div class="art">NO</div>
+        <div>
+            <h1>Night Owl · Foil</h1>
+            <p>Gloamcards, series 3 — a made-up trading card on a made-up market</p>
+        </div>
+        <div class="stats">
+            <div class="ask">Starting at<b id="s-ask">–</b></div>
+            <div>Highest buy order<b id="s-bid">–</b></div>
+            <div>Sold, last 24 h<b id="s-vol">–</b></div>
+        </div>
+    </div>
+
+    <section class="panel">
+        <div class="head"><span>Median sale prices</span><label><input id="nav-toggle" type="checkbox"> overview</label></div>
+        <div id="history"></div>
+    </section>
+
+    <section class="panel">
+        <div class="head"><span>Buy and sell orders (cumulative)</span>
+            <button data-win="all" class="on">All</button><button data-win="0.5">±50 %</button><button data-win="0.15">±15 %</button>
+            <button id="log-scale">Log</button><button id="steps" class="on">Steps</button>
+        </div>
+        <div id="depth"></div>
+        <div id="log">Hover the charts.</div>
+    </section>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+(() => {
+    const {TimeSeriesChart, DepthChart, ChartTheme, TimeScale} = window.JSNGraph;
+    const HOUR = TimeScale.HOUR, DAY = TimeScale.DAY;
+    const usd = (v) => '$' + v.toFixed(2);
+
+    let seed = 4242;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const normal = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
+
+    // ---- price history: daily medians for two years, hourly for the last 30 days ----
+    let now = new Date(); now.setMinutes(0, 0, 0); now = now.getTime();
+    const start = now - 730 * DAY;
+    const t = [], price = [], sold = [];
+    let p = 9.5;          // launch price, decays towards a floor with noise
+    let fair = 3.2;
+    const step = (dt) => {
+        const days = dt / DAY;
+        fair += normal() * 0.03 * Math.sqrt(days);
+        fair = Math.max(1.8, Math.min(5, fair));
+        p += (fair - p) * Math.min(1, 0.06 * days) + normal() * 0.12 * Math.sqrt(days) * p / 4;
+        p = Math.max(0.5, p);
+        return p;
+    };
+    for (let x = start; x < now - 30 * DAY; x += DAY) {
+        t.push(x); price.push(+step(DAY).toFixed(2));
+        sold.push(Math.round(Math.max(20, 900 * Math.exp(-(x - start) / (60 * DAY)) + 140 + normal() * 30)));
+    }
+    for (let x = now - 30 * DAY; x <= now; x += HOUR) {
+        t.push(x); price.push(+step(HOUR).toFixed(2));
+        sold.push(Math.max(0, Math.round(6 + 4 * Math.sin(x / DAY * 2 * Math.PI) + normal() * 2)));
+    }
+
+    const steamish = {
+        ...ChartTheme.dark, background: '#101822', band: '', grid: 'rgba(255,255,255,0.06)', axis: 'rgba(255,255,255,0.14)',
+        text: '#8f98a0', title: '#c6d4df', line: '#a4d007', select: '#ffffff', pill: 'rgba(164,208,7,0.12)', pillBorder: '#a4d007'
+    };
+    const light = {...ChartTheme.light, background: '#ffffff', band: '', line: '#4f8a10', pill: 'rgba(79,138,16,0.1)', pillBorder: '#4f8a10'};
+    let dark = true;
+
+    const history = new TimeSeriesChart(document.getElementById('history'), {
+        theme: steamish, locale: 'en-US', format: usd,
+        series: [{name: 'Median price', t: t.slice(), values: price.slice(), fill: true}],
+        volume: {t: t.slice(), values: sold.slice(), name: 'sold', color: 'rgba(102,192,244,0.45)'},
+        presets: [{label: 'Week', span: 7 * DAY}, {label: 'Month', span: 30 * DAY}, {label: 'Lifetime', span: 'all'}],
+        initialPreset: 'Month'
+    });
+
+    // ---- order book around the current price ----
+    const book = () => {
+        const mid = price[price.length - 1];
+        const bids = [], asks = [];
+        for (let i = 0; i < 140; i++) {
+            const bp = +(mid * (0.97 - i * 0.0048) - rnd() * 0.01).toFixed(2);
+            if (bp > 0.05) bids.push({price: bp, quantity: Math.round(300 + 2400 * Math.exp(-i / 70) * (0.5 + rnd()))});
+            const ap = +(mid * (1.02 + i * 0.006) + rnd() * 0.01).toFixed(2);
+            asks.push({price: ap, quantity: Math.round(40 + 900 * Math.exp(-i / 50) * (0.4 + rnd()) * (1 + i / 60))});
+        }
+        return {bids, asks};
+    };
+    let orders = book();
+    const depth = new DepthChart(document.getElementById('depth'), {
+        theme: steamish, bids: orders.bids, asks: orders.asks, format: usd,
+        bidColor: '#6c93d6', askColor: '#a4d007'
+    });
+
+    // ---- stats + hover log ----
+    const log = document.getElementById('log');
+    const stats = () => {
+        const b = depth.getBook();
+        document.getElementById('s-ask').textContent = b.bestAsk === null ? '–' : usd(b.bestAsk);
+        document.getElementById('s-bid').textContent = b.bestBid === null ? '–' : usd(b.bestBid);
+        const since = t[t.length - 1] - DAY;
+        let n = 0; for (let i = t.length - 1; i >= 0 && t[i] > since; i--) n += sold[i];
+        document.getElementById('s-vol').textContent = n.toLocaleString('en-US');
+    };
+    stats();
+    history.on('hover', (h) => { log.textContent = h ? `${TimeScale.full(h.t, 'en-US')} · ${usd(h.values[0] ?? 0)} · ${h.volume ?? 0} sold` : ''; });
+    depth.on('hover', (h) => { log.textContent = h ? `${h.side} · ${usd(h.price)} · depth ${h.quantity.toLocaleString('en-US')}` : ''; });
+
+    // ---- live: one simulated hour every 1.5 s, the book jitters in between ----
+    let live = true;
+    let tick = 0;
+    setInterval(() => {
+        if (!live) return;
+        tick++;
+        orders = {
+            bids: orders.bids.map((o) => ({price: o.price, quantity: Math.max(0, Math.round(o.quantity * (0.93 + rnd() * 0.14)))})),
+            asks: orders.asks.map((o) => ({price: o.price, quantity: Math.max(0, Math.round(o.quantity * (0.93 + rnd() * 0.14)))}))
+        };
+        if (tick % 3 === 0) {
+            const last = t[t.length - 1] + HOUR;
+            t.push(last); price.push(+step(HOUR).toFixed(2));
+            sold.push(Math.max(0, Math.round(6 + 4 * Math.sin(last / DAY * 2 * Math.PI) + normal() * 2)));
+            history.setSeries([{name: 'Median price', t: t.slice(), values: price.slice(), fill: true}],
+                {t: t.slice(), values: sold.slice(), name: 'sold', color: 'rgba(102,192,244,0.45)'});
+            if (tick % 12 === 0) orders = book();
+        }
+        depth.setOrders(orders.bids, orders.asks);
+        stats();
+    }, 500);
+
+    // ---- controls ----
+    const liveBtn = document.getElementById('live');
+    liveBtn.addEventListener('click', () => { live = !live; liveBtn.classList.toggle('on', live); liveBtn.textContent = live ? 'Live ●' : 'Live ○'; });
+    for (const b of document.querySelectorAll('[data-win]')) {
+        b.addEventListener('click', () => {
+            document.querySelectorAll('[data-win]').forEach((x) => x.classList.toggle('on', x === b));
+            depth.setWindow(b.dataset.win === 'all' ? null : Number(b.dataset.win));
+        });
+    }
+    const logBtn = document.getElementById('log-scale');
+    logBtn.addEventListener('click', () => { const on = !logBtn.classList.contains('on'); logBtn.classList.toggle('on', on); depth.setScale(on ? 'log' : 'linear'); });
+    const stepBtn = document.getElementById('steps');
+    stepBtn.addEventListener('click', () => { const on = !stepBtn.classList.contains('on'); stepBtn.classList.toggle('on', on); depth.setStep(on); });
+    document.getElementById('nav-toggle').addEventListener('change', (e) => history.setNavigator(e.target.checked));
+    const themeBtn = document.getElementById('theme');
+    themeBtn.addEventListener('click', () => {
+        dark = !dark;
+        document.documentElement.classList.toggle('light', !dark);
+        themeBtn.textContent = dark ? 'Light' : 'Dark';
+        history.setTheme(dark ? steamish : light);
+        depth.setTheme(dark ? steamish : light);
+    });
+})();
+</script>
+</body>
+</html>
