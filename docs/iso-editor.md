@@ -96,7 +96,17 @@ Decisions:
 
 ## Milestones
 
-Status: I1 done (`examples/iso.html`).
+Status: I1–I2 done (`examples/iso.html`).
+
+I2 as built: `IsoRoute` A* runs over (tile, entry direction) states — 1 per step, `turnCost` 0.6 per turn, `blockedCost` 12
+per occupied tile crossed (the end tiles are free), never straight back, search box = the ends ± `margin` 8, a plain L
+route as fallback; waypoints are legs that keep the incoming direction. The editor blocks every item tile, draws the
+corners' tile centres as one floor path under the base tiles (`non-scaling-stroke`, so widths/dashes are screen-stable
+px at zoom 1), arrowheads as floor triangles 0.62 tiles off an item centre (just outside its base tile), a ring at a free
+tile end, three SMIL `animateMotion` dots for `animated` (skipped under reduced motion), a 16 px transparent hit path, and
+the label as an upright div at `labelAt`. Connectors take part in selection, hover (`connectorHover`/`connectorClick`) and
+`highlight` (lit when listed or both end items are). `updateItem` / `updateConnector` patch and re-render (moved items
+re-route); `getRoute(id)` returns the corners. Parallel connectors sharing tiles overlap (no lane offsets yet).
 
 | # | Content |
 |---|---|

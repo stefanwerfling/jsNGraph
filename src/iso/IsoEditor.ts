@@ -3,9 +3,10 @@ import { Camera, CameraState } from '../view/Camera';
 import { Color } from '../util/Color';
 import { IsoIcons } from './IsoIcons';
 import { IsoBounds, IsoProjection } from './IsoProjection';
+import { IsoRoute } from './IsoRoute';
 import { IsoStyles } from './IsoStyles';
 import {
-    IsoDocument, IsoEditorEvents, IsoEditorOptions, IsoIconType, IsoItem, IsoRegion, IsoText
+    IsoAnchor, IsoConnector, IsoDocument, IsoEditorEvents, IsoEditorOptions, IsoIconType, IsoItem, IsoRegion, IsoText, IsoTile
 } from './IsoTypes';
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -28,6 +29,8 @@ export class IsoEditor {
     private readonly regionG: SVGGElement;
     private readonly baseG: SVGGElement;
     private readonly textG: SVGGElement;
+    private readonly connG: SVGGElement;
+    private readonly connLabelLayer: HTMLDivElement;
     private readonly itemLayer: HTMLDivElement;
     private readonly labelLayer: HTMLDivElement;
     private readonly events = new EventEmitter<IsoEditorEvents>();
@@ -74,14 +77,18 @@ export class IsoEditor {
         this.regionG = document.createElementNS(SVG, 'g');
         this.baseG = document.createElementNS(SVG, 'g');
         this.textG = document.createElementNS(SVG, 'g');
-        this.floorG.append(this.gridPath, this.regionG, this.textG, this.baseG);
+        this.connG = document.createElementNS(SVG, 'g');
+        // connectors lie under the base tiles, so a line meets an item at its tile edge
+        this.floorG.append(this.gridPath, this.regionG, this.textG, this.connG, this.baseG);
         this.floor.appendChild(this.floorG);
 
         this.itemLayer = document.createElement('div');
         this.itemLayer.className = 'iso-items';
         this.labelLayer = document.createElement('div');
         this.labelLayer.className = 'iso-labels';
-        this.stage.append(this.floor, this.itemLayer, this.labelLayer);
+        this.connLabelLayer = document.createElement('div');
+        this.connLabelLayer.className = 'iso-labels';
+        this.stage.append(this.floor, this.itemLayer, this.connLabelLayer, this.labelLayer);
         this.root.appendChild(this.stage);
         container.appendChild(this.root);
 
@@ -125,12 +132,40 @@ export class IsoEditor {
 
     public setDocument(doc: IsoDocument): void {
         this.doc = JSON.parse(JSON.stringify(doc)) as IsoDocument;
-        const ids = new Set(this.doc.items.map((i) => i.id));
+        const ids = new Set([...this.doc.items.map((i) => i.id), ...(this.doc.connectors ?? []).map((c) => c.id)]);
         this.selected = new Set([...this.selected].filter((id) => ids.has(id)));
         this.render();
         if (!this.userMoved) {
             this.fit(false);
         }
+    }
+
+    /** Patch one item (e.g. move it to another tile — its connectors re-route). No undo step yet; editing arrives with I3. */
+    public updateItem(id: string, patch: Partial<Omit<IsoItem, 'id'>>): void {
+        const it = this.doc.items.find((i) => i.id === id);
+
+        if (it !== undefined) {
+            Object.assign(it, JSON.parse(JSON.stringify(patch)));
+            this.render();
+        }
+    }
+
+    /** Patch one connector (style, label, animation, ends, waypoints). */
+    public updateConnector(id: string, patch: Partial<Omit<IsoConnector, 'id'>>): void {
+        const c = this.doc.connectors?.find((x) => x.id === id);
+
+        if (c !== undefined) {
+            Object.assign(c, JSON.parse(JSON.stringify(patch)));
+            this.render();
+        }
+    }
+
+    /** The tiles a connector runs through (corners only), as drawn. */
+    public getRoute(id: string): IsoTile[] {
+        const c = this.doc.connectors?.find((x) => x.id === id);
+        const r = c !== undefined ? this.route(c) : null;
+
+        return r === null ? [] : r.corners;
     }
 
     public isReadOnly(): boolean {
@@ -239,6 +274,9 @@ export class IsoEditor {
     private render(): void {
         this.regionG.replaceChildren(...(this.doc.regions ?? []).map((r) => this.regionEl(r)));
         this.textG.replaceChildren(...(this.doc.texts ?? []).map((t) => this.textEl(t)));
+        const conns = (this.doc.connectors ?? []).map((c) => this.connectorEl(c)).filter((x): x is NonNullable<typeof x> => x !== null);
+        this.connG.replaceChildren(...conns.map((c) => c.g));
+        this.connLabelLayer.replaceChildren(...conns.map((c) => c.label).filter((l): l is HTMLDivElement => l !== null));
 
         const items = [...this.doc.items].sort((a, b) => IsoProjection.depth(a.tile) - IsoProjection.depth(b.tile));
         this.baseG.replaceChildren(...items.map((it) => this.baseEl(it)).filter((e): e is SVGRectElement => e !== null));
@@ -382,8 +420,147 @@ export class IsoEditor {
         return el;
     }
 
+    private anchorTile(a: IsoAnchor): IsoTile | null {
+        if ('item' in a) {
+            return this.doc.items.find((i) => i.id === a.item)?.tile ?? null;
+        }
+
+        return a.tile;
+    }
+
+    /** Route of a connector: every other item's tile is avoided. Null when an end is missing. */
+    private route(c: IsoConnector): {corners: IsoTile[]; line: number[]} | null {
+        const a = this.anchorTile(c.from), b = this.anchorTile(c.to);
+
+        if (a === null || b === null) {
+            return null;
+        }
+        const blocked = new Set(this.doc.items.map((i) => IsoRoute.key(i.tile)));
+        const corners = IsoRoute.corners(IsoRoute.route(a, b, c.via ?? [], {blocked}));
+
+        return {corners, line: IsoRoute.centres(corners)};
+    }
+
+    private connectorEl(c: IsoConnector): {g: SVGGElement; label: HTMLDivElement | null} | null {
+        const r = this.route(c);
+
+        if (r === null || r.line.length < 4) {
+            return null;
+        }
+        const {line} = r;
+        const d = IsoRoute.pathData(line);
+        const color = c.color ?? 'var(--iso-line)';
+        const width = c.width ?? 6;
+        const g = document.createElementNS(SVG, 'g');
+        const path = (cls: string, w: number): SVGPathElement => {
+            const el = document.createElementNS(SVG, 'path');
+            el.setAttribute('class', cls);
+            el.setAttribute('d', d);
+            el.style.strokeWidth = String(w);
+            return el;
+        };
+
+        g.setAttribute('class', 'iso-conn');
+        g.dataset.connector = c.id;
+        g.appendChild(path('iso-conn-sel', width + 6));
+        const main = path('iso-conn-line', width);
+        main.style.stroke = color;
+        if (c.style === 'dashed') {
+            main.style.strokeDasharray = `${width * 2.4} ${width * 1.7}`;
+            main.style.strokeLinecap = 'butt';
+        } else if (c.style === 'dotted') {
+            main.style.strokeDasharray = `0.1 ${width * 2}`;
+        }
+        g.appendChild(main);
+
+        // arrowheads lie on the floor, just outside the end items' base tiles
+        const total = IsoRoute.measure(line);
+        const endGap = (a: IsoAnchor): number => 'item' in a ? 0.62 : 0.12;
+        const arrows = c.arrows ?? 'end';
+        const heads: number[][] = [];
+        if (arrows !== 'none' && total > 1) {
+            heads.push(IsoRoute.arrow(IsoRoute.atDistance(line, total - endGap(c.to)), 0.3, 0.26));
+        }
+        if (arrows === 'both' && total > 1) {
+            const p = IsoRoute.atDistance(line, endGap(c.from));
+            heads.push(IsoRoute.arrow({u: p.u, v: p.v, du: -p.du, dv: -p.dv}, 0.3, 0.26));
+        }
+        for (const h of heads) {
+            const tri = document.createElementNS(SVG, 'polygon');
+            tri.setAttribute('points', h.join(' '));
+            tri.style.fill = color;
+            g.appendChild(tri);
+        }
+        // a free end (on a tile, not an item) gets a small ring
+        for (const [a, i] of [[c.from, 0], [c.to, line.length - 2]] as const) {
+            if ('tile' in a) {
+                const ring = document.createElementNS(SVG, 'circle');
+                ring.setAttribute('class', 'iso-conn-end');
+                ring.setAttribute('cx', String(line[i]));
+                ring.setAttribute('cy', String(line[i + 1]));
+                ring.setAttribute('r', '0.12');
+                ring.style.stroke = color;
+                g.appendChild(ring);
+            }
+        }
+        if (c.animated === true && !IsoEditor.reducedMotion()) {
+            // dots on the floor travelling the route; three per connector, evenly spaced
+            const dur = Math.max(0.8, total / 1.8);
+            for (let k = 0; k < 3; k++) {
+                const dot = document.createElementNS(SVG, 'circle');
+                dot.setAttribute('r', '0.1');
+                dot.style.fill = '#ffffff';
+                dot.style.opacity = '0.9';
+                const anim = document.createElementNS(SVG, 'animateMotion');
+                anim.setAttribute('dur', `${dur}s`);
+                anim.setAttribute('begin', `${-k * dur / 3}s`);
+                anim.setAttribute('repeatCount', 'indefinite');
+                anim.setAttribute('path', d);
+                dot.appendChild(anim);
+                g.appendChild(dot);
+            }
+        }
+        const hit = path('iso-conn-hit', Math.max(16, width + 10));
+        hit.dataset.connector = c.id;
+        g.appendChild(hit);
+
+        let label: HTMLDivElement | null = null;
+        if (c.label !== undefined && c.label !== '') {
+            const p = IsoRoute.at(line, c.labelAt ?? 0.5);
+            const w = this.proj.toWorld(p.u, p.v);
+            label = document.createElement('div');
+            label.className = 'iso-conn-label';
+            label.dataset.connector = c.id;
+            label.style.left = `${w.x}px`;
+            label.style.top = `${w.y}px`;
+            label.textContent = c.label;
+        }
+
+        return {g, label};
+    }
+
+    private static reducedMotion(): boolean {
+        return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    }
+
     private applyClasses(): void {
         const dim = (id: string): boolean => this.highlighted !== null && !this.highlighted.has(id);
+        const ends = new Map((this.doc.connectors ?? []).map((c) => [c.id, [c.from, c.to]]));
+        // a connector stays lit when it is highlighted itself or both of its items are
+        const dimConn = (id: string): boolean => {
+            if (this.highlighted === null || this.highlighted.has(id)) {
+                return false;
+            }
+            const e = ends.get(id);
+            return e === undefined || !e.every((a) => 'item' in a && this.highlighted!.has(a.item));
+        };
+
+        for (const el of this.root.querySelectorAll<HTMLElement | SVGElement>('.iso-conn, .iso-conn-label')) {
+            const id = el.dataset.connector!;
+            el.classList.toggle('iso-selected', this.selected.has(id));
+            el.classList.toggle('iso-hover', this.hoverId === id);
+            el.classList.toggle('iso-dim', dimConn(id));
+        }
 
         for (const el of this.root.querySelectorAll<HTMLElement | SVGElement>('[data-item]')) {
             const id = el.dataset.item!;
@@ -412,6 +589,11 @@ export class IsoEditor {
         }
         for (const t of this.doc.texts ?? []) {
             b = IsoProjection.union(b, this.proj.rectBounds(t.tile, t.tile));
+        }
+        for (const c of this.doc.connectors ?? []) {
+            for (const t of this.route(c)?.corners ?? []) {
+                b = IsoProjection.union(b, this.proj.rectBounds(t, t));
+            }
         }
 
         return b ?? {minX: -200, minY: -100, maxX: 200, maxY: 100};
@@ -479,7 +661,7 @@ export class IsoEditor {
         return {x: e.clientX - r.left, y: e.clientY - r.top};
     }
 
-    private static targetId(target: EventTarget | null, attr: 'item' | 'region'): string | null {
+    private static targetId(target: EventTarget | null, attr: 'item' | 'region' | 'connector'): string | null {
         const el = target instanceof Element ? target.closest(`[data-${attr}]`) : null;
 
         return el instanceof HTMLElement || el instanceof SVGElement ? el.dataset[attr] ?? null : null;
@@ -514,11 +696,20 @@ export class IsoEditor {
                 return;
             }
         }
-        const id = IsoEditor.targetId(e.target, 'item');
+        const itemId = IsoEditor.targetId(e.target, 'item');
+        const connId = itemId === null ? IsoEditor.targetId(e.target, 'connector') : null;
+        const id = itemId ?? connId;
         if (id !== this.hoverId) {
+            const wasConn = this.hoverId !== null && this.doc.connectors?.some((c) => c.id === this.hoverId) === true;
+            const wasItem = this.hoverId !== null && !wasConn;
             this.hoverId = id;
             this.applyClasses();
-            this.events.emit('itemHover', id === null ? null : this.doc.items.find((i) => i.id === id) ?? null);
+            if (itemId !== null || wasItem) {
+                this.events.emit('itemHover', itemId === null ? null : this.doc.items.find((i) => i.id === itemId) ?? null);
+            }
+            if (connId !== null || wasConn) {
+                this.events.emit('connectorHover', connId === null ? null : this.doc.connectors?.find((c) => c.id === connId) ?? null);
+            }
         }
     };
 
@@ -535,20 +726,30 @@ export class IsoEditor {
         const itemId = IsoEditor.targetId(press.target, 'item');
         const item = itemId !== null ? this.doc.items.find((i) => i.id === itemId) : undefined;
 
-        if (item !== undefined) {
-            const additive = e.shiftKey || e.ctrlKey || e.metaKey;
-            if (additive) {
-                if (this.selected.has(item.id)) {
-                    this.selected.delete(item.id);
+        const pick = (id: string): void => {
+            if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                if (this.selected.has(id)) {
+                    this.selected.delete(id);
                 } else {
-                    this.selected.add(item.id);
+                    this.selected.add(id);
                 }
             } else {
-                this.selected = new Set([item.id]);
+                this.selected = new Set([id]);
             }
             this.applyClasses();
             this.events.emit('selectionChange', [...this.selected]);
+        };
+
+        if (item !== undefined) {
+            pick(item.id);
             this.events.emit('itemClick', {item, originalEvent: e});
+            return;
+        }
+        const connId = IsoEditor.targetId(press.target, 'connector');
+        const connector = connId !== null ? this.doc.connectors?.find((c) => c.id === connId) : undefined;
+        if (connector !== undefined) {
+            pick(connector.id);
+            this.events.emit('connectorClick', {connector, originalEvent: e});
             return;
         }
         const regionId = IsoEditor.targetId(press.target, 'region');
@@ -569,9 +770,10 @@ export class IsoEditor {
 
     private readonly onLeave = (): void => {
         if (this.press === null && this.hoverId !== null) {
+            const wasConn = this.doc.connectors?.some((c) => c.id === this.hoverId) === true;
             this.hoverId = null;
             this.applyClasses();
-            this.events.emit('itemHover', null);
+            this.events.emit(wasConn ? 'connectorHover' : 'itemHover', null);
         }
     };
 

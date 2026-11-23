@@ -23,18 +23,22 @@ export interface IsoItem {
 
 export type IsoAnchor = {item: string} | {tile: IsoTile};
 
-/** A line between two items or tiles, routed along the grid (drawn from milestone I2 on). */
+/** A line between two items or tiles, routed along the grid around other items. */
 export interface IsoConnector {
     id: string;
     from: IsoAnchor;
     to: IsoAnchor;
     via?: IsoTile[];
     style?: 'solid' | 'dashed' | 'dotted';
+    /** Line width in px at zoom 1 (default 6). */
     width?: number;
     color?: string;
+    /** Arrowheads lying on the floor (default 'end'). */
     arrows?: 'none' | 'end' | 'both';
     label?: string;
+    /** Where the label sits along the route, 0…1 (default 0.5). */
     labelAt?: number;
+    /** Dots travelling from → to (off under prefers-reduced-motion). */
     animated?: boolean;
 }
 
@@ -103,13 +107,21 @@ export interface IsoRegionEvent {
     originalEvent: MouseEvent;
 }
 
+export interface IsoConnectorEvent {
+    connector: IsoConnector;
+    originalEvent: MouseEvent;
+}
+
 export interface IsoEditorEvents extends Record<string, unknown> {
     itemHover: IsoItem | null;
+    connectorHover: IsoConnector | null;
+    connectorClick: IsoConnectorEvent;
     itemClick: IsoItemEvent;
     itemDblClick: IsoItemEvent;
     regionClick: IsoRegionEvent;
     /** A click on the empty floor, with the tile under the pointer. */
     floorClick: {tile: IsoTile; originalEvent: MouseEvent};
+    /** Selected item and connector ids. */
     selectionChange: string[];
     viewportChange: {scale: number; offsetX: number; offsetY: number};
 }

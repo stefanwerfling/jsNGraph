@@ -47,7 +47,8 @@
     <h1>Isometric architecture — a made-up web shop</h1>
     <p class="sub">Devices and services stand on a tile grid as 3D icons, regions mark zones on the floor, labels float above
         their items. Every icon is drawn by the library from a few isometric solids and can take any colour — no image files.
-        This is milestone I1 of the isometric editor (viewing); connectors and editing come next.</p>
+        Connectors are routed along the grid around the other items, with arrows lying on the floor, labels and travelling
+        dots. This is the viewer (milestones I1–I2); editing comes next.</p>
 
     <div class="bar">
         <button id="theme">Light</button>
@@ -56,13 +57,15 @@
         <button id="hl-data">Highlight data tier</button>
         <button id="hl-edge">Highlight edge</button>
         <button id="hl-none">Clear</button>
+        <button id="traffic" class="on">Traffic</button>
+        <button id="move">Move replica</button>
     </div>
 
     <div class="layout">
         <div>
             <div id="iso"></div>
             <p class="credit">Drag to pan, wheel to zoom, double-click the floor to fit, click an item to select it (Shift adds),
-                double-click an item to fly to it. Hover an icon on the right to light the items using it.</p>
+                double-click an item to fly to it. Click a connector to see its route; “Move replica” shows connectors re-routing. Hover an icon on the right to light the items using it.</p>
         </div>
         <aside>
             <div class="box" id="detail">
@@ -105,8 +108,32 @@
         {id: 'switch', tile: {x: 5, y: 12}, icon: 'switch', label: 'Office switch', labelHeight: 0.6},
         {id: 'admin', tile: {x: 3, y: 12}, icon: 'desktop', label: 'Admin desk', labelHeight: 0.5}
     ];
+    const link = (id, from, to, extra = {}) => ({id, from: {item: from}, to: {item: to}, ...extra});
+    const connectors = [
+        link('c-cust', 'customer', 'internet', {style: 'dashed'}),
+        link('c-browser', 'browser', 'internet', {style: 'dashed'}),
+        link('c-mobile', 'mobile', 'internet', {style: 'dashed'}),
+        link('c-cdn', 'internet', 'cdn', {label: 'assets', arrows: 'both'}),
+        link('c-https', 'internet', 'firewall', {label: 'HTTPS', animated: true}),
+        link('c-fw', 'firewall', 'lb', {animated: true}),
+        link('c-lb1', 'lb', 'web1', {animated: true}),
+        link('c-lb2', 'lb', 'web2', {animated: true}),
+        link('c-lb3', 'lb', 'web3', {animated: true}),
+        link('c-session', 'web1', 'cache', {label: 'sessions', arrows: 'both', width: 4}),
+        link('c-sql', 'web2', 'db', {label: 'SQL', width: 4}),
+        link('c-orders', 'web3', 'queue', {label: 'orders', animated: true}),
+        link('c-work', 'queue', 'worker', {animated: true}),
+        link('c-store', 'worker', 'objects', {label: 'invoices', style: 'dotted'}),
+        link('c-resize', 'web3', 'resize', {style: 'dotted'}),
+        link('c-thumbs', 'resize', 'objects', {style: 'dotted'}),
+        link('c-repl', 'db', 'replica', {label: 'replication', style: 'dashed', color: '#2fb3a5', width: 4}),
+        link('c-backup', 'replica', 'backup', {label: 'nightly', style: 'dotted', color: '#2fb3a5', width: 4}),
+        link('c-desk', 'admin', 'switch', {width: 4}),
+        link('c-office', 'switch', 'vpn', {width: 4}),
+        link('c-vpn', 'vpn', 'firewall', {label: 'site-to-site VPN', style: 'dashed', arrows: 'both', color: '#f0a03c'})
+    ];
     const doc = {
-        items,
+        items, connectors,
         regions: [
             {id: 'vpc', from: {x: 10, y: 0}, to: {x: 20, y: 11}, color: '#8b7cf6', label: 'VPC · eu-central'},
             {id: 'data', from: {x: 12, y: 0}, to: {x: 18, y: 2}, color: '#2fb3a5', label: 'Data tier'},
@@ -134,11 +161,33 @@
     $('hl-data').onclick = () => iso.highlight(['cache', 'db', 'replica', 'objects', 'backup']);
     $('hl-edge').onclick = () => iso.highlight(['internet', 'cdn', 'firewall', 'lb']);
     $('hl-none').onclick = () => iso.highlight(null);
+    $('traffic').onclick = (e) => {
+        const on = e.target.classList.toggle('on');
+        for (const c of connectors.filter((c) => c.animated !== undefined)) iso.updateConnector(c.id, {animated: on});
+    };
+    // moving an item re-routes every connector touching it
+    let moved = false;
+    $('move').onclick = () => {
+        moved = !moved;
+        iso.updateItem('replica', {tile: moved ? {x: 17, y: 7} : {x: 17, y: 1}});
+    };
 
     // ---- selection ----------------------------------------------------------------------------------------------
+    const byId = Object.fromEntries(items.map((i) => [i.id, i]));
     const show = (ids) => {
         const box = $('detail');
         const sel = items.filter((i) => ids.includes(i.id));
+        const conns = connectors.filter((c) => ids.includes(c.id));
+        if (conns.length > 0 && sel.length === 0) {
+            const c = conns[0];
+            box.innerHTML = `<h2>Connector</h2><dl>
+                <dt>From</dt><dd><b>${byId[c.from.item].label}</b></dd>
+                <dt>To</dt><dd><b>${byId[c.to.item].label}</b></dd>
+                ${c.label ? `<dt>Label</dt><dd>${c.label}</dd>` : ''}
+                <dt>Style</dt><dd>${c.style ?? 'solid'} · arrows ${c.arrows ?? 'end'}${c.animated ? ' · animated' : ''}</dd>
+                <dt>Route</dt><dd>${iso.getRoute(c.id).map((t) => `${t.x},${t.y}`).join(' → ')}</dd></dl>`;
+            return;
+        }
         if (sel.length === 0) {
             box.innerHTML = '<h2>Selection</h2><span class="muted">Click an item.</span>';
             return;
@@ -147,6 +196,7 @@
             <dt>Label</dt><dd><b>${i.label}</b></dd>
             <dt>Icon</dt><dd>${i.icon}</dd>
             <dt>Tile</dt><dd>${i.tile.x}, ${i.tile.y}</dd>
+            <dt>Links</dt><dd>${connectors.filter((c) => c.from.item === i.id || c.to.item === i.id).length}</dd>
             ${i.description ? `<dt>Note</dt><dd>${i.description}</dd>` : ''}</dl>`).join('<hr style="border:0;border-top:1px solid #262d3f">');
     };
     iso.on('selectionChange', show);

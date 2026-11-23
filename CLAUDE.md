@@ -384,7 +384,7 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   (made-up bike supply chain with a recycling loop).
 
 - `iso/` — `IsoEditor` (subpath `jsngraph/iso`): isometric architecture diagrams, plan + milestones I1–I6 in
-  `docs/iso-editor.md` (status I1 = viewer). DOM + SVG on one stage moved by `view/Camera` (CSS transform): the floor is
+  `docs/iso-editor.md` (status I1–I2 = viewer with connectors). DOM + SVG on one stage moved by `view/Camera` (CSS transform): the floor is
   one SVG group under the 2:1 matrix from `IsoProjection` (tile {x,y} covers [x,x+1]×[y,y+1]; X = (u−v)·w/2,
   Y = (u+v)·w/4), so grid (visible tiles only, thinned far out), regions (rounded rects, label along the front edge),
   floor texts (drawn ×100 and scaled 0.01 against font minimums; axis y = `rotate(-90)`) and item base tiles are in tile
@@ -394,8 +394,11 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   dark outline from one colour; host types via `icons`/`registerIcons` (`render(color)` → inner SVG, `height`). Viewer:
   pan (drag past 3 px, capture only then), wheel zoom, dblclick fit / `itemDblClick`, click/Shift select, `highlight`,
   `focus` (fly), `fit` (auto until the user moves), `setTheme` (`data-iso-theme`), `setGrid`, `setStyleVars` (`--iso-*`,
-  `IsoStyles` `:where()` sheet). Connectors are already in the types (`IsoConnector`), drawn from I2. Pure parts tested
-  in `test/Iso.test.ts`. Example: `examples/iso.html` (made-up web shop, icon-kit gallery linked to highlight).
+  `IsoStyles` `:where()` sheet). Connectors (I2): pure `IsoRoute` (A* over tile + entry direction, turn and
+  occupied-tile costs, waypoint legs, `corners`, `centres`, `measure`, `atDistance`/`at`, `arrow`;
+  `test/IsoRoute.test.ts`) routes around every item tile; drawn as floor paths under the base tiles (solid/dashed/dotted,
+  floor arrowheads just outside the end tiles, SMIL dots, transparent hit path) with upright labels; selection, hover,
+  highlight; `updateItem`/`updateConnector` re-route, `getRoute`. Pure parts tested in `test/Iso.test.ts`. Example: `examples/iso.html` (made-up web shop, icon-kit gallery linked to highlight).
 
 ## Commands
 
