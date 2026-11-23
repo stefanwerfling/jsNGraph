@@ -384,7 +384,7 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   (made-up bike supply chain with a recycling loop).
 
 - `iso/` — `IsoEditor` (subpath `jsngraph/iso`): isometric architecture diagrams, plan + milestones I1–I6 in
-  `docs/iso-editor.md` (status I1–I2 = viewer with connectors). DOM + SVG on one stage moved by `view/Camera` (CSS transform): the floor is
+  `docs/iso-editor.md` (status I1–I3 = editor with connectors). DOM + SVG on one stage moved by `view/Camera` (CSS transform): the floor is
   one SVG group under the 2:1 matrix from `IsoProjection` (tile {x,y} covers [x,x+1]×[y,y+1]; X = (u−v)·w/2,
   Y = (u+v)·w/4), so grid (visible tiles only, thinned far out), regions (rounded rects, label along the front edge),
   floor texts (drawn ×100 and scaled 0.01 against font minimums; axis y = `rotate(-90)`) and item base tiles are in tile
@@ -398,7 +398,19 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   occupied-tile costs, waypoint legs, `corners`, `centres`, `measure`, `atDistance`/`at`, `arrow`;
   `test/IsoRoute.test.ts`) routes around every item tile; drawn as floor paths under the base tiles (solid/dashed/dotted,
   floor arrowheads just outside the end tiles, SMIL dots, transparent hit path) with upright labels; selection, hover,
-  highlight; `updateItem`/`updateConnector` re-route, `getRoute`. Pure parts tested in `test/Iso.test.ts`. Example: `examples/iso.html` (made-up web shop, icon-kit gallery linked to highlight).
+  highlight; `updateItem`/`updateConnector` re-route, `getRoute`. Editing (I3, default on; `readOnly` = viewer): modes
+  select/connect/region/text/pan (V C R T H), drag-move with tile snap (never onto a staying item, routes follow live),
+  Shift lasso, region corner / connector end, waypoint and midpoint handles (own SVG above all labels), inline label
+  editor (dblclick/F2), arrows/Delete/Ctrl+Z/Y/A/D, system-clipboard fragments, palette `beginDrag`/`dropAt`, `add*`/
+  `update*`/`remove`, undo via `RectHistory`, one `change` per gesture. Pure `IsoModel` (move/canMove/remove/fragment/
+  paste/freeTileNear/resizeRegion; `test/IsoModel.test.ts`). Live view (part of I5): `setItemStatus` (floor ring + status
+  line + progress bar in the label), `setConnectorStatus` (active/colour), `clearStatus`, `setActors` (moving things at any
+  floor point, elements kept per id — fine every frame); depth for all upright things = `IsoProjection.zOf(u, v)`; regions
+  with `wall` (back edges, per-tile pieces, `doors` gaps, `IsoProjection.walls`); items `scale`/`flip`. Pure parts tested in
+  `test/Iso.test.ts`. `examples/factory.html`: made-up juice plant simulated in the page (stations with cycle times and
+  buffers, forklift/conveyor/pipe links along `getRoute`, conveyors as static actors, random faults + a technician walking
+  via `IsoRoute`, changeovers, OEE/throughput/order book/automation pyramid); its icons are own drawings from IsoIcons
+  primitives in `examples/factory-icons.js` (`window.FactoryIcons`). Example: `examples/iso.html` (made-up web shop, icon-kit gallery linked to highlight).
 
 ## Commands
 

@@ -1,0 +1,824 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — production plant</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    html, body { background: #11141c; }
+    body.light { background: #eef1f6; }
+    main { max-width: 1680px; margin: 0 auto; padding: 12px 16px 28px; color: #d6dbe6; font-family: system-ui, sans-serif; }
+    body.light main { color: #273142; }
+    h1 { font-size: 20px; margin: 4px 0 2px; font-weight: 600; }
+    .sub { margin: 0 0 12px; color: #8d96aa; font-size: 13px; max-width: 1100px; line-height: 1.45; }
+    .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; font-size: 12px; }
+    button { background: #1c2130; color: #d6dbe6; border: 1px solid #333b50; border-radius: 4px; padding: 5px 10px;
+        font: 12px system-ui, sans-serif; cursor: pointer; }
+    body.light button { background: #fff; color: #273142; border-color: #c8cfdc; }
+    button.on { border-color: #8b7cf6; background: #2a2850; }
+    body.light button.on { background: #ece9ff; }
+    .sep { width: 1px; height: 20px; background: #333b50; margin: 0 4px; }
+    #clock { font: 600 14px ui-monospace, monospace; min-width: 64px; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 14px; align-items: start; }
+    @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } }
+    #plant { height: min(74vh, 800px); min-height: 520px; border: 1px solid #262d3f; border-radius: 6px; overflow: hidden; }
+    body.light #plant { border-color: #d3d9e4; }
+    aside { display: flex; flex-direction: column; gap: 12px; font-size: 12px; }
+    .box { background: #171b26; border: 1px solid #262d3f; border-radius: 6px; padding: 10px 12px; line-height: 1.45; }
+    body.light .box { background: #fff; border-color: #d3d9e4; }
+    .box h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #8d96aa; margin: 0 0 8px; font-weight: 600;
+        display: flex; justify-content: space-between; }
+    .oee { display: grid; grid-template-columns: 150px 1fr; gap: 10px; align-items: center; }
+    .oee-ring { position: relative; }
+    .oee-num { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        pointer-events: none; }
+    .oee-num b { font-size: 26px; font-weight: 650; }
+    .oee-num span { font-size: 10px; color: #8d96aa; letter-spacing: .08em; }
+    .kpi { display: grid; grid-template-columns: 10px 1fr auto; gap: 4px 8px; align-items: center; }
+    .kpi i { width: 10px; height: 10px; border-radius: 2px; display: block; }
+    .kpi b { font-variant-numeric: tabular-nums; }
+    #thru { height: 120px; margin-top: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    td, th { padding: 4px 4px; text-align: left; border-bottom: 1px solid #232a3a; }
+    body.light td, body.light th { border-color: #e3e7ef; }
+    th { color: #8d96aa; font-weight: 500; font-size: 11px; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    tr.cur td { color: #fff; }
+    body.light tr.cur td { color: #111; }
+    tr.done td { color: #6f7890; }
+    .pbar { height: 5px; border-radius: 3px; background: #2a3142; overflow: hidden; min-width: 60px; }
+    body.light .pbar { background: #e3e7ef; }
+    .pbar b { display: block; height: 100%; background: #3ecf6e; transition: width .4s; }
+    .swatch { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+    #pyramid svg { width: 100%; display: block; }
+    #pyramid .lvl { cursor: pointer; transition: filter .25s; }
+    #pyramid .lvl:hover, #pyramid .lvl.flash { filter: brightness(1.35) drop-shadow(0 0 6px rgba(255,255,255,.35)); }
+    #pyramid text { font: 600 11px system-ui, sans-serif; fill: #e6eaf2; pointer-events: none; }
+    body.light #pyramid text { fill: #1d2230; }
+    #pyramid text.note { font-weight: 400; font-size: 10px; fill: #c9d0de; }
+    body.light #pyramid text.note { fill: #3a4254; }
+    #log { max-height: 150px; overflow: auto; font: 11px ui-monospace, monospace; display: flex; flex-direction: column; gap: 2px; }
+    #log .t { color: #6f7890; margin-right: 6px; }
+    #log .down { color: #ef5350; }
+    #log .ok { color: #3ecf6e; }
+    #log .erp { color: #9d8cff; }
+    #station dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0 0 8px; }
+    #station dt { color: #8d96aa; }
+    #station dd { margin: 0; font-variant-numeric: tabular-nums; }
+    .muted { color: #6f7890; }
+    .no-labels .iso-callout, .no-labels .iso-conn-label { display: none; }
+    .credit { color: #626b80; font-size: 11px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="factory.html" class="active">Production plant</a>
+</nav>
+
+<main>
+    <h1>Orchard Row Juice Works — a made-up bottling plant, running</h1>
+    <p class="sub">Fruit comes in by truck, is stored, washed, milled and pressed; the juice is pasteurised, buffered in tanks,
+        filled, capped and labelled, packed into cases, palletised, wrapped and shipped. Forklifts, conveyors and pipes move every
+        lot along the red flow lines; machines fail now and then and the technician walks over from the control room. Around the
+        hall: line OEE, throughput, the order book and the automation pyramid from field level up to ERP — hover a level to see
+        its devices in the hall.</p>
+
+    <div class="bar">
+        <button id="play" class="on">Pause</button>
+        <button class="speed" data-s="1">1×</button>
+        <button class="speed on" data-s="4">4×</button>
+        <button class="speed" data-s="16">16×</button>
+        <span id="clock">06:00</span>
+        <span class="sep"></span>
+        <button id="fault">Jam the filler</button>
+        <button id="rush">Rush order</button>
+        <span class="sep"></span>
+        <button id="theme">Light</button>
+        <button id="labels" class="on">Labels</button>
+        <button id="edit">Edit layout</button>
+        <button id="fit">Fit</button>
+    </div>
+
+    <div class="layout">
+        <div>
+            <div id="plant"></div>
+            <p class="credit">Click a station for its figures, drag to pan, wheel to zoom. “Edit layout” turns the same view into the
+                editor: move machines and the flow lines, forklifts and conveyors follow the new routes.</p>
+        </div>
+        <aside>
+            <div class="box">
+                <h2><span>Line OEE · filler</span><span id="oee-win" class="muted">last 30 min</span></h2>
+                <div class="oee">
+                    <div class="oee-ring"><div id="ring"></div><div class="oee-num"><b id="oee">–</b><span>OEE</span></div></div>
+                    <div class="kpi" id="kpi"></div>
+                </div>
+                <div id="thru"></div>
+            </div>
+            <div class="box" id="station"><h2>Station</h2><span class="muted">Click a machine in the hall.</span></div>
+            <div class="box">
+                <h2><span>Order book · OMS</span><span id="ordsum" class="muted"></span></h2>
+                <table><thead><tr><th>Order</th><th>Product</th><th class="num">Lots</th><th>Progress</th></tr></thead>
+                    <tbody id="orders"></tbody></table>
+            </div>
+            <div class="box" id="pyramid"><h2>Automation pyramid</h2></div>
+            <div class="box"><h2>Events</h2><div id="log"></div></div>
+        </aside>
+    </div>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script src="factory-icons.js"></script>
+<script>
+(() => {
+    const J = window.JSNGraph;
+    const {IsoEditor, IsoRoute} = J;
+    const $ = (id) => document.getElementById(id);
+    const RED = '#e5484d', JUICE = '#f0a03c';
+
+    // ---- the hall --------------------------------------------------------------------------------------------------
+    // level = automation-pyramid level of a device (0 field … 4 ERP)
+    const items = [];
+    const add = (id, x, y, icon, extra = {}) => items.push({id, tile: {x, y}, icon, ...extra});
+    // stations (labelled, simulated)
+    add('truck-in', 2, 19, 'truck', {label: 'Inbound truck', flip: true, scale: 1.6, labelHeight: 0.4, base: '', meta: {level: 0}});
+    add('receipt', 2, 14, 'pallet-fruit', {label: 'Goods in', labelHeight: 0.8, meta: {level: 0}});
+    add('store', 3, 8, 'pallet-fruit', {label: 'Fruit store', labelHeight: 0.6, meta: {level: 0}});
+    add('washer', 8, 2, 'washer', {label: 'Washer', labelHeight: 0.5, meta: {level: 0}});
+    add('mill', 10, 2, 'hopper', {label: 'Mill', labelHeight: 0.3, meta: {level: 0}});
+    add('press', 10, 4, 'press', {label: 'Belt press', labelHeight: 0.6, meta: {level: 0}});
+    add('pasteuriser', 15, 3, 'heatx', {label: 'Pasteuriser', labelHeight: 0.6, meta: {level: 0}});
+    add('tanks', 19, 1, 'tank', {label: 'Buffer tanks', labelHeight: 0.3, meta: {level: 0}});
+    add('filler', 21, 8, 'filler', {label: 'Filler', labelHeight: 0.7, meta: {level: 0}});
+    add('labeller', 18, 8, 'labeller', {label: 'Capper & labeller', labelHeight: 0.9, meta: {level: 0}});
+    add('packer', 14, 8, 'packer', {label: 'Case packer', labelHeight: 0.6, meta: {level: 0}});
+    add('qc', 9, 8, 'labbench', {label: 'QC lab', labelHeight: 0.6, meta: {level: 0}});
+    add('palletiser', 14, 13, 'robot', {label: 'Palletiser', labelHeight: 0.4, meta: {level: 0}});
+    add('wrapper', 14, 16, 'wrapper', {label: 'Wrapper', labelHeight: 0.3, meta: {level: 0}});
+    add('warehouse', 20, 15, 'pallet-wrapped', {label: 'Finished goods', labelHeight: 0.8, meta: {level: 0}});
+    add('truck-out', 26, 14, 'truck', {label: 'Outbound truck', scale: 1.6, labelHeight: 0.4, base: '', meta: {level: 0}});
+    // automation
+    add('scada', 8, 13, 'console', {label: 'Control room', description: 'SCADA', labelHeight: 0.5, meta: {level: 2}});
+    add('mes', 10, 13, 'office', {label: 'MES', labelHeight: 0.3, meta: {level: 3}});
+    add('erp', 10, 15, 'office', {label: 'ERP', labelHeight: 0.3, meta: {level: 4}});
+    add('plc-press', 12, 0, 'cabinet', {base: '', meta: {level: 1}});
+    add('plc-tanks', 23, 3, 'cabinet', {base: '', meta: {level: 1}});
+    add('plc-fill', 23, 9, 'cabinet', {base: '', meta: {level: 1}});
+    add('plc-pack', 16, 13, 'cabinet', {base: '', meta: {level: 1}});
+    add('hmi-press', 11, 1, 'hmi', {base: '', meta: {level: 2}});
+    add('hmi-fill', 22, 10, 'hmi', {base: '', meta: {level: 2}});
+    add('hmi-pack', 16, 15, 'hmi', {base: '', meta: {level: 2}});
+    // decoration
+    for (const y of [1, 2, 3, 5, 6]) {
+        add(`rack-a${y}`, 0, y, 'pallet-rack', {base: ''});
+        add(`rack-b${y}`, 5, y, 'pallet-rack', {base: ''});
+    }
+    for (const x of [19, 20, 21, 22]) add(`rack-f${x}`, x, 12, 'pallet-rack', {base: '', color: '#2fb3a5'});
+    add('tank-1', 17, 1, 'tank', {base: ''});
+    add('tank-3', 21, 1, 'tank', {base: ''});
+    add('bins-1', 4, 16, 'pallet-fruit', {base: '', scale: 0.9});
+    add('bins-2', 0, 14, 'pallet-fruit', {base: '', scale: 0.9});
+    add('fg-1', 22, 16, 'pallet-wrapped', {base: '', scale: 0.9});
+    add('fg-2', 18, 16, 'pallet-wrapped', {base: '', scale: 0.9});
+    add('op-desk', 7, 14, 'worker', {base: '', color: '#5b8def', scale: 0.95});
+    add('plant-1', 7, 12, 'plant', {base: ''});
+
+    const regions = [
+        {id: 'hall', from: {x: 0, y: 0}, to: {x: 23, y: 17}, color: '#8d97ad', wall: 1.5},
+        {id: 'yard-in', from: {x: 0, y: 18}, to: {x: 5, y: 21}, color: '#5d6676', label: 'Inbound yard'},
+        {id: 'yard-out', from: {x: 24, y: 11}, to: {x: 28, y: 17}, color: '#5d6676', label: 'Dispatch'},
+        {id: 'r-in', from: {x: 0, y: 12}, to: {x: 5, y: 17}, color: '#f0a03c', label: 'Goods in'},
+        {id: 'r-store', from: {x: 0, y: 0}, to: {x: 5, y: 9}, color: '#7fb07a', label: 'Fruit store'},
+        {id: 'r-press', from: {x: 7, y: 0}, to: {x: 12, y: 5}, color: '#5b8def', label: 'Wash & press', wall: 0.6, doors: [{x: 7, y: 3}, {x: 7, y: 4}]},
+        {id: 'r-tanks', from: {x: 14, y: 0}, to: {x: 23, y: 5}, color: '#2fb3a5', label: 'Pasteurise & store', wall: 0.6, doors: [{x: 14, y: 4}]},
+        {id: 'r-qc', from: {x: 8, y: 7}, to: {x: 11, y: 10}, color: '#e8b923', label: 'QC', wall: 0.6, doors: [{x: 8, y: 8}]},
+        {id: 'r-fill', from: {x: 13, y: 7}, to: {x: 23, y: 10}, color: '#8b7cf6', label: 'Filling line', wall: 0.4},
+        {id: 'r-ctrl', from: {x: 7, y: 12}, to: {x: 10, y: 16}, color: '#e0664f', label: 'Control room', wall: 0.7, doors: [{x: 7, y: 15}]},
+        {id: 'r-pack', from: {x: 12, y: 12}, to: {x: 16, y: 17}, color: '#d062a8', label: 'Pack & palletise', wall: 0.4},
+        {id: 'r-fg', from: {x: 18, y: 12}, to: {x: 23, y: 17}, color: '#3fa7d6', label: 'Finished goods', wall: 0.4}
+    ];
+
+    // flow links: how a lot travels
+    const LINKS = [
+        ['l-unload', 'truck-in', 'receipt', 'forklift'],
+        ['l-store', 'receipt', 'store', 'forklift'],
+        ['l-feed', 'store', 'washer', 'forklift'],
+        ['l-wash', 'washer', 'mill', 'conveyor', 'crate', '#d93b30'],
+        ['l-mash', 'mill', 'press', 'pipe'],
+        ['l-juice', 'press', 'pasteuriser', 'pipe'],
+        ['l-past', 'pasteuriser', 'tanks', 'pipe'],
+        ['l-fill', 'tanks', 'filler', 'pipe'],
+        ['l-cap', 'filler', 'labeller', 'conveyor', 'tray'],
+        ['l-pack', 'labeller', 'packer', 'conveyor', 'tray'],
+        ['l-case', 'packer', 'palletiser', 'conveyor', 'crate', '#e3a64a'],
+        ['l-wrap', 'palletiser', 'wrapper', 'conveyor', 'pallet', '#e3a64a'],
+        ['l-fg', 'wrapper', 'warehouse', 'forklift'],
+        ['l-load', 'warehouse', 'truck-out', 'forklift']
+    ].map(([id, from, to, mode, icon, color]) => ({id, from, to, mode, icon, color}));
+
+    const connectors = LINKS.map((l) => ({
+        id: l.id, from: {item: l.from}, to: {item: l.to},
+        color: l.mode === 'pipe' ? JUICE : RED, width: l.mode === 'pipe' ? 5 : 4,
+        style: l.mode === 'forklift' ? 'dashed' : 'solid', arrows: l.mode === 'conveyor' ? 'none' : 'end',
+        animated: l.mode === 'pipe'
+    }));
+    connectors.push({id: 'l-sample', from: {item: 'labeller'}, to: {item: 'qc'}, style: 'dotted', color: '#e8b923', width: 4, label: 'samples', labelAt: 0.3});
+
+    const texts = [
+        {id: 'name', tile: {x: 1, y: 22}, text: 'ORCHARD ROW JUICE WORKS', size: 0.6, bold: true},
+        {id: 'aisle', tile: {x: 6, y: 9}, text: 'forklift aisle', size: 0.3, axis: 'y'}
+    ];
+
+    const iso = new IsoEditor($('plant'), {readOnly: true, icons: window.FactoryIcons, document: {items, connectors, regions, texts}});
+    window.iso = iso;
+
+    // ---- simulation model -----------------------------------------------------------------------------------------
+    const PRODUCTS = {'Apple': '#c8d84a', 'Apple–Rhubarb': '#e0667a', 'Cloudy pear': '#e9d48a', 'Pear–Ginger': '#f0a03c', 'Apple–Elderflower': '#9ad0c2'};
+    const CUSTOMERS = ['Hofladen Nord', 'Café Lindgren', 'Marktkette Süd', 'Bio-Kiste Elbe', 'Hotel Seeblick', 'Schulmensa West', 'Getränke Kranz'];
+    // ct = cycle time (sim s), mtbf = mean time between failures (sim s)
+    const DEF = {
+        'truck-in': {kind: 'truck-in'}, receipt: {kind: 'buffer', cap: 12}, store: {kind: 'buffer', cap: 40},
+        washer: {ct: 15, mtbf: 3600}, mill: {ct: 13, mtbf: 5000}, press: {ct: 19, mtbf: 2600},
+        pasteuriser: {ct: 17, mtbf: 4200}, tanks: {kind: 'buffer', cap: 8},
+        filler: {ct: 20, ideal: 18, mtbf: 1500}, labeller: {ct: 16, mtbf: 2400}, packer: {ct: 16, mtbf: 3200},
+        palletiser: {ct: 18, mtbf: 3000}, wrapper: {ct: 15, mtbf: 5000}, warehouse: {kind: 'buffer', cap: 30},
+        'truck-out': {kind: 'truck-out', cap: 8}
+    };
+    const S = {};
+    for (const [id, d] of Object.entries(DEF)) {
+        S[id] = {id, kind: d.kind ?? 'machine', ct: d.ct ?? 0, ideal: d.ideal ?? d.ct, mtbf: d.mtbf ?? 0, cap: d.cap ?? 2,
+            in: 0, out: 0, job: null, down: null, done: 0, runTime: 0, downTime: 0, idleTime: 0};
+    }
+    S.store.out = 14;
+    S.warehouse.out = 3;
+    S['truck-in'].out = 0;
+    const sim = {t: 6 * 3600, speed: 4, playing: true, tech: null, faults: [], changeover: 0, product: 'Apple', truckIn: {due: 6 * 3600 + 20},
+        truckOut: {away: 0}, rejectBoost: 0, buckets: [], minute: [], lot: 100};
+    const linkOf = Object.fromEntries(LINKS.map((l) => [l.from, l]));
+    const incoming = (id) => LINKS.filter((l) => l.to === id);
+
+    const orders = [];
+    let orderSeq = 2381;
+    const newOrder = (rush = false) => {
+        const names = Object.keys(PRODUCTS);
+        const o = {id: `SO-${orderSeq++}`, customer: CUSTOMERS[orderSeq % CUSTOMERS.length], product: names[Math.floor(rand() * names.length)],
+            qty: (rush ? 6 : 12) + Math.floor(rand() * 18), done: 0, rush};
+        if (rush) {
+            const i = orders.findIndex((x) => x.done < x.qty);
+            orders.splice(i < 0 ? orders.length : i + 1, 0, o);
+        } else {
+            orders.push(o);
+        }
+        flash(4);
+        log(`${o.id} from ERP: ${o.qty} lots ${o.product} for ${o.customer}${rush ? ' — RUSH' : ''}`, 'erp');
+        return o;
+    };
+    // deterministic randomness so every visit starts the same
+    let seed = 7;
+    const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (const [p, q] of [['Apple', 60], ['Apple–Rhubarb', 18], ['Cloudy pear', 24], ['Apple', 30]]) {
+        orders.push({id: `SO-${orderSeq++}`, customer: CUSTOMERS[orderSeq % CUSTOMERS.length], product: p, qty: q, done: 0});
+    }
+    orders[0].done = 4;
+    const current = () => orders.find((o) => o.done < o.qty);
+
+    // ---- routes, transport ---------------------------------------------------------------------------------------
+    const tilesOf = (corners) => {
+        const out = [];
+        for (let i = 0; i + 1 < corners.length; i++) {
+            const a = corners[i], b = corners[i + 1];
+            const n = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+            for (let k = 0; k < n; k++) out.push({x: a.x + Math.sign(b.x - a.x) * k, y: a.y + Math.sign(b.y - a.y) * k, along: b.x !== a.x ? 'u' : 'v'});
+        }
+        return out;
+    };
+    let conveyors = [];
+    const routes = {};
+    const buildRoutes = () => {
+        conveyors = [];
+        for (const l of LINKS) {
+            const corners = iso.getRoute(l.id);
+            const line = IsoRoute.centres(corners);
+            routes[l.id] = {line, len: IsoRoute.measure(line)};
+            if (l.mode === 'conveyor') {
+                tilesOf(corners).slice(1).forEach((t, i) => conveyors.push({id: `cv-${l.id}-${i}`, icon: 'conveyor', u: t.x + 0.5, v: t.y + 0.5, flip: t.along === 'v'}));
+            }
+        }
+    };
+    buildRoutes();
+    const at = (linkId, d) => IsoRoute.atDistance(routes[linkId].line, d);
+
+    // units on conveyors and pipes: {link, t (s travelled), dur}; forklifts: one per forklift link
+    const transit = [];
+    const forklifts = Object.fromEntries(LINKS.filter((l) => l.mode === 'forklift').map((l) => [l.id, {link: l, phase: 'wait', t: 0}]));
+    const SPEED = {conveyor: 0.5, pipe: 0.8, forklift: 1.1};
+    const accepts = (id) => {
+        const s = S[id];
+        const coming = transit.filter((u) => u.link.to === id).length + Object.values(forklifts).filter((f) => f.link.to === id && f.phase === 'go').length;
+        if (s.kind === 'truck-out') return sim.truckOut.away <= 0 && s.in + coming < s.cap;
+        if (s.kind === 'buffer') return s.in + s.out + coming < s.cap;
+        return s.in + coming < 2;
+    };
+
+    // ---- technician: walks from the control room to a stopped machine ----------------------------------------------
+    const HOME = {x: 9, y: 14};
+    const blocked = () => new Set(iso.getDocument().items.map((i) => IsoRoute.key(i.tile)));
+    const walk = (from, to) => {
+        const line = IsoRoute.centres(IsoRoute.corners(IsoRoute.route(from, to, [], {blocked: blocked()})));
+        return {line, len: IsoRoute.measure(line)};
+    };
+    const tile = (id) => iso.get(id)?.tile ?? HOME;
+    const tech = {pos: {u: HOME.x + 0.5, v: HOME.y + 0.5}, path: null, d: 0, target: null, flip: false};
+
+    // ---- events ------------------------------------------------------------------------------------------------------
+    const hhmm = (t) => `${String(Math.floor(t / 3600) % 24).padStart(2, '0')}:${String(Math.floor(t / 60) % 60).padStart(2, '0')}`;
+    const log = (text, cls = '') => {
+        const row = document.createElement('div');
+        row.innerHTML = `<span class="t">${hhmm(sim.t)}</span><span class="${cls}"></span>`;
+        row.lastChild.textContent = text;
+        $('log').prepend(row);
+        while ($('log').children.length > 60) $('log').lastChild.remove();
+    };
+    const fail = (id, why) => {
+        const s = S[id];
+        if (s.down) return;
+        s.down = {why, since: sim.t, repairLeft: 25 + rand() * 45, fixing: false};
+        sim.faults.push(id);
+        log(`${iso.get(id).label} stopped — ${why}`, 'down');
+        flash(1);
+        flash(2);
+    };
+    const WHY = {filler: ['bottle jam at the infeed', 'fill valve leaking', 'cap chute empty'], press: ['belt slipping', 'pressure low'],
+        labeller: ['label web torn', 'glue low'], palletiser: ['gripper fault'], packer: ['case magazine empty'], washer: ['water pump trip']};
+
+    // ---- one simulation step -------------------------------------------------------------------------------------------
+    const step = (dt) => {
+        sim.t += dt;
+        // inbound truck: arrives when stock runs low, is unloaded by the forklift
+        const ti = S['truck-in'];
+        if (ti.out === 0 && sim.truckIn.due === null && S.store.out + S.receipt.out + S.receipt.in < 14) {
+            sim.truckIn.due = sim.t + 90;
+        }
+        if (sim.truckIn.due !== null && sim.t >= sim.truckIn.due) {
+            ti.out = 6;
+            sim.truckIn.due = null;
+            log('Fruit truck docked: 6 bins', 'ok');
+        }
+        // outbound truck leaves when full, a new one docks after a while
+        const to = S['truck-out'];
+        if (sim.truckOut.away > 0) {
+            sim.truckOut.away -= dt;
+            if (sim.truckOut.away <= 0) log('Empty truck docked at dispatch');
+        } else if (to.in >= to.cap) {
+            log(`Truck left with ${to.in} pallets`, 'ok');
+            to.done += to.in;
+            to.in = 0;
+            sim.truckOut.away = 150;
+        }
+        // orders: a changeover when the product changes
+        if (sim.changeover > 0) sim.changeover -= dt;
+
+        for (const s of Object.values(S)) {
+            if (s.kind === 'buffer') {
+                s.out += s.in;
+                s.in = 0;
+                continue;
+            }
+            if (s.kind !== 'machine') continue;
+            if (s.down) {
+                s.downTime += dt;
+                if (s.down.fixing) {
+                    s.down.repairLeft -= dt;
+                    if (s.down.repairLeft <= 0) {
+                        log(`${iso.get(s.id).label} running again (${Math.round((sim.t - s.down.since) / 60)} min stop)`, 'ok');
+                        if (s.id === 'filler') sim.rejectBoost = 180;
+                        s.down = null;
+                        sim.faults = sim.faults.filter((f) => f !== s.id);
+                        tech.target = null;
+                    }
+                }
+                continue;
+            }
+            if (s.id === 'filler' && sim.changeover > 0) {
+                s.downTime += dt;
+                continue;
+            }
+            if (s.mtbf > 0 && rand() < dt / s.mtbf) {
+                const w = WHY[s.id] ?? ['motor overload'];
+                fail(s.id, w[Math.floor(rand() * w.length)]);
+                continue;
+            }
+            if (s.job === null && s.in > 0 && s.out === 0) {
+                s.in--;
+                s.job = {t: 0, lot: s.id === 'filler' ? ++sim.lot : null};
+                if (s.id === 'filler') {
+                    const o = current();
+                    if (o && o.product !== sim.product) {
+                        sim.product = o.product;
+                        sim.changeover = 45;
+                        log(`Changeover to ${o.product} for ${o.id}`);
+                        flash(3);
+                    }
+                }
+            }
+            if (s.job !== null) {
+                s.job.t += dt;
+                s.runTime += dt;
+                if (s.job.t >= s.ct) {
+                    s.job = null;
+                    s.out++;
+                    s.done++;
+                    if (s.id === 'filler') produced();
+                }
+            } else {
+                s.idleTime += dt;
+            }
+        }
+
+        // pick up finished lots
+        for (const l of LINKS) {
+            const from = S[l.from];
+            if (l.mode === 'forklift') continue;
+            if (from.out > 0 && accepts(l.to) && transit.filter((u) => u.link === l).length < 3
+                && !transit.some((u) => u.link === l && u.t < 1.6 / SPEED[l.mode])) {
+                from.out--;
+                transit.push({link: l, t: 0, dur: Math.max(2, routes[l.id].len / SPEED[l.mode]), color: l.color ?? PRODUCTS[sim.product]});
+            }
+        }
+        for (let i = transit.length - 1; i >= 0; i--) {
+            const u = transit[i];
+            u.t += dt;
+            if (u.t >= u.dur) {
+                S[u.link.to].in++;
+                transit.splice(i, 1);
+            }
+        }
+        // forklifts: wait at the source, drive loaded, drive back empty
+        for (const f of Object.values(forklifts)) {
+            const len = routes[f.link.id].len;
+            const dur = Math.max(2, len / SPEED.forklift);
+            if (f.phase === 'wait') {
+                if (S[f.link.from].out > 0 && accepts(f.link.to)) {
+                    S[f.link.from].out--;
+                    f.phase = 'go';
+                    f.t = 0;
+                }
+            } else {
+                f.t += dt;
+                if (f.t >= dur) {
+                    if (f.phase === 'go') {
+                        S[f.link.to].in++;
+                        f.phase = 'back';
+                    } else {
+                        f.phase = 'wait';
+                    }
+                    f.t = 0;
+                }
+            }
+        }
+
+        // technician
+        if (tech.target === null && sim.faults.length > 0) {
+            tech.target = sim.faults[0];
+            const t = tile(tech.target);
+            tech.path = walk({x: Math.floor(tech.pos.u), y: Math.floor(tech.pos.v)}, t);
+            tech.d = 0;
+            log(`Technician on the way to ${iso.get(tech.target).label}`);
+        } else if (tech.target === null && tech.path === null && (Math.floor(tech.pos.u) !== HOME.x || Math.floor(tech.pos.v) !== HOME.y)) {
+            tech.path = walk({x: Math.floor(tech.pos.u), y: Math.floor(tech.pos.v)}, HOME);
+            tech.d = 0;
+        }
+        if (tech.path !== null) {
+            const stop = tech.target !== null ? 0.75 : 0;
+            tech.d = Math.min(tech.path.len - stop, tech.d + dt * 0.9);
+            const p = IsoRoute.atDistance(tech.path.line, Math.max(0, tech.d));
+            tech.pos = {u: p.u, v: p.v};
+            tech.flip = Math.abs(p.dv) > Math.abs(p.du);
+            if (tech.d >= tech.path.len - stop - 1e-6) {
+                tech.path = null;
+                if (tech.target !== null && S[tech.target].down) S[tech.target].down.fixing = true;
+            }
+        }
+
+        const m = Math.floor(sim.t / 60);
+        if (sim.minute.at(-1)?.m !== m) sim.minute.push({m, n: 0});
+        while (sim.minute.length > 40) sim.minute.shift();
+        // OEE buckets (10 s) and throughput (per minute)
+        const f = S.filler;
+        const b = sim.buckets.at(-1);
+        if (!b || sim.t - b.t0 >= 10) sim.buckets.push({t0: sim.t, down: 0, made: 0, good: 0});
+        if (f.down || sim.changeover > 0) sim.buckets.at(-1).down += dt;
+        while (sim.buckets.length > 180) sim.buckets.shift();
+        if (sim.rejectBoost > 0) sim.rejectBoost -= dt;
+    };
+    const produced = () => {
+        const good = rand() > (sim.rejectBoost > 0 ? 0.12 : 0.015);
+        const b = sim.buckets.at(-1);
+        if (b) {
+            b.made++;
+            if (good) b.good++;
+        }
+        sim.minute.at(-1).n++;
+        const o = current();
+        if (o && good) {
+            o.done++;
+            if (o.done === o.qty) {
+                log(`${o.id} complete — ${o.qty} lots ${o.product}`, 'ok');
+                flash(3);
+                flash(4);
+                if (orders.filter((x) => x.done < x.qty).length < 3) newOrder();
+                while (orders.length > 7 && orders[0].done >= orders[0].qty) orders.shift();
+            }
+        }
+        if (!good) log(`QC: lot ${sim.lot} rejected (fill level)`, 'down');
+    };
+
+    // ---- drawing ----------------------------------------------------------------------------------------------------
+    const actors = () => {
+        const out = [...conveyors];
+        for (const u of transit) {
+            const r = routes[u.link.id];
+            if (u.link.mode !== 'conveyor') continue;
+            const p = at(u.link.id, 0.5 + (r.len - 1) * (u.t / u.dur));
+            const icon = u.link.icon;
+            out.push({id: `u-${u.link.id}-${Math.round(u.dur * 1000)}-${transit.indexOf(u)}`, icon, u: p.u, v: p.v,
+                color: icon === 'tray' ? u.color : u.link.color, scale: icon === 'pallet' ? 0.72 : icon === 'crate' ? 0.9 : 1});
+        }
+        for (const [id, f] of Object.entries(forklifts)) {
+            const r = routes[id];
+            const span = Math.max(0, r.len - 1.3);
+            const dur = Math.max(2, r.len / SPEED.forklift);
+            const k = f.phase === 'wait' ? 0 : Math.min(1, f.t / dur);
+            const d = 0.65 + (f.phase === 'back' ? 1 - k : k) * span;
+            const p = at(id, d);
+            out.push({id: `fork-${id}`, icon: f.phase === 'go' ? 'forklift-load' : 'forklift', u: p.u, v: p.v, flip: Math.abs(p.dv) > Math.abs(p.du), scale: 0.95,
+                title: `Forklift · ${f.phase === 'go' ? 'carrying' : f.phase === 'back' ? 'returning' : 'waiting'}`});
+        }
+        out.push({id: 'tech', icon: 'worker', color: '#e0664f', u: tech.pos.u, v: tech.pos.v, flip: tech.flip, title: 'Maintenance technician'});
+        // the filler operator steps between filler and labeller
+        const w = (Math.sin(sim.t / 23) + 1) / 2;
+        out.push({id: 'operator', icon: 'worker', color: '#f5b93b', u: 19.5 + w * 1.6, v: 9.6, title: 'Line operator'});
+        // QC tech by the bench
+        out.push({id: 'qc-tech', icon: 'worker', color: '#ffffff', u: 9.5 + Math.sin(sim.t / 31) * 0.5, v: 9.6, title: 'QC technician'});
+        return out;
+    };
+
+    const fmt = (n) => Math.round(n).toLocaleString('en');
+    const status = () => {
+        for (const s of Object.values(S)) {
+            if (s.kind === 'buffer') {
+                const n = s.out + s.in;
+                iso.setItemStatus(s.id, {state: n === 0 ? 'idle' : n >= s.cap - 1 ? 'warn' : 'ok', message: `${n} / ${s.cap} lots`, progress: n / s.cap});
+                continue;
+            }
+            if (s.kind === 'truck-in') {
+                const due = sim.truckIn.due;
+                iso.setItemStatus(s.id, s.out > 0 ? {state: 'ok', message: `unloading · ${s.out} bins left`, progress: s.out / 6}
+                    : {state: 'idle', message: due !== null ? `next truck ${hhmm(due)}` : 'no truck'});
+                continue;
+            }
+            if (s.kind === 'truck-out') {
+                iso.setItemStatus(s.id, sim.truckOut.away > 0 ? {state: 'idle', message: `on the road · back ${hhmm(sim.t + sim.truckOut.away)}`}
+                    : {state: 'ok', message: `loading ${s.in} / ${s.cap}`, progress: s.in / s.cap});
+                continue;
+            }
+            let st;
+            if (s.down) {
+                st = {state: 'down', message: s.down.fixing ? `repair · ${Math.ceil(s.down.repairLeft)} s` : s.down.why};
+            } else if (s.id === 'filler' && sim.changeover > 0) {
+                st = {state: 'warn', message: `changeover → ${sim.product}`, progress: 1 - sim.changeover / 45};
+            } else if (s.job !== null) {
+                st = {state: 'ok', message: s.id === 'filler' ? `lot ${s.job.lot} · ${sim.product}` : `running · ${fmt(s.done)} done`, progress: s.job.t / s.ct};
+            } else if (s.out > 0) {
+                st = {state: 'warn', message: 'blocked — output full'};
+            } else {
+                st = {state: 'idle', message: 'waiting for material'};
+            }
+            iso.setItemStatus(s.id, st);
+        }
+        // pipes carry juice only while something flows
+        for (const l of LINKS.filter((x) => x.mode === 'pipe')) {
+            iso.setConnectorStatus(l.id, {active: transit.some((u) => u.link === l)});
+        }
+        for (const id of ['plc-press', 'plc-tanks', 'plc-fill', 'plc-pack']) iso.setItemStatus(id, {state: 'ok'});
+        // a truck on the road is only a ghost at its dock
+        const gone = {'truck-out': sim.truckOut.away > 0, 'truck-in': S['truck-in'].out === 0};
+        for (const [id, away] of Object.entries(gone)) {
+            iso.element.querySelectorAll(`.iso-item[data-item="${id}"]`).forEach((el) => el.style.opacity = away ? '0.12' : '');
+        }
+        const anyDown = sim.faults.length > 0;
+        iso.setItemStatus('scada', {state: anyDown ? 'down' : 'ok', message: anyDown ? `${sim.faults.length} alarm${sim.faults.length > 1 ? 's' : ''}` : 'no alarms'});
+        const o = current();
+        iso.setItemStatus('mes', {state: 'ok', message: o ? `${o.id} · ${o.done}/${o.qty}` : 'idle', progress: o ? o.done / o.qty : 0});
+        iso.setItemStatus('erp', {state: 'ok', message: `${orders.filter((x) => x.done < x.qty).length} open orders`});
+    };
+
+    // ---- side panels --------------------------------------------------------------------------------------------------
+    const COL = {a: '#3ecf6e', p: '#5b8def', q: '#e8b923'};
+    const ring = new J.RingGauge($('ring'), {size: 150, thickness: 14, gap: 5, center: 'none', rounded: true, theme: 'dark',
+        rings: [{value: 0, color: COL.a, label: 'availability'}, {value: 0, color: COL.p, label: 'performance'}, {value: 0, color: COL.q, label: 'quality'}]});
+    const chartTheme = (dark) => ({...(dark ? J.ChartTheme.dark : J.ChartTheme.light), background: 'transparent', band: ''});
+    const thru = new J.LineChart($('thru'), {theme: chartTheme(true), legend: false, title: 'lots per hour · last 30 minutes',
+        yRange: {min: 0, max: 260}, yFormat: (v) => String(Math.round(v))});
+    const oee = () => {
+        const T = sim.buckets.length * 10 || 1;
+        const down = sim.buckets.reduce((a, b) => a + b.down, 0);
+        const made = sim.buckets.reduce((a, b) => a + b.made, 0);
+        const good = sim.buckets.reduce((a, b) => a + b.good, 0);
+        const A = Math.max(0, 1 - down / T);
+        const P = Math.min(1, made * S.filler.ideal / Math.max(1, T - down));
+        const Q = made ? good / made : 1;
+        return {A, P, Q, oee: A * P * Q, made, good};
+    };
+    const panels = () => {
+        const k = oee();
+        ring.setValues([k.A * 100, k.P * 100, k.Q * 100]);
+        $('oee').textContent = `${Math.round(k.oee * 100)}%`;
+        $('kpi').innerHTML = [['Availability', k.A, COL.a], ['Performance', k.P, COL.p], ['Quality', k.Q, COL.q]]
+            .map(([n, v, c]) => `<i style="background:${c}"></i><span>${n}</span><b>${(v * 100).toFixed(1)}%</b>`).join('')
+            + `<i></i><span class="muted">lots good / made</span><b>${k.good} / ${k.made}</b>`;
+        // lots per hour from the per-minute counts, last 30 minutes
+        // the running minute is incomplete: leave it out
+        const nowMin = Math.floor(sim.t / 60);
+        const mins = sim.minute.filter((m) => m.m < nowMin).slice(-30);
+        const ys = mins.length ? mins.map((m) => m.n * 60) : [0];
+        const xs = ys.map((_, i) => i);
+        thru.setXLabels(xs.map((i) => {
+            const ago = mins.length ? nowMin - mins[i].m : 0;
+            return `−${ago}′`;
+        }));
+        thru.setSeries([
+            {name: 'lots/h', x: xs, y: ys, color: '#5b8def', width: 1.8, fill: ['rgba(91,141,239,.35)', 'rgba(91,141,239,0)'], highlight: ys.length - 1},
+            {name: 'ideal', x: xs, y: ys.map(() => Math.round(3600 / S.filler.ideal)), color: '#8d97ad', dash: [4, 4], width: 1}
+        ]);
+        const open = orders.filter((o) => o.done < o.qty).length;
+        $('ordsum').textContent = `${open} open`;
+        const cur = current();
+        $('orders').innerHTML = orders.map((o) => `<tr class="${o === cur ? 'cur' : o.done >= o.qty ? 'done' : ''}">
+            <td>${o.id}${o.rush ? ' ⚡' : ''}<br><span class="muted">${o.customer}</span></td>
+            <td><span class="swatch" style="background:${PRODUCTS[o.product]}"></span>${o.product}</td>
+            <td class="num">${o.done}/${o.qty}</td>
+            <td><div class="pbar"><b style="width:${Math.round(o.done / o.qty * 100)}%;${o.done >= o.qty ? '' : o === cur ? '' : 'background:#8d97ad'}"></b></div></td></tr>`).join('');
+        stationPanel();
+    };
+
+    // automation pyramid: five isometric slabs, field level at the bottom
+    const LEVELS = [
+        {name: 'Field', note: 'machines, sensors, drives', color: '#7f8ba0'},
+        {name: 'PLC', note: 'control cabinets', color: '#5b8def'},
+        {name: 'SCADA / HMI', note: 'control room, panels', color: '#2fb3a5'},
+        {name: 'MES', note: 'orders on the line, OEE', color: '#e8b923'},
+        {name: 'ERP', note: 'customer orders, stock', color: '#8b7cf6'}
+    ];
+    const pyramid = () => {
+        const W = 340, slab = 12, step = 30, cx = 74, nx = 156;
+        const base = 40 + 4 * step + 30;
+        let svg = `<svg viewBox="0 0 ${W} ${base + 4}">`;
+        // bottom (field) first, so every upper slab sits on the one below
+        LEVELS.forEach((L, lvl) => {
+            const hw = 70 - lvl * 11, d = hw / 2;
+            const y = base - lvl * step - d / 2 - slab;
+            const sh = J.IsoIcons.shades(L.color);
+            svg += `<g class="lvl" data-level="${lvl}">
+                <polygon points="${cx - hw},${y} ${cx},${y + d / 2} ${cx},${y + d / 2 + slab} ${cx - hw},${y + slab}" fill="${sh.left}"/>
+                <polygon points="${cx + hw},${y} ${cx},${y + d / 2} ${cx},${y + d / 2 + slab} ${cx + hw},${y + slab}" fill="${sh.right}"/>
+                <polygon points="${cx - hw},${y} ${cx},${y - d / 2} ${cx + hw},${y} ${cx},${y + d / 2}" fill="${sh.top}"/>
+                <line x1="${cx + hw}" y1="${y + slab / 2}" x2="${nx - 4}" y2="${y + slab / 2}" stroke="${L.color}" stroke-dasharray="2 3"/>
+                <rect x="${nx - 4}" y="${y - 8}" width="${W - nx + 4}" height="28" fill="transparent"/>
+                <text x="${nx}" y="${y + 3}">${L.name}</text>
+                <text class="note" x="${nx}" y="${y + 15}">${L.note}</text></g>`;
+        });
+        $('pyramid').insertAdjacentHTML('beforeend', svg + '</svg>');
+        $('pyramid').querySelectorAll('.lvl').forEach((g) => {
+            const lvl = Number(g.dataset.level);
+            const ids = items.filter((i) => (i.meta?.level ?? -1) === lvl).map((i) => i.id);
+            g.onmouseenter = () => iso.highlight(ids);
+            g.onmouseleave = () => iso.highlight(null);
+        });
+    };
+    pyramid();
+    const flash = (lvl) => {
+        const g = $('pyramid').querySelector(`.lvl[data-level="${lvl}"]`);
+        if (!g) return;
+        g.classList.add('flash');
+        clearTimeout(g._t);
+        g._t = setTimeout(() => g.classList.remove('flash'), 700);
+    };
+
+    // selected station
+    let picked = null;
+    const stationPanel = () => {
+        const box = $('station');
+        const s = picked && S[picked];
+        if (!s) {
+            box.innerHTML = '<h2>Station</h2><span class="muted">Click a machine in the hall.</span>';
+            return;
+        }
+        const item = iso.get(picked);
+        const T = s.runTime + s.downTime + s.idleTime || 1;
+        const rows = s.kind === 'machine' ? `
+            <dt>State</dt><dd>${s.down ? `<b style="color:#ef5350">stopped</b> · ${s.down.why}` : s.job ? 'running' : s.out ? 'blocked' : 'starved'}</dd>
+            <dt>Cycle</dt><dd>${s.ct} s${s.ideal !== s.ct ? ` (ideal ${s.ideal} s)` : ''}</dd>
+            <dt>Lots done</dt><dd>${fmt(s.done)}</dd>
+            <dt>Waiting in / out</dt><dd>${s.in} / ${s.out}</dd>
+            <dt>Time running</dt><dd>${(s.runTime / T * 100).toFixed(0)}% · stopped ${(s.downTime / T * 100).toFixed(0)}% · idle ${(s.idleTime / T * 100).toFixed(0)}%</dd>
+            <dt>MTBF</dt><dd>${Math.round(s.mtbf / 60)} min</dd>`
+            : s.kind === 'buffer' ? `<dt>Stock</dt><dd>${s.in + s.out} of ${s.cap} lots</dd>`
+            : `<dt>Load</dt><dd>${s.kind === 'truck-in' ? s.out + ' bins' : s.in + ' / ' + s.cap + ' pallets'}</dd>`;
+        box.innerHTML = `<h2>${item?.label ?? picked}</h2><dl>${rows}</dl>`
+            + (s.kind === 'machine' ? `<button id="st-fault">${s.down ? 'Stopped…' : 'Cause a fault'}</button>` : '');
+        const b = $('st-fault');
+        if (b) {
+            b.disabled = !!s.down;
+            b.onclick = () => fail(picked, 'operator emergency stop');
+        }
+    };
+    iso.on('itemClick', ({item}) => {
+        picked = S[item.id] ? item.id : null;
+        stationPanel();
+    });
+    iso.on('floorClick', () => {
+        picked = null;
+        stationPanel();
+    });
+
+    // ---- controls ---------------------------------------------------------------------------------------------------
+    let labelsOn = true;
+    $('play').onclick = (e) => {
+        sim.playing = !sim.playing;
+        e.target.textContent = sim.playing ? 'Pause' : 'Play';
+        e.target.classList.toggle('on', sim.playing);
+    };
+    document.querySelectorAll('.speed').forEach((b) => b.onclick = () => {
+        sim.speed = Number(b.dataset.s);
+        document.querySelectorAll('.speed').forEach((x) => x.classList.toggle('on', x === b));
+    });
+    $('fault').onclick = () => fail('filler', 'bottle jam at the infeed');
+    $('rush').onclick = () => {
+        newOrder(true);
+        panels();
+    };
+    $('fit').onclick = () => iso.fit();
+    $('labels').onclick = (e) => {
+        labelsOn = e.target.classList.toggle('on');
+        $('plant').classList.toggle('no-labels', !labelsOn);
+    };
+    $('edit').onclick = (e) => {
+        const on = e.target.classList.toggle('on');
+        iso.setReadOnly(!on);
+        e.target.textContent = on ? 'Done editing' : 'Edit layout';
+    };
+    iso.on('change', () => {
+        buildRoutes();
+        for (const f of Object.values(forklifts)) f.t = Math.min(f.t, 1);
+    });
+    let dark = true;
+    $('theme').onclick = (e) => {
+        dark = !dark;
+        document.body.classList.toggle('light', !dark);
+        iso.setTheme(dark ? 'dark' : 'light');
+        ring.setTheme(dark ? 'dark' : 'light');
+        thru.setTheme(chartTheme(dark));
+        e.target.textContent = dark ? 'Light' : 'Dark';
+    };
+
+    // ---- loop ---------------------------------------------------------------------------------------------------------
+    let last = performance.now(), lastStatus = 0, lastPanel = 0;
+    const frame = (now) => {
+        const real = Math.min(0.1, (now - last) / 1000);
+        last = now;
+        if (sim.playing) {
+            let left = real * sim.speed;
+            while (left > 0) {
+                const dt = Math.min(0.25, left);
+                step(dt);
+                left -= dt;
+            }
+        }
+        iso.setActors(actors());
+        $('clock').textContent = hhmm(sim.t);
+        if (now - lastStatus > 200) {
+            status();
+            lastStatus = now;
+        }
+        if (now - lastPanel > 1000) {
+            panels();
+            lastPanel = now;
+        }
+        requestAnimationFrame(frame);
+    };
+    // a warm start: the plant has been running for a while
+    for (let i = 0; i < 1800 * 4; i++) step(0.25);
+    log('Shift A started — line running', 'ok');
+    status();
+    panels();
+    requestAnimationFrame(frame);
+
+    const q = new URLSearchParams(location.search);
+    if (q.get('theme') === 'light') $('theme').click();
+})();
+</script>
+</body>
+</html>
