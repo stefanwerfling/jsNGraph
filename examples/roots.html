@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — where does data visualization come from</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    html, body { background: #262b39; }
+    main { max-width: 1600px; margin: 0 auto; padding: 12px 16px 28px; color: #d6dbe6; font-family: system-ui, sans-serif; }
+    h1 { font-size: 30px; margin: 6px 0 0; font-weight: 300; font-style: italic; color: #b9c0cf; letter-spacing: .01em; }
+    h1 b { font-weight: 300; font-size: 1.35em; color: #dfe3ec; }
+    .lede { margin: 2px 0 4px; font-size: 17px; font-weight: 300; color: #c7cdd9; }
+    .sub { margin: 6px 0 12px; color: #9aa3b6; font-size: 13px; max-width: 1060px; line-height: 1.5; }
+    .bar { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; font-size: 12px; margin-bottom: 8px; }
+    .bar label { display: inline-flex; gap: 8px; align-items: center; }
+    button, select { background: #1e2230; color: #d6dbe6; border: 1px solid #3a4157; border-radius: 3px; padding: 5px 10px;
+        font: 12px system-ui, sans-serif; cursor: pointer; }
+    button.on { border-color: #f3c13a; color: #fff; }
+    input[type=range] { width: min(460px, 50vw); accent-color: #f3c13a; }
+    .year { font: 600 15px ui-monospace, monospace; color: #fff; min-width: 46px; display: inline-block; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
+    @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } }
+    #roots { height: min(86vh, 1000px); min-height: 560px; border: 1px solid #333a4d; border-radius: 4px; }
+    #fans { height: 210px; margin-top: 14px; }
+    aside { display: flex; flex-direction: column; gap: 12px; font-size: 12px; line-height: 1.45; }
+    .box { background: #20242f; border: 1px solid #333a4d; border-radius: 4px; padding: 10px 12px; }
+    .box h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #8d96aa; margin: 0 0 8px; font-weight: 600; }
+    #detail .name { font-weight: 600; font-size: 14px; color: #fff; }
+    #detail ul { margin: 6px 0 0; padding-left: 16px; max-height: 340px; overflow: auto; }
+    .chip { display: inline-block; padding: 1px 7px; border-radius: 9px; margin: 3px 4px 0 0; font-size: 11px; color: #161a24; }
+    .muted { color: #7f889c; }
+    .credit { color: #747d92; font-size: 11px; margin-top: 8px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="roots.html" class="active">Roots of data visualization</a>
+</nav>
+
+<main>
+    <h1>Where does <b>data visualization</b> come from?</h1>
+    <p class="lede">— the emergence of a discipline</p>
+    <p class="sub">Every cross is a person, placed in the year of a landmark contribution. A coloured strand runs from each person
+        down to every discipline they worked in — economists, engineers, physicians and cartographers first, statisticians
+        throughout, then computer scientists, designers and journalists. Bars count the people per discipline; the dotted
+        arcs below join disciplines that share people. Drag the year slider to watch the bars fill up.</p>
+
+    <div class="bar">
+        <button id="play">▶ Play</button>
+        <label>up to <input id="time" type="range" min="1760" max="2020" value="2020"> <span class="year" id="year">all</span></label>
+        <label>arcs from <select id="minlink"><option value="1">1 shared</option><option value="2" selected>2 shared</option><option value="3">3 shared</option><option value="0">none</option></select></label>
+        <button id="fit">Fit</button>
+    </div>
+
+    <div class="layout">
+        <div>
+            <div id="roots"></div>
+            <div id="fans"></div>
+            <p class="credit">Hover a person, a strand, a bar or an arc to light its part of the web; click to pin it. Wheel zooms,
+                drag pans, double-click fits. The small dials show when each discipline joined in: earliest year just left of
+                the top, counter-clockwise to 1900 at the bottom, up the right side to today.<br>
+                A personal selection from the history of data visualization; years are those of a landmark contribution and
+                rounded where it spanned years, disciplines simplified. The layout idea follows Fabrice Sabatier's poster
+                “Where does data visualization come from?”; data and drawing are our own.</p>
+        </div>
+        <aside>
+            <div class="box" id="detail">
+                <h2>Selection</h2>
+                <span class="muted">Hover or click something in the picture.</span>
+            </div>
+            <div class="box">
+                <h2>Disciplines</h2>
+                <div id="legend"></div>
+            </div>
+        </aside>
+    </div>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+(() => {
+    const {RootsChart, RootsFans} = window.JSNGraph;
+
+    const categories = [
+        {id: 'politics', name: 'Politics, law, military', color: '#9297a6'},
+        {id: 'philosophy', name: 'Philosophy, theology', color: '#e88fa3'},
+        {id: 'psychology', name: 'Psychology', color: '#c46bb6'},
+        {id: 'sociology', name: 'Sociology', color: '#e0609a'},
+        {id: 'journalism', name: 'Journalism', color: '#9a7ad6'},
+        {id: 'economy', name: 'Economy', color: '#d08a45'},
+        {id: 'management', name: 'Management, business', color: '#b89b5e'},
+        {id: 'medicine', name: 'Medicine', color: '#2fa4e0'},
+        {id: 'biology', name: 'Biology', color: '#4a82dc'},
+        {id: 'geography', name: 'Geography, demography', color: '#64c1cf'},
+        {id: 'cartography', name: 'Cartography', color: '#86a9d8'},
+        {id: 'earth', name: 'Meteorology, astronomy', color: '#4d9a96'},
+        {id: 'chemistry', name: 'Chemistry', color: '#4e8fae'},
+        {id: 'physics', name: 'Physics', color: '#7c9a7e'},
+        {id: 'mathematics', name: 'Mathematics', color: '#d7d22c'},
+        {id: 'statistics', name: 'Statistics', color: '#f3c13a'},
+        {id: 'engineering', name: 'Engineering', color: '#9fca5d'},
+        {id: 'cs', name: 'Computer science', color: '#58b84a'},
+        {id: 'hci', name: 'Human–computer interaction', color: '#2aa36a'},
+        {id: 'infovis', name: 'Information visualization', color: '#ec3d3d'},
+        {id: 'design', name: 'Graphic design', color: '#f07d34'},
+        {id: 'art', name: 'Art, photography', color: '#eab79a'}
+    ];
+
+    // [id, year, name, caption, disciplines, contribution?]
+    const A = [
+        ['priestley', 1765, 'Joseph Priestley', 'A Chart of Biography — lives on a timeline', ['philosophy', 'chemistry']],
+        ['lambert', 1765, 'Johann Heinrich Lambert', 'Graphs of measured data', ['mathematics', 'physics']],
+        ['crome', 1782, 'August F. W. Crome', 'Map of the products of Europe', ['economy', 'geography']],
+        ['fourcroy', 1782, 'Charles de Fourcroy', 'Proportional squares of cities', ['engineering', 'geography']],
+        ['playfair', 1786, 'William Playfair', 'Line and bar charts of trade', ['economy', 'engineering'], [1801, 'Pie chart']],
+        ['humboldt', 1817, 'Alexander von Humboldt', 'Isotherm map', ['earth', 'geography', 'biology']],
+        ['dupin', 1826, 'Charles Dupin', 'Choropleth map of schooling', ['mathematics', 'engineering', 'economy']],
+        ['guerry', 1833, 'André-Michel Guerry', 'Moral statistics of France', ['politics', 'statistics']],
+        ['quetelet', 1835, 'Adolphe Quetelet', 'Social physics, the average man', ['statistics', 'earth', 'sociology']],
+        ['harness', 1837, 'Henry Drury Harness', 'Flow maps of traffic in Ireland', ['engineering', 'politics', 'cartography']],
+        ['berghaus', 1838, 'Heinrich Berghaus', 'Physical atlas', ['geography', 'cartography']],
+        ['lalanne', 1843, 'Léon Lalanne', 'Contour diagram of temperature', ['engineering', 'mathematics']],
+        ['minard', 1844, 'Charles Joseph Minard', 'Tableau figuratif — flows of goods', ['engineering', 'cartography'], [1869, "Napoleon's march to Moscow"]],
+        ['snow', 1854, 'John Snow', 'Cholera map of Soho', ['medicine']],
+        ['nightingale', 1858, 'Florence Nightingale', 'Polar area diagram of army deaths', ['medicine', 'statistics']],
+        ['jevons', 1862, 'William Stanley Jevons', 'Charts of seasonal trade', ['economy', 'statistics']],
+        ['mendeleev', 1869, 'Dmitri Mendeleev', 'Periodic table', ['chemistry']],
+        ['loua', 1873, 'Toussaint Loua', 'Mosaic charts of Paris', ['statistics']],
+        ['walker', 1874, 'Francis Amasa Walker', 'Statistical Atlas of the US', ['economy', 'statistics', 'politics']],
+        ['galton', 1875, 'Francis Galton', 'Weather map in a newspaper', ['biology', 'statistics', 'earth'], [1886, 'Correlation diagram']],
+        ['mayr', 1877, 'Georg von Mayr', 'Methods of statistical graphics', ['statistics', 'economy']],
+        ['marey', 1878, 'Étienne-Jules Marey', 'La méthode graphique', ['medicine', 'art']],
+        ['cheysson', 1879, 'Émile Cheysson', 'Album de statistique graphique', ['engineering', 'economy']],
+        ['perozzo', 1880, 'Luigi Perozzo', '3-D population pyramid', ['statistics', 'engineering']],
+        ['venn', 1880, 'John Venn', 'Venn diagrams', ['mathematics', 'philosophy']],
+        ['mulhall', 1884, 'Michael G. Mulhall', 'Pictorial statistics', ['statistics', 'economy']],
+        ['booth', 1889, 'Charles Booth', 'Poverty maps of London', ['sociology', 'economy']],
+        ['pearson', 1895, 'Karl Pearson', 'The histogram', ['mathematics', 'statistics', 'biology']],
+        ['dubois', 1900, 'W. E. B. Du Bois', 'Data portraits of Black America', ['sociology', 'journalism']],
+        ['gantt', 1910, 'Henry Gantt', 'Gantt chart', ['engineering', 'management']],
+        ['brinton', 1914, 'Willard C. Brinton', 'Graphic Methods for Presenting Facts', ['engineering']],
+        ['wright', 1921, 'Sewall Wright', 'Path diagrams', ['biology', 'statistics']],
+        ['neurath', 1925, 'Otto Neurath', 'Isotype picture statistics', ['philosophy', 'economy', 'sociology']],
+        ['arntz', 1928, 'Gerd Arntz', 'Isotype pictograms', ['art', 'design']],
+        ['beck', 1933, 'Harry Beck', 'London Underground diagram', ['engineering', 'design']],
+        ['spear', 1952, 'Mary Eleanor Spear', 'Charting Statistics; range bar', ['statistics', 'politics']],
+        ['bayer', 1953, 'Herbert Bayer', 'World Geo-Graphic Atlas', ['art', 'design']],
+        ['kruskal', 1964, 'Joseph Kruskal', 'Multidimensional scaling', ['mathematics', 'statistics']],
+        ['fisher', 1965, 'Howard T. Fisher', 'SYMAP computer mapping', ['cartography', 'cs']],
+        ['bertin', 1967, 'Jacques Bertin', 'Sémiologie graphique', ['cartography', 'geography']],
+        ['tobler', 1970, 'Waldo Tobler', 'Computer cartography', ['geography', 'cs']],
+        ['gabriel', 1971, 'K. Ruben Gabriel', 'Biplot', ['statistics']],
+        ['chernoff', 1973, 'Herman Chernoff', 'Chernoff faces', ['statistics', 'mathematics']],
+        ['wurman', 1976, 'Richard Saul Wurman', 'Information architecture', ['design', 'art']],
+        ['tukey', 1977, 'John W. Tukey', 'Exploratory data analysis, box plot', ['statistics', 'mathematics']],
+        ['holmes', 1978, 'Nigel Holmes', 'Explanation graphics at Time', ['design', 'journalism']],
+        ['tufte', 1983, 'Edward Tufte', 'The Visual Display of Quantitative Information', ['statistics', 'politics', 'design']],
+        ['cleveland', 1984, 'William S. Cleveland', 'Graphical perception', ['statistics', 'cs']],
+        ['inselberg', 1985, 'Alfred Inselberg', 'Parallel coordinates', ['mathematics', 'cs']],
+        ['mackinlay', 1986, 'Jock Mackinlay', 'Automated design of graphics', ['cs', 'infovis']],
+        ['wegman', 1990, 'Edward Wegman', 'Parallel coordinates for data analysis', ['statistics']],
+        ['shneiderman', 1992, 'Ben Shneiderman', 'Treemaps', ['cs', 'hci', 'infovis']],
+        ['card', 1994, 'Stuart K. Card', 'Table lens', ['hci', 'psychology', 'infovis']],
+        ['wattenberg', 1998, 'Martin Wattenberg', 'Map of the Market', ['mathematics', 'infovis', 'art']],
+        ['wilkinson', 1999, 'Leland Wilkinson', 'The Grammar of Graphics', ['statistics', 'cs']],
+        ['fry', 2001, 'Ben Fry', 'Processing', ['design', 'cs', 'infovis']],
+        ['viegas', 2003, 'Fernanda Viégas', 'History flow', ['infovis', 'art', 'hci']],
+        ['cox', 2004, 'Amanda Cox', 'Graphics at The New York Times', ['statistics', 'journalism']],
+        ['heer', 2005, 'Jeffrey Heer', 'Prefuse toolkit', ['cs', 'hci', 'infovis']],
+        ['lima', 2005, 'Manuel Lima', 'VisualComplexity', ['design', 'infovis']],
+        ['rosling', 2006, 'Hans Rosling', 'Gapminder bubbles', ['medicine', 'statistics']],
+        ['few', 2006, 'Stephen Few', 'Dashboard design', ['management', 'infovis']],
+        ['manovich', 2007, 'Lev Manovich', 'Cultural analytics', ['art', 'cs']],
+        ['yau', 2007, 'Nathan Yau', 'FlowingData', ['statistics', 'journalism']],
+        ['wickham', 2007, 'Hadley Wickham', 'ggplot2', ['statistics', 'cs']],
+        ['koblin', 2008, 'Aaron Koblin', 'Flight Patterns', ['art', 'infovis']],
+        ['stefaner', 2008, 'Moritz Stefaner', 'Visualization as a craft', ['infovis', 'design']],
+        ['mccandless', 2009, 'David McCandless', 'Information is Beautiful', ['journalism', 'design']],
+        ['rogers', 2009, 'Simon Rogers', 'Guardian Datablog', ['journalism']],
+        ['bostock', 2011, 'Mike Bostock', 'D3.js', ['cs', 'infovis', 'journalism']],
+        ['cairo', 2012, 'Alberto Cairo', 'The Functional Art', ['journalism', 'infovis']],
+        ['munzner', 2014, 'Tamara Munzner', 'Visualization Analysis and Design', ['cs', 'infovis']],
+        ['roser', 2014, 'Max Roser', 'Our World in Data', ['economy', 'infovis']],
+        ['lupi', 2015, 'Giorgia Lupi', 'Dear Data', ['design', 'infovis']]
+    ];
+    const actors = A.map(([id, year, name, caption, cats, c]) => ({id, year, name, caption, categories: cats,
+        ...(c ? {contribution: {year: c[0], label: c[1]}} : {})}));
+
+    const theme = {background: '#262b39', text: '#a9b1c4', title: '#e8ecf4', grid: 'rgba(255,255,255,0.05)', marker: '#f3c13a'};
+    const chart = new RootsChart(document.getElementById('roots'), {categories, actors, from: 1760, to: 2020, theme});
+    const fans = new RootsFans(document.getElementById('fans'), {
+        categories, actors, from: 1760, to: 2020, split: 1900, theme,
+        fans: [
+            {ids: ['philosophy', 'psychology', 'sociology'], label: 'Philosophy, psychology, sociology'},
+            'economy', 'engineering', 'statistics',
+            {ids: ['cs', 'hci'], label: 'Computer science, HCI'},
+            'infovis', 'design', 'journalism'
+        ]
+    });
+    window.roots = chart;
+
+    // ---- linking -------------------------------------------------------------------------------------------
+    const byId = Object.fromEntries(categories.map((c) => [c.id, c]));
+    const chip = (c) => `<span class="chip" style="background:${c.color}">${c.name}</span>`;
+    let pinned = null;
+    const show = (info) => {
+        const box = document.getElementById('detail');
+        if (!info) {
+            box.innerHTML = '<h2>Selection</h2><span class="muted">Hover or click something in the picture.</span>';
+            fans.focus(null);
+            return;
+        }
+        if (info.kind === 'actor') {
+            const a = info.actor;
+            box.innerHTML = `<h2>Person</h2><div class="name">${a.name}</div>
+                <div>${a.year} · ${a.caption ?? ''}</div>
+                ${a.contribution ? `<div>${a.contribution.year} · ${a.contribution.label}</div>` : ''}
+                <div style="margin-top:6px">${info.categories.map(chip).join('')}</div>`;
+            fans.focus(info.categories.map((c) => c.id));
+        } else if (info.kind === 'category') {
+            box.innerHTML = `<h2>Discipline</h2>${chip(info.category)}<div style="margin-top:6px">${info.actors.length} people</div>
+                <ul>${[...info.actors].sort((a, b) => a.year - b.year).map((a) => `<li>${a.year} ${a.name}</li>`).join('')}</ul>`;
+            fans.focus([info.category.id]);
+        } else {
+            box.innerHTML = `<h2>Shared by ${info.actors.length}</h2>${chip(info.a)}${chip(info.b)}
+                <ul>${info.actors.map((a) => `<li>${a.year} ${a.name}</li>`).join('')}</ul>`;
+            fans.focus([info.a.id, info.b.id]);
+        }
+    };
+    chart.on('hover', (h) => show(h ?? pinned));
+    chart.on('click', (h) => { pinned = h; show(h); });
+    fans.on('hover', (ids) => {
+        chart.focus(ids ? {kind: 'category', id: ids[0]} : null);
+        legendFocus(ids);
+    });
+
+    const legend = document.getElementById('legend');
+    const counts = chart.getCounts();
+    legend.innerHTML = categories.map((c) => `<span class="chip" data-id="${c.id}" style="background:${c.color};cursor:pointer">${c.name} · ${counts[c.id]}</span>`).join('');
+    const legendFocus = (ids) => legend.querySelectorAll('.chip').forEach((el) => {
+        el.style.opacity = !ids || ids.includes(el.dataset.id) ? 1 : 0.35;
+    });
+    legend.querySelectorAll('.chip').forEach((el) => {
+        el.onmouseenter = () => { chart.focus({kind: 'category', id: el.dataset.id}); fans.focus([el.dataset.id]); };
+        el.onmouseleave = () => { chart.focus(null); fans.focus(null); };
+    });
+
+    // ---- time --------------------------------------------------------------------------------------------------
+    const slider = document.getElementById('time'), label = document.getElementById('year');
+    const setYear = (y) => {
+        const all = y >= 2020;
+        chart.setTime(all ? null : y);
+        fans.setTime(all ? null : y);
+        label.textContent = all ? 'all' : String(y);
+        slider.value = y;
+    };
+    slider.oninput = () => { stop(); setYear(+slider.value); };
+    let timer = null;
+    const stop = () => { clearInterval(timer); timer = null; document.getElementById('play').textContent = '▶ Play'; };
+    document.getElementById('play').onclick = (e) => {
+        if (timer) { stop(); return; }
+        let y = +slider.value >= 2020 ? 1760 : +slider.value;
+        e.target.textContent = '❚❚ Pause';
+        setYear(y);
+        timer = setInterval(() => {
+            y += 2;
+            setYear(Math.min(2020, y));
+            if (y >= 2020) stop();
+        }, 90);
+    };
+    document.getElementById('minlink').onchange = (e) => chart.setMinLink(+e.target.value === 0 ? 999 : +e.target.value);
+    document.getElementById('fit').onclick = () => chart.fit();
+    const q = new URLSearchParams(location.search);
+    if (q.has('year')) setYear(+q.get('year'));
+})();
+</script>
+</body>
+</html>

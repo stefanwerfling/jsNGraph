@@ -94,3 +94,9 @@ export { OutcomeBurstLayout } from './chart/OutcomeBurstLayout';
 export type {
     BurstLength, BurstOrder, BurstMode, BurstSlot, BurstSlotInput, BurstGroupSpan, BurstScale
 } from './chart/OutcomeBurstLayout';
+export { RootsChart } from './chart/RootsChart';
+export type { RootsChartOptions, RootsChartEvents, RootsCategory, RootsActor, RootsFocus, RootsHover } from './chart/RootsChart';
+export { RootsFans } from './chart/RootsFans';
+export type { RootsFansOptions, RootsFansEvents } from './chart/RootsFans';
+export { RootsLayout } from './chart/RootsLayout';
+export type { RootsPlaceInput, RootsPlaceOptions, RootsPlaced, RootsBar, RootsLink } from './chart/RootsLayout';

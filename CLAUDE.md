@@ -357,6 +357,20 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   `test/OutcomeBurst.test.ts`). Example: `examples/churn.html` (invented telecom, 190 single/paired descriptions, two-thumb
   frequency/probability/lift filters, strongest-drivers table, `?mode=group&theme=light&length=…&order=…`).
 
+  `RootsChart` (canvas, `jsngraph/chart`): "where does it come from" — `actors` (name, `year`, `caption`, `categories`
+  = ids, first = main, optional `contribution` {year, label} = second marker on a line) on a time axis band (one faint
+  tick per actor year), each tied by a coloured cubic strand (straight down at both ends) to the bar of every category it
+  is rooted in; bars side by side along the bottom (header strip + one line per actor, height ∝ count), dotted gradient
+  arcs below between categories sharing ≥ `minLink` actors (count at the middle). World-space picture (`width`, default
+  1600) through `view/Camera`: auto-fit until the user pans/zooms, wheel/drag/double-click. Hover/click actor, strand, bar
+  or arc lights its part (`RootsFocus`; `focus` from outside, `select` pins); `setTime(year)` hides later actors — strands
+  grow/shrink, bars count up. Labels drop out below a readable size. `RootsFans`: small multiples, one dial per category
+  (or joined ids): rays at `RootsLayout.fanAngle` (from just left of the top counter-clockwise to `split` at the bottom, up
+  the right to `to`), hover/focus/`setTime`. Pure `RootsLayout` (`place` = rows without label overlap, nearest free row to
+  an id-hashed one; `bars`, `counts`, `links`, `strand`, `arc`, `fanAngle`, `wrap`; `test/Roots.test.ts`). Example:
+  `examples/roots.html` (75 people of data-visualization history, Priestley → Lupi, 22 disciplines, year slider + play,
+  fans and legend linked; layout idea after Fabrice Sabatier's poster, own data/drawing; `?year=`).
+
 - `records/` — `RecordGraph` (subpath `jsngraph/records`): cards with a header (icon, title, subtitle) and a table of
   rows (`label`, `value`), links run row → row (`RecordLink {from: {node,row}, to}`), cards may sit in group frames
   (`RecordGroup`, `collapsed` folds a group into one box; merged links keep all `ids`). Pure `RecordLayout`: columns =
