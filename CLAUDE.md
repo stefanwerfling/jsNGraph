@@ -343,6 +343,20 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   cyclic axes; `test/Volume.test.ts`). Example: `examples/sightingcloud.html` (invented island + canyon on the floor, four
   species with their own season/place patterns over ten years, mode/threshold/density, season and west-edge cuts, presets).
 
+  `OutcomeBurst` (canvas, `jsngraph/chart`): binary-outcome burst (churn yes/no) — one tapered, gently bent strand per
+  `BurstItem` (`group` = attribute, `label`, `count`, `probability` of the positive outcome, optional `lift`, default =
+  majority probability ÷ its base rate via `defaultLift`) out of one hub. Length = `length` count (log, round start, ends at
+  the largest) | probability (majority confidence 50…100 %) | lift; colour = gradient positive → negative split at the
+  probability along the strand, dot in the majority colour. Positive majority fills the top half, negative the bottom, both
+  strongest at the right (`order` probability | count | lift | group), so the positive probability falls counter-clockwise
+  all the way round; `mode` 'group' = one sector per attribute with arcs + labels; outcome names at top/bottom with arrows,
+  percent side labels. Strands ease (angle/length/split/alpha) on `setItems`/`setLength`/`setOrder`/`setMode`/`setFilter`
+  (filtered ones shrink, the rest close up; staggered grow-in), optional `sway`. Hover (tooltip with a probability bar,
+  same attribute half-dimmed), click selects, `highlight`, `getVisible`. Width follows the slot so neighbours keep a gap.
+  Pure `OutcomeBurstLayout` (`slots`, `scale`, `frac`, `strand`, `ribbon`, `stops`, `distanceToPath`;
+  `test/OutcomeBurst.test.ts`). Example: `examples/churn.html` (invented telecom, 190 single/paired descriptions, two-thumb
+  frequency/probability/lift filters, strongest-drivers table, `?mode=group&theme=light&length=…&order=…`).
+
 - `records/` — `RecordGraph` (subpath `jsngraph/records`): cards with a header (icon, title, subtitle) and a table of
   rows (`label`, `value`), links run row → row (`RecordLink {from: {node,row}, to}`), cards may sit in group frames
   (`RecordGroup`, `collapsed` folds a group into one box; merged links keep all `ids`). Pure `RecordLayout`: columns =

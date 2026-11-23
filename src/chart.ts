@@ -88,3 +88,9 @@ export { VolumeView } from './chart/VolumeView';
 export type { VolumeViewOptions, VolumeViewEvents, VolumeChannel, VolumeAxis, VolumeMode, VolumeCamera, VolumeHit } from './chart/VolumeView';
 export { VolumeMath } from './chart/VolumeMath';
 export type { Mat4, Vec3, VolumePoint } from './chart/VolumeMath';
+export { OutcomeBurst } from './chart/OutcomeBurst';
+export type { OutcomeBurstOptions, OutcomeBurstEvents, BurstItem, BurstOutcomes, BurstHover } from './chart/OutcomeBurst';
+export { OutcomeBurstLayout } from './chart/OutcomeBurstLayout';
+export type {
+    BurstLength, BurstOrder, BurstMode, BurstSlot, BurstSlotInput, BurstGroupSpan, BurstScale
+} from './chart/OutcomeBurstLayout';

@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — predicting churn</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    html, body { background: #121726; }
+    body.light, body.light html { background: #f4f6fa; }
+    main { max-width: 1480px; margin: 0 auto; padding: 12px 16px 28px; color: #c8d1e2; font-family: system-ui, sans-serif; }
+    body.light main { color: #273142; }
+    h1 { font-size: 20px; margin: 4px 0 2px; font-weight: 600; }
+    .sub { margin: 0 0 12px; color: #8792a8; font-size: 13px; max-width: 1040px; line-height: 1.45; }
+    .bar { display: flex; flex-wrap: wrap; gap: 14px 26px; align-items: flex-end; padding: 10px 0 14px;
+        border-bottom: 1px solid #1d2638; margin-bottom: 12px; font-size: 12px; }
+    body.light .bar { border-color: #d9dfea; }
+    .ctl { display: flex; flex-direction: column; gap: 6px; }
+    .ctl > b { font-weight: 600; font-size: 12px; }
+    select, button { background: #1c2438; color: #c8d1e2; border: 1px solid #2a3550; border-radius: 3px; padding: 5px 9px;
+        font: 12px system-ui, sans-serif; cursor: pointer; }
+    body.light select, body.light button { background: #fff; color: #273142; border-color: #c9d1df; }
+    button.on { border-color: #64bae4; color: #fff; background: #17304a; }
+    body.light button.on { color: #0c3d5c; background: #dff0fa; }
+    .radios { display: flex; gap: 14px; align-items: center; height: 28px; }
+    .radios label { display: inline-flex; gap: 5px; align-items: center; cursor: pointer; }
+    /* two-thumb range: two inputs on one track */
+    .dual { position: relative; width: 150px; height: 28px; }
+    .dual .vals { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; color: #8792a8; font-size: 11px; }
+    .dual input { position: absolute; left: 0; bottom: 0; width: 100%; margin: 0; pointer-events: none; background: none;
+        -webkit-appearance: none; appearance: none; height: 14px; }
+    .dual input::-webkit-slider-thumb { pointer-events: auto; -webkit-appearance: none; width: 3px; height: 14px; background: currentColor; cursor: ew-resize; }
+    .dual input::-moz-range-thumb { pointer-events: auto; width: 3px; height: 14px; background: currentColor; border: 0; border-radius: 0; cursor: ew-resize; }
+    .dual .track { position: absolute; left: 0; right: 0; bottom: 5px; height: 4px; background: #2a3550; }
+    body.light .dual .track { background: #d4dbe7; }
+    .dual .fill { position: absolute; bottom: 5px; height: 4px; background: currentColor; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 16px; align-items: start; }
+    @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } }
+    #burst { height: min(80vh, 840px); min-height: 540px; }
+    aside { display: flex; flex-direction: column; gap: 12px; font-size: 12px; }
+    .box { background: #18203a; border: 1px solid #1d2638; border-radius: 4px; padding: 10px 12px; line-height: 1.45; }
+    body.light .box { background: #fff; border-color: #d9dfea; }
+    .box h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #8792a8; margin: 0 0 8px; font-weight: 600; }
+    .key svg { display: block; width: 100%; height: 46px; margin: 2px 0 6px; }
+    .sw { display: inline-block; width: 8px; height: 8px; margin-right: 5px; }
+    #detail dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; }
+    #detail dt { color: #8792a8; }
+    #detail dd { margin: 0; }
+    .pbar { height: 6px; margin-top: 8px; background: #2ed3e6; position: relative; }
+    .pbar i { position: absolute; left: 0; top: 0; bottom: 0; background: #ff3d47; }
+    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    th { text-align: right; font-weight: 500; color: #8792a8; padding: 3px 4px; font-size: 11px; }
+    th:first-child, td:first-child { text-align: left; }
+    td { text-align: right; padding: 3px 4px; border-top: 1px solid #1d2638; }
+    body.light td { border-color: #e6eaf1; }
+    tbody tr { cursor: pointer; }
+    tbody tr:hover td, tbody tr.sel td { background: rgba(100,186,228,.12); }
+    .muted { color: #66728a; }
+    .credit { color: #56627a; font-size: 11px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="churn.html" class="active">Predicting churn</a>
+</nav>
+
+<main>
+    <h1>Predicting churn</h1>
+    <p class="sub">Every strand is one description of a customer — a single attribute (“contract = one year”) or two together.
+        Its length is how many customers match, its colour how they ended: red from the centre outwards up to the share that
+        left, cyan for the rest, and the dot in the colour of the majority. Strands where most customers left fill the top half,
+        the others the bottom half — strongest at the right, so reading counter-clockwise from the right the churn probability
+        falls all the way round. Narrow the sliders to keep only frequent, clear or strongly lifted descriptions.</p>
+
+    <div class="bar">
+        <div class="ctl"><b>Length</b>
+            <select id="length"><option value="count">Frequency</option><option value="probability">Probability</option><option value="lift">Lift</option></select>
+        </div>
+        <div class="ctl"><b>Order by</b>
+            <select id="order"><option value="probability">Probability</option><option value="count">Frequency</option><option value="lift">Lift</option><option value="group">Attribute</option></select>
+        </div>
+        <div class="ctl"><b>&nbsp;</b>
+            <div class="radios">
+                <label><input type="radio" name="mode" value="overview" checked> Overview</label>
+                <label><input type="radio" name="mode" value="group"> Group</label>
+            </div>
+        </div>
+        <div class="ctl"><b>Frequency</b><div class="dual" id="f-count"></div></div>
+        <div class="ctl"><b>Probability</b><div class="dual" id="f-prob"></div></div>
+        <div class="ctl"><b>Lift</b><div class="dual" id="f-lift"></div></div>
+        <div class="ctl"><b>&nbsp;</b>
+            <div class="radios">
+                <button id="sway">Sway</button>
+                <button id="theme">Light</button>
+                <button id="reset">Reset</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="layout">
+        <div>
+            <div id="burst"></div>
+            <p class="credit">Hover a strand for its numbers, click to pin it. Customers, attributes and every number are invented
+                (a made-up telecom with 7 000 customers, loosely shaped like the usual churn data sets).</p>
+        </div>
+        <aside>
+            <div class="box key">
+                <h2>How to read a strand</h2>
+                Each strand describes an attribute, e.g. contract = one year.
+                <svg viewBox="0 0 300 46" id="keysvg"></svg>
+                Colour = probability of churn being yes / no:
+                <span class="sw" style="background:#ff3d47"></span>Churn = yes
+                <span class="sw" style="background:#2ed3e6;margin-left:10px"></span>Churn = no<br>
+                Above: 67 % of these customers churned, so the dot is red.
+            </div>
+            <div class="box" id="detail">
+                <h2>Description</h2>
+                <span class="muted">Hover or click a strand.</span>
+            </div>
+            <div class="box">
+                <h2>Strongest drivers <span class="muted" id="shown"></span></h2>
+                <table>
+                    <thead><tr><th>Description</th><th>Customers</th><th>Churn</th><th>Lift</th></tr></thead>
+                    <tbody id="top"></tbody>
+                </table>
+            </div>
+        </aside>
+    </div>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+(() => {
+    const {OutcomeBurst} = window.JSNGraph;
+
+    // ---- invented data: a telecom with 7 000 customers ----------------------------------------------------------
+    let seed = 7;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
+    const sigmoid = (x) => 1 / (1 + Math.exp(-x));
+    const N = 7000;
+    // [attribute, [[value, share, effect on the churn log-odds], …]]
+    const ATTRS = [
+        ['Contract', [['month-to-month', .55, 1.4], ['one year', .21, -.9], ['two year', .24, -2.0]]],
+        ['Tenure', [['0–6 months', .18, 1.2], ['7–12 months', .12, .6], ['13–24 months', .15, .1], ['25–48 months', .22, -.6], ['49–72 months', .33, -1.2]]],
+        ['Internet', [['fiber', .44, .9], ['DSL', .34, -.3], ['none', .22, -1.5]]],
+        ['Payment', [['electronic check', .34, 1.0], ['mailed check', .23, -.1], ['bank transfer', .22, -.6], ['credit card', .21, -.7]]],
+        ['Monthly charge', [['under 35', .27, -.8], ['35–70', .27, -.1], ['70–90', .24, .5], ['over 90', .22, .4]]],
+        ['Tech support', [['yes', .29, -.8], ['no', .49, .7]]],
+        ['Online security', [['yes', .29, -.9], ['no', .49, .7]]],
+        ['Senior', [['yes', .16, .6], ['no', .84, -.1]]],
+        ['Paperless billing', [['yes', .59, .4], ['no', .41, -.6]]],
+        ['Partner', [['yes', .48, -.3], ['no', .52, .3]]],
+        ['Streaming TV', [['yes', .38, .2], ['no', .40, .1]]]
+    ];
+    const BASE = -.15;
+    const items = [];
+    ATTRS.forEach(([attr, values]) => {
+        for (const [v, share, eff] of values) {
+            items.push({id: `${attr}=${v}`, group: attr, label: v,
+                count: Math.round(N * share * (0.92 + rnd() * 0.16)), probability: sigmoid(BASE + eff + gauss() * 0.15)});
+        }
+    });
+    // pairs: two attributes together, grouped under the first one
+    const seen = new Set();
+    let tries = 0;
+    while (items.length < 190 && tries++ < 5000) {
+        const i = Math.floor(rnd() * ATTRS.length), j = Math.floor(rnd() * ATTRS.length);
+        if (i >= j) continue;
+        const [a1, vs1] = ATTRS[i], [a2, vs2] = ATTRS[j];
+        const [v1, s1, e1] = vs1[Math.floor(rnd() * vs1.length)];
+        const [v2, s2, e2] = vs2[Math.floor(rnd() * vs2.length)];
+        const id = `${a1}=${v1}&${a2}=${v2}`;
+        if (seen.has(id)) continue;
+        const count = Math.round(N * s1 * s2 * (0.55 + rnd() * 0.9));
+        if (count < 25) continue;
+        seen.add(id);
+        items.push({id, group: a1, label: `${v1} & ${a2.toLowerCase()} = ${v2}`, count,
+            probability: sigmoid(BASE + (e1 + e2) * 0.85 + gauss() * 0.3)});
+    }
+    // churn rate of all customers = the contract partition
+    const contract = items.filter((it) => it.group === 'Contract' && !it.id.includes('&'));
+    const baseRate = contract.reduce((s, it) => s + it.count * it.probability, 0) / contract.reduce((s, it) => s + it.count, 0);
+    for (const it of items) it.lift = OutcomeBurst.defaultLift(it.probability, baseRate);
+
+    // ---- chart -------------------------------------------------------------------------------------------------
+    const burst = new OutcomeBurst(document.getElementById('burst'), {
+        items, baseRate, unit: 'customers',
+        outcomes: {positive: {name: 'Churn is yes', color: '#ff3d47'}, negative: {name: 'Churn is no', color: '#2ed3e6'}}
+    });
+    window.burst = burst;
+
+    const $ = (id) => document.getElementById(id);
+    $('length').onchange = (e) => burst.setLength(e.target.value);
+    $('order').onchange = (e) => burst.setOrder(e.target.value);
+    document.querySelectorAll('input[name=mode]').forEach((r) => r.onchange = () => burst.setMode(r.value));
+    $('sway').onclick = (e) => { e.target.classList.toggle('on'); burst.setSway(e.target.classList.contains('on')); };
+    $('theme').onclick = (e) => {
+        const light = document.body.classList.toggle('light');
+        e.target.textContent = light ? 'Dark' : 'Light';
+        burst.setTheme(light ? {background: '#f4f6fa', text: '#5b6678', title: '#273142', axis: 'rgba(20,40,80,0.3)',
+            grid: 'rgba(20,40,80,0.08)', select: '#111827'} : 'dark');
+    };
+
+    // ---- filters: two thumbs per slider ------------------------------------------------------------------------
+    const maxCount = Math.max(...items.map((i) => i.count));
+    const maxLift = Math.ceil(Math.max(...items.map((i) => i.lift)) * 2) / 2;
+    const filters = {
+        count: {el: 'f-count', color: '#c8d1e2', min: 0, max: 100, lo: 0, hi: 100,
+            // log slider over 20 … max customers
+            value: (s) => Math.round(20 * Math.pow(maxCount / 20, s / 100)), fmt: (v) => v.toLocaleString()},
+        prob: {el: 'f-prob', color: '#c8d1e2', min: 50, max: 100, lo: 50, hi: 100, value: (s) => s / 100, fmt: (v) => `${Math.round(v * 100)} %`},
+        lift: {el: 'f-lift', color: '#c8d1e2', min: 0, max: maxLift * 20, lo: 0, hi: maxLift * 20, value: (s) => s / 20, fmt: (v) => v.toFixed(2)}
+    };
+    const apply = () => {
+        const f = filters;
+        const inRange = (k, v) => v >= f[k].value(f[k].lo) - 1e-9 && v <= f[k].value(f[k].hi) + 1e-9;
+        const all = f.count.lo === 0 && f.count.hi === 100 && f.prob.lo === 50 && f.prob.hi === 100 && f.lift.lo === 0 && f.lift.hi === f.lift.max;
+        burst.setFilter(all ? null : (it) => (f.count.lo === 0 || it.count >= f.count.value(f.count.lo)) && (f.count.hi === 100 || it.count <= f.count.value(f.count.hi))
+            && inRange('prob', Math.max(it.probability, 1 - it.probability)) && inRange('lift', it.lift));
+        table();
+    };
+    for (const [key, f] of Object.entries(filters)) {
+        const box = $(f.el);
+        box.innerHTML = `<div class="vals"><span></span><span></span></div><div class="track"></div><div class="fill"></div>
+            <input type="range" min="${f.min}" max="${f.max}" value="${f.lo}"><input type="range" min="${f.min}" max="${f.max}" value="${f.hi}">`;
+        const [a, b] = box.querySelectorAll('input');
+        const [la, lb] = box.querySelectorAll('.vals span');
+        const fill = box.querySelector('.fill');
+        f.sync = () => {
+            a.value = f.lo; b.value = f.hi;
+            la.textContent = f.fmt(f.value(f.lo)); lb.textContent = f.fmt(f.value(f.hi));
+            fill.style.left = `${(f.lo - f.min) / (f.max - f.min) * 100}%`;
+            fill.style.width = `${(f.hi - f.lo) / (f.max - f.min) * 100}%`;
+        };
+        a.oninput = () => { f.lo = Math.min(+a.value, f.hi); f.sync(); apply(); };
+        b.oninput = () => { f.hi = Math.max(+b.value, f.lo); f.sync(); apply(); };
+        f.sync();
+    }
+    $('reset').onclick = () => {
+        for (const f of Object.values(filters)) { f.lo = f.min; f.hi = f.max; f.sync(); }
+        burst.select(null);
+        showDetail(null);
+        apply();
+    };
+
+    // ---- side panel ----------------------------------------------------------------------------------------------
+    const pct = (p) => `${Math.round(p * 100)} %`;
+    const showDetail = (it) => {
+        const box = $('detail');
+        if (it === null) {
+            box.innerHTML = '<h2>Description</h2><span class="muted">Hover or click a strand.</span>';
+            return;
+        }
+        const yes = it.probability >= .5;
+        box.innerHTML = `<h2>Description</h2>
+            <div style="font-weight:600;margin-bottom:6px">${it.group}: ${it.label}</div>
+            <dl><dt>Customers</dt><dd>${it.count.toLocaleString()} (${pct(it.count / N)} of all)</dd>
+                <dt>Churned</dt><dd>${pct(it.probability)} — ${Math.round(it.count * it.probability).toLocaleString()} customers</dd>
+                <dt>Stayed</dt><dd>${pct(1 - it.probability)}</dd>
+                <dt>Lift</dt><dd>${it.lift.toFixed(2)} × the ${yes ? 'churn' : 'stay'} rate of all (${pct(yes ? baseRate : 1 - baseRate)})</dd></dl>
+            <div class="pbar"><i style="width:${it.probability * 100}%"></i></div>`;
+    };
+    let pinned = null;
+    burst.on('hover', (h) => showDetail(h ? h.item : pinned));
+    burst.on('click', (h) => { pinned = h ? h.item : null; showDetail(pinned); table(); });
+
+    const table = () => {
+        const vis = burst.getVisible();
+        $('shown').textContent = `· ${vis.length} of ${items.length} shown`;
+        const top = vis.filter((it) => it.probability >= .5).sort((a, b) => b.lift * Math.log(b.count) - a.lift * Math.log(a.count)).slice(0, 10);
+        $('top').innerHTML = top.map((it) => `<tr data-id="${it.id}" class="${pinned && pinned.id === it.id ? 'sel' : ''}">
+            <td>${it.group}: ${it.label}</td><td>${it.count.toLocaleString()}</td><td>${pct(it.probability)}</td><td>${it.lift.toFixed(2)}</td></tr>`).join('');
+        $('top').querySelectorAll('tr').forEach((tr) => {
+            const it = items.find((i) => i.id === tr.dataset.id);
+            tr.onmouseenter = () => { burst.highlight([it.id]); showDetail(it); };
+            tr.onmouseleave = () => { burst.highlight(null); showDetail(pinned); };
+            tr.onclick = () => { pinned = pinned === it ? null : it; burst.select(pinned ? it.id : null); showDetail(pinned); table(); };
+        });
+    };
+    table();
+
+    // ?mode=group&theme=light&length=lift&order=count opens in that state
+    const q = new URLSearchParams(location.search);
+    if (q.get('mode') === 'group') { document.querySelector('input[value=group]').checked = true; burst.setMode('group'); }
+    for (const k of ['length', 'order']) {
+        if (q.has(k)) { $(k).value = q.get(k); $(k).onchange({target: $(k)}); }
+    }
+    if (q.get('theme') === 'light') $('theme').click();
+
+    // the key: one strand, 67 % churn, red dot
+    const key = $('keysvg');
+    key.innerHTML = `<defs><linearGradient id="kg" x1="0" x2="1">
+            <stop offset="0" stop-color="#ff3d47"/><stop offset=".63" stop-color="#ff3d47"/>
+            <stop offset=".71" stop-color="#2ed3e6"/><stop offset="1" stop-color="#2ed3e6"/></linearGradient></defs>
+        <path d="M6 20 C 60 26, 110 26, 160 19 S 240 13, 268 18 C 240 21, 180 23, 150 23 S 60 22, 6 20 Z" fill="url(#kg)"/>
+        <circle cx="276" cy="18" r="2.6" fill="#ff3d47"/>
+        <line x1="6" y1="8" x2="6" y2="30" stroke="#66728a"/><line x1="183" y1="8" x2="183" y2="30" stroke="#66728a"/>
+        <text x="4" y="42" fill="#8792a8" font-size="11">0 %</text><text x="172" y="42" fill="#8792a8" font-size="11">67 %</text>`;
+})();
+</script>
+</body>
+</html>
