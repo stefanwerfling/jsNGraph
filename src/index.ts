@@ -10,7 +10,4 @@ export * from './workflow';
 export * from './netview';
 export * from './chart';
 export * from './records';
-export { DayClock, DayClockStyles } from './widget/DayClock';
-export type { DayClockOptions, DayClockEvents, DayClockStyleVar } from './widget/DayClock';
-export { DayClockGeometry, DAY_MINUTES } from './widget/DayClockGeometry';
-export type { DayClockItem, DayClockState, DayClockPlaced } from './widget/DayClockGeometry';
+export * from './widget';

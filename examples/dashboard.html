@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — dashboard widgets</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    :root { --page: #0b1719; --panel: #102022; --line: #1b3133; --ink: #e6f0f1; --dim: #86a0a4; }
+    html.light { --page: #eef2f5; --panel: #ffffff; --line: #dde4ea; --ink: #1a2430; --dim: #64707e; }
+    html, body { background: var(--page); }
+    main { padding: 14px 16px 24px; max-width: 1280px; margin: 0 auto; }
+    .bar { display: flex; align-items: center; gap: 10px; margin: 2px 0 14px; color: var(--ink); }
+    .bar h1 { font-size: 18px; margin: 0 auto 0 0; font-weight: 700; }
+    .bar h1 span { color: var(--dim); font-weight: 400; font-size: 13px; margin-left: 8px; }
+    .bar button { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px;
+        padding: 5px 10px; cursor: pointer; font: 500 12px Inter, system-ui, sans-serif; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px;
+        min-width: 0; color: var(--ink); }
+    .panel h2 { font: 600 11px Inter, system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase;
+        color: var(--dim); margin: 0 0 10px; }
+    .chart { height: 210px; }
+    .pair { display: grid; grid-template-columns: 150px 1fr; gap: 16px; align-items: center; }
+    .pair p { margin: 10px 0 0; color: var(--dim); font-size: 12px; line-height: 1.45; }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .row3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1.45fr) minmax(0, 0.55fr); margin-top: 14px; }
+    .radar { height: 220px; }
+    #log { color: var(--dim); font: 12px ui-monospace, monospace; min-height: 1.4em; margin-top: 12px; }
+    @media (max-width: 1000px) { .grid, .row3 { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 680px) { .grid, .two { grid-template-columns: 1fr; } .pair { grid-template-columns: 120px 1fr; } }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="dayclock.html">Day clock</a>
+    <a href="dashboard.html" class="active">Dashboard widgets</a>
+</nav>
+
+<main>
+    <div class="bar">
+        <h1>Kestrel Coffee<span>made-up roastery · live demo data</span></h1>
+        <button id="live">Pause</button>
+        <button id="mapMode">Dot map</button>
+        <button id="theme">Light</button>
+    </div>
+
+    <div class="grid">
+        <section class="panel"><h2>Revenue vs. cost · LineChart</h2><div id="line" class="chart"></div></section>
+        <section class="panel"><h2>Roasting week · MonthCalendar</h2><div id="cal"></div></section>
+        <section class="panel"><h2>Sales by region · ProgressBars (drag)</h2><div id="bars"></div></section>
+
+        <section class="panel"><h2>Delivery · RingGauge + StatList</h2>
+            <div class="pair"><div id="ring1"></div><div><div id="stat1"></div>
+                <p>On time vs. late, and orders shipped from stock vs. roasted to order.</p></div></div>
+        </section>
+        <section class="panel"><h2>Capacity · RingGauge + StatList</h2>
+            <div class="pair"><div id="ring2"></div><div><div id="stat2"></div>
+                <p>Roaster load and packing line load against what is left this week.</p></div></div>
+        </section>
+        <section class="panel"><h2>Farms &amp; cafés · WorldMap</h2><div id="map"></div></section>
+
+    </div>
+    <div class="grid row3">
+        <section class="panel"><h2>Bean origins · SegmentGauge + SegmentBar</h2>
+            <div class="pair"><div id="gauge"></div><div id="seg"></div></div>
+        </section>
+        <section class="panel"><h2>Blend profiles · RadarChart</h2>
+            <div class="two"><div id="radar1" class="radar"></div><div id="radar2" class="radar"></div></div>
+        </section>
+        <section class="panel"><h2>This month · StatList</h2><div id="stats"></div><div id="log"></div></section>
+    </div>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+(() => {
+    const J = window.JSNGraph;
+    const $ = (id) => document.getElementById(id);
+    const css = (name) => getComputedStyle(document.body).getPropertyValue(name).trim();
+    const C = {cyan: '#2ec5e8', red: '#f0506e', amber: '#f7b928', green: '#22d68b'};
+    let dark = true;
+    const theme = () => dark ? 'dark' : 'light';
+    const chartTheme = () => ({...(dark ? J.ChartTheme.dark : J.ChartTheme.light), background: css('--panel'),
+        grid: dark ? 'rgba(255,255,255,0.06)' : 'rgba(20,40,80,0.07)', band: ''});
+    const say = (t) => { $('log').textContent = t; };
+
+    // --- line chart: two series, the latest point ringed
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN'];
+    const revenue = [110, 190, 165, 345, 350, 440];
+    const cost = [105, 235, 125, 230, 125, 320];
+    const line = new J.LineChart($('line'), {theme: chartTheme(), xLabels: months, yRange: {min: 100, max: 500},
+        yFormat: (v) => '$' + v, legend: false});
+    const setLine = () => line.setSeries([
+        {name: 'revenue', y: revenue, color: C.cyan, width: 1.6, highlight: revenue.length - 1},
+        {name: 'cost', y: cost, color: C.red, width: 1.6, highlight: 3}
+    ]);
+    setLine();
+
+    // --- calendar: the roasting week as a range, Sundays red, click two days to move it
+    const cal = new J.MonthCalendar($('cal'), {theme: theme(), year: 2026, month: 10, weekStart: 0, locale: 'en',
+        range: {start: new Date(2026, 10, 13), end: new Date(2026, 10, 17)},
+        marks: [{date: new Date(2026, 10, 5), color: C.cyan, label: 'green coffee arrives'},
+            {date: new Date(2026, 10, 24), color: C.red, label: 'cupping'}]});
+    cal.on('rangeChange', (r) => r && say(`roasting week: ${r.start.toDateString()} – ${r.end.toDateString()}`));
+
+    // --- progress bars on a month axis, draggable
+    const bars = new J.ProgressBars($('bars'), {theme: theme(), min: 0, max: 100, axis: months, editable: true,
+        rows: [
+            {label: '$500', value: 92, color: C.cyan},
+            {label: '$400', value: 30, color: C.red},
+            {label: '$300', value: 52, color: C.amber},
+            {label: '$200', value: 96, color: C.cyan},
+            {label: '$100', value: 40, color: C.green}
+        ]});
+    bars.on('commit', ({row, value}) => say(`${row.label} row set to ${value}`));
+
+    // --- ring gauges with their figures
+    const ring1 = new J.RingGauge($('ring1'), {theme: theme(), size: 150,
+        rings: [{value: 30, color: C.red, label: 'late'}, {value: 45, color: C.amber, label: 'from stock'}]});
+    const stat1 = new J.StatList($('stat1'), {theme: theme(), layout: 'column', size: 26, underline: true,
+        items: [{value: 30, secondary: 70, color: C.red}, {value: 45, secondary: 55, color: C.amber}]});
+    const ring2 = new J.RingGauge($('ring2'), {theme: theme(), size: 150,
+        rings: [{value: 60, color: C.green, label: 'roaster'}, {value: 40, color: C.red, label: 'packing'}]});
+    const stat2 = new J.StatList($('stat2'), {theme: theme(), layout: 'column', size: 26, underline: true,
+        items: [{value: 40, secondary: 60, color: C.red}, {value: 45, secondary: 55, color: C.green}]});
+
+    // --- world map: farms (amber), cafés (red), warehouses (cyan)
+    const farms = [[-75.6, 4.6, 'Huila, Colombia'], [-84.1, 9.9, 'Tarrazú, Costa Rica'], [38.5, 7.1, 'Sidamo, Ethiopia'],
+        [37.0, -0.4, 'Nyeri, Kenya'], [-46.6, -21.2, 'Sul de Minas, Brazil'], [98.6, 3.6, 'Aceh, Sumatra'], [-91.0, 14.6, 'Antigua, Guatemala']];
+    const cafes = [[13.4, 52.5, 'Berlin'], [-0.1, 51.5, 'London'], [-74.0, 40.7, 'New York'], [139.7, 35.7, 'Tokyo'], [151.2, -33.9, 'Sydney']];
+    const stores = [[9.99, 53.55, 'Hamburg warehouse'], [-122.3, 47.6, 'Seattle warehouse']];
+    const markers = [
+        ...farms.map(([lon, lat, label]) => ({lon, lat, label, color: C.amber, size: 2.4})),
+        ...cafes.map(([lon, lat, label]) => ({lon, lat, label, color: C.red, size: 2.8})),
+        ...stores.map(([lon, lat, label]) => ({lon, lat, label, color: C.cyan, size: 3.2, pulse: true}))
+    ];
+    const map = new J.WorldMap($('map'), {theme: theme(), markers, legend: [
+        {label: 'Farms', color: C.amber}, {label: 'Cafés', color: C.red}, {label: 'Warehouses', color: C.cyan}]});
+    map.on('markerClick', ({marker}) => say(marker.label));
+
+    // --- segment gauge + LED bars
+    const gauge = new J.SegmentGauge($('gauge'), {theme: theme(), size: 150, segments: 40,
+        parts: [{value: 30, color: C.green, label: 'Africa'}, {value: 40, color: C.amber, label: 'Americas'},
+            {value: 10, color: C.red, label: 'Asia'}]});
+    const seg = new J.SegmentBar($('seg'), {theme: theme(), segments: 16, rows: [
+        {label: 'Light roast', value: 70, color: C.green},
+        {label: 'Medium roast', value: 45, color: C.amber},
+        {label: 'Dark roast', value: 20, color: C.red}]});
+
+    // --- two radars (existing RadarChart)
+    const axes = ['Acidity', 'Body', 'Sweetness', 'Aroma', 'Bitterness', 'Finish'];
+    const radarOpts = () => ({theme: chartTheme(), categories: axes, grid: 'polygon', ticks: false, legend: false,
+        zoom: false, range: {min: 0, max: 10}});
+    const radar1 = new J.RadarChart($('radar1'), {...radarOpts(), series: [
+        {name: 'House', values: [6, 7, 6, 8, 4, 7], color: C.amber, fill: false, width: 2.5},
+        {name: 'Espresso', values: [4, 9, 5, 6, 7, 6], color: C.cyan, fill: false, width: 2.5}]});
+    const radar2 = new J.RadarChart($('radar2'), {...radarOpts(), series: [
+        {name: 'Filter', values: [9, 4, 7, 9, 2, 6], color: C.amber, fill: false, width: 2.5},
+        {name: 'Decaf', values: [5, 6, 6, 5, 4, 8], color: C.cyan, fill: false, width: 2.5}]});
+
+    // --- KPI column
+    const stats = new J.StatList($('stats'), {theme: theme(), layout: 'column', size: 30, suffix: '%', items: [
+        {value: 60, label: 'Repeat buyers', color: C.cyan},
+        {value: 75, label: 'Subscriptions', color: C.amber},
+        {value: 45, label: 'Wholesale', color: C.cyan},
+        {value: 60, label: 'Fair trade', color: C.amber}]});
+
+    const widgets = [cal, bars, ring1, stat1, ring2, stat2, map, gauge, seg, stats];
+
+    // --- live data
+    const walk = (v, step, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v + (Math.random() - 0.5) * 2 * step)));
+    let timer = 0;
+    const tick = () => {
+        const late = walk(ring1.getRings()[0].value, 6, 5, 60);
+        const stock = walk(ring1.getRings()[1].value, 6, 20, 80);
+        ring1.setValues([late, stock]);
+        stat1.setItems([{value: late, secondary: 100 - late, color: C.red}, {value: stock, secondary: 100 - stock, color: C.amber}]);
+        const roaster = walk(ring2.getRings()[0].value, 8, 20, 95);
+        const packing = walk(ring2.getRings()[1].value, 8, 10, 90);
+        ring2.setValues([roaster, packing]);
+        stat2.setItems([{value: packing, secondary: 100 - packing, color: C.red}, {value: roaster, secondary: 100 - roaster, color: C.green}]);
+        bars.setValues(bars.getRows().map((r) => walk(r.value, 10, 5, 100)));
+        const parts = gauge.getParts().map((p) => walk(p.value, 5, 5, 45));
+        gauge.setValues(parts);
+        seg.setValues(seg.getRows().map((r) => walk(r.value, 12, 0, 100)));
+        stats.setValues(stats.getItems().map((s) => walk(s.value, 5, 10, 99)));
+        revenue[5] = walk(revenue[5], 30, 300, 495);
+        cost[5] = walk(cost[5], 30, 150, 450);
+        setLine();
+    };
+    const start = () => { timer = setInterval(tick, 2600); $('live').textContent = 'Pause'; };
+    const stop = () => { clearInterval(timer); timer = 0; $('live').textContent = 'Live'; };
+    start();
+    $('live').addEventListener('click', () => timer ? stop() : start());
+
+    $('mapMode').addEventListener('click', () => {
+        const dots = map.getMode() === 'fill';
+        map.setMode(dots ? 'dots' : 'fill');
+        $('mapMode').textContent = dots ? 'Filled map' : 'Dot map';
+    });
+
+    $('theme').addEventListener('click', () => {
+        dark = !dark;
+        document.documentElement.classList.toggle('light', !dark);
+        $('theme').textContent = dark ? 'Light' : 'Dark';
+        for (const w of widgets) w.setTheme(theme());
+        for (const c of [line, radar1, radar2]) c.setTheme(chartTheme());
+    });
+})();
+</script>
+</body>
+</html>

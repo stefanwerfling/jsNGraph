@@ -147,7 +147,8 @@ export abstract class ChartSurface<Events extends Record<string, unknown>> {
     }
 
     /** Tick labels left of `rect`; with `grid`, horizontal grid lines inside it. */
-    protected drawYAxis(rect: ChartRect, range: ChartRange, options: {grid?: boolean; maxTicks?: number; line?: boolean} = {}): void {
+    protected drawYAxis(rect: ChartRect, range: ChartRange,
+        options: {grid?: boolean; maxTicks?: number; line?: boolean; format?: (v: number) => string} = {}): void {
         const {ctx, theme} = this;
         const maxTicks = options.maxTicks ?? Math.max(2, Math.floor(rect.h / 34));
         const ticks = ChartScale.ticks(range, maxTicks);
@@ -184,7 +185,7 @@ export abstract class ChartSurface<Events extends Record<string, unknown>> {
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
         for (const v of ticks) {
-            ctx.fillText(ChartScale.format(v, step), rect.x - 7, ChartScale.toPx(v, range, rect.y + rect.h, rect.y));
+            ctx.fillText(options.format?.(v) ?? ChartScale.format(v, step), rect.x - 7, ChartScale.toPx(v, range, rect.y + rect.h, rect.y));
         }
         ctx.restore();
     }
@@ -207,9 +208,13 @@ export abstract class ChartSurface<Events extends Record<string, unknown>> {
 
         const dpr = window.devicePixelRatio || 1;
 
-        this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        // Clear and fill whole device pixels: with a fractional CSS size the last column would
+        // otherwise only be blended and keep stale colour (visible after a theme switch).
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         this.ctx.fillStyle = this.theme.background;
-        this.ctx.fillRect(0, 0, this.width, this.height);
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
         return this.draw(this.ctx, timeMs);
     }

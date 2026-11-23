@@ -15,6 +15,10 @@ export interface LineSeries extends ChartSeriesData {
     fill?: string | [string, string];
     /** Leave this series out of the legend. */
     legend?: boolean;
+    /** A dot on every data point; a number sets its radius (default radius 2.5). */
+    markers?: boolean | number;
+    /** Indices drawn as a big ringed dot (the "current value" of a dashboard line). */
+    highlight?: number | number[];
 }
 
 export interface LineChartOptions {
@@ -28,6 +32,13 @@ export interface LineChartOptions {
     legend?: boolean;
     /** Grid lines and alternating bands. Default true. */
     grid?: boolean;
+    /**
+     * Category labels on the x axis instead of numbers: label i sits at x = i
+     * (series without `x` use the index anyway), e.g. month names.
+     */
+    xLabels?: string[];
+    /** Text of a y tick (e.g. v => '$' + v). */
+    yFormat?: (value: number) => string;
 }
 
 export interface LineChartEvents extends Record<string, unknown> {
@@ -50,6 +61,8 @@ export class LineChart extends ChartSurface<LineChartEvents> {
     private fixedY: ChartRange | null;
     private readonly legend: boolean | undefined;
     private readonly grid: boolean;
+    private xLabels: string[] | null;
+    private readonly yFormat: ((value: number) => string) | undefined;
     private plot: ChartRect | null = null;
 
     public constructor(container: HTMLElement, options: LineChartOptions = {}) {
@@ -59,6 +72,8 @@ export class LineChart extends ChartSurface<LineChartEvents> {
         this.fixedY = options.yRange ?? null;
         this.legend = options.legend;
         this.grid = options.grid ?? true;
+        this.xLabels = options.xLabels ?? null;
+        this.yFormat = options.yFormat;
         this.root.addEventListener('pointermove', this.onMove);
         this.root.addEventListener('pointerleave', this.onLeave);
         this.setSeries(options.series ?? []);
@@ -89,6 +104,12 @@ export class LineChart extends ChartSurface<LineChartEvents> {
         this.redraw();
     }
 
+    /** Category labels on the x axis (null = numbers again). */
+    public setXLabels(labels: string[] | null): void {
+        this.xLabels = labels;
+        this.redraw();
+    }
+
     public setYRange(range: ChartRange | null): void {
         this.fixedY = range;
         this.redraw();
@@ -108,8 +129,9 @@ export class LineChart extends ChartSurface<LineChartEvents> {
             h: Math.max(10, this.height - top - PAD.bottom)
         };
         const visible = this.series.filter((s) => s.y.length > 0);
-        const xRange = this.fixedX ?? ChartScale.extent(visible.flatMap((s) =>
-            [WaterfallGeometry.xAt(s, 0), WaterfallGeometry.xAt(s, s.y.length - 1)]));
+        const xRange = this.fixedX ?? (this.xLabels !== null && this.xLabels.length > 1
+            ? {min: 0, max: this.xLabels.length - 1}
+            : ChartScale.extent(visible.flatMap((s) => [WaterfallGeometry.xAt(s, 0), WaterfallGeometry.xAt(s, s.y.length - 1)])));
         const yRange = this.fixedY ?? ChartScale.pad(ChartScale.extent(visible.flatMap((s) => Array.from(s.y))), 0.05);
 
         this.plot = plot;
@@ -122,8 +144,12 @@ export class LineChart extends ChartSurface<LineChartEvents> {
             ctx.fillText(this.title, plot.x + plot.w / 2, PAD.top - 2);
         }
 
-        this.drawXAxis(plot, xRange, {grid: this.grid});
-        this.drawYAxis(plot, yRange, {grid: this.grid});
+        if (this.xLabels !== null) {
+            this.drawCategoryAxis(ctx, plot, xRange, this.xLabels);
+        } else {
+            this.drawXAxis(plot, xRange, {grid: this.grid});
+        }
+        this.drawYAxis(plot, yRange, {grid: this.grid, format: this.yFormat});
 
         ctx.save();
         ctx.beginPath();
@@ -133,6 +159,9 @@ export class LineChart extends ChartSurface<LineChartEvents> {
             this.drawSeries(ctx, s, plot, xRange, yRange);
         }
         ctx.restore();
+        for (const s of visible) {
+            this.drawMarkers(ctx, s, plot, xRange, yRange);
+        }
 
         if (this.legend ?? this.series.some((s) => s.name !== undefined)) {
             this.drawLegend(ctx, plot);
@@ -185,6 +214,87 @@ export class LineChart extends ChartSurface<LineChartEvents> {
         ctx.setLineDash(s.dash ?? []);
         ctx.stroke(line);
         ctx.setLineDash([]);
+    }
+
+    /** Dots on the points and ringed highlight dots (outside the clip, so edge points stay round). */
+    private drawMarkers(ctx: CanvasRenderingContext2D, s: LineSeries, plot: ChartRect, xRange: ChartRange, yRange: ChartRange): void {
+        const color = s.color ?? this.theme.line;
+        const at = (i: number): [number, number] => [
+            ChartScale.toPx(WaterfallGeometry.xAt(s, i), xRange, plot.x, plot.x + plot.w),
+            ChartScale.toPx(s.y[i] ?? 0, yRange, plot.y + plot.h, plot.y)
+        ];
+
+        ctx.save();
+        if (s.markers !== undefined && s.markers !== false) {
+            const r = typeof s.markers === 'number' ? s.markers : 2.5;
+
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            for (let i = 0; i < s.y.length; i++) {
+                const [x, y] = at(i);
+                ctx.moveTo(x + r, y);
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+            }
+            ctx.fill();
+        }
+
+        const marks = s.highlight === undefined ? [] : Array.isArray(s.highlight) ? s.highlight : [s.highlight];
+
+        for (const i of marks) {
+            if (i < 0 || i >= s.y.length) {
+                continue;
+            }
+
+            const [x, y] = at(i);
+
+            ctx.beginPath();
+            ctx.arc(x, y, 7, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.globalAlpha = 0.25;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.beginPath();
+            ctx.arc(x, y, 4.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = this.theme.background;
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    /** Category labels under the plot (one per index), with vertical grid lines. */
+    private drawCategoryAxis(ctx: CanvasRenderingContext2D, plot: ChartRect, range: ChartRange, labels: string[]): void {
+        const bottom = plot.y + plot.h;
+        const every = Math.max(1, Math.ceil(labels.length / Math.max(2, Math.floor(plot.w / 46))));
+
+        ctx.save();
+        ctx.strokeStyle = this.theme.grid;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        labels.forEach((_, i) => {
+            if (this.grid && i % every === 0) {
+                const x = Math.round(ChartScale.toPx(i, range, plot.x, plot.x + plot.w)) + 0.5;
+                ctx.moveTo(x, plot.y);
+                ctx.lineTo(x, bottom);
+            }
+        });
+        ctx.stroke();
+        ctx.strokeStyle = this.theme.axis;
+        ctx.beginPath();
+        ctx.moveTo(plot.x, Math.round(bottom) + 0.5);
+        ctx.lineTo(plot.x + plot.w, Math.round(bottom) + 0.5);
+        ctx.stroke();
+        ctx.fillStyle = this.theme.text;
+        ctx.font = CHART_FONT;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        labels.forEach((label, i) => {
+            if (i % every === 0) {
+                ctx.fillText(label, ChartScale.toPx(i, range, plot.x, plot.x + plot.w), bottom + 7);
+            }
+        });
+        ctx.restore();
     }
 
     private drawLegend(ctx: CanvasRenderingContext2D, plot: ChartRect): void {

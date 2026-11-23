@@ -165,6 +165,22 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   upcoming; `itemClick`/`itemHover`, `live`, fixed `now`, `locale`, `--dc-*` vars via `:where()` (`DayClockStyles`).
   Drawn in a fixed 290 view box (+16 px per side for the 06:00/18:00 labels). Pure part `DayClockGeometry.ts`
   (`place` = ring layout, arcs, wedge; `test/DayClock.test.ts`). Example: `examples/dayclock.html`.
+  Dashboard widgets (same subpath) share `WidgetBase.ts`: `Widget` (root + `data-wg-theme` auto/light/dark, events,
+  `setStyleVars` over `--wg-*`: ink/muted/track/grid/knob/surface + palette c1…c6, `paletteColor(i)`), `Tween` (rAF
+  ease-out over a number list; new entries grow from 0; off for reduced motion), `WidgetStyles` (one `:where()` sheet).
+  Widgets keep their elements and only repaint values (`build` on structure change, `paint` per tween frame):
+  `RingGauge` (concentric arcs, values stacked in the centre, `sweep`/`startAngle`), `SegmentGauge` (radial ticks lit
+  by stacked parts), `SegmentBar` (LED rows of slanted cells), `ProgressBars` (bars with a knob on a shared axis —
+  month labels or nice ticks; `editable` drag → `change`/`commit`), `MonthCalendar` (range pill per week row, round caps
+  only at the real ends, marks, today ring, Sunday/weekend accent, ‹ › nav, built-in range/day selection),
+  `StatList` (DOM: big figures, optional dimmed `secondary`, underline; counts up), `WorldMap` (embedded land outlines
+  `WorldLand.ts` — Natural Earth 1:110m, public domain, no Antarctica, ~7 KB polyline-encoded, regenerate with
+  `node scripts/worldmap.mjs ne_110m_land.geojson`; equirectangular, `mode` fill | dots (scanline sampling, one path),
+  markers with optional pulse, HTML legend). `SegmentBar`/`ProgressBars` lay out at the container's real px width
+  (`watchWidth`) so text keeps its size; the round ones scale like images. Pure parts: `WidgetGeometry` (polar, arcs,
+  stacked segment owners, nice ticks), `CalendarGeometry` (grid, runs), `WorldMapGeometry` (decode, path, dots,
+  isLand); `test/Widgets.test.ts`. Example: `examples/dashboard.html` (made-up roastery, all widgets + LineChart +
+  RadarChart, live data, theme + map mode toggles).
 
 - `netview/` — `NetView` (subpath `jsngraph/netview`): a transformer compressed to fit the browser — one
   column per block, residual stream folded into `bins` (signed max per bin, scaled median→0 / p95→1 so
@@ -184,7 +200,8 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   x-only wheel zoom/drag pan/double-click reset (`rangeChange`), `occlude` (hidden lines: each trace filled to its
   baseline; highlighted traces then keep their stack place, on top their fill would blank the front). `setSeries`
   keeps the zoom when the x extent is unchanged (streaming). LineChart: series with dash/fill/gradient, title,
-  legend, grid bands. Pure parts: `ChartScale` (nice ticks, mapping, zoom/pan/clamp), `WaterfallGeometry`
+  legend, grid bands; `markers` (dots), `highlight` (ringed dot at indices), `xLabels` (category axis), `yFormat`.
+  `ChartSurface` clears and fills whole device pixels each frame (a fractional width left a stale last column). Pure parts: `ChartScale` (nice ticks, mapping, zoom/pan/clamp), `WaterfallGeometry`
   (stack layout, nearest index, segment-distance hit test — vertical distance misses steep peak flanks);
   `test/Chart.test.ts`. Example: `examples/waterfall.html` (in-page radix-2 FFT of a drifting test signal).
   `RadarChart` (spider/web/Kiviat): `categories` clockwise from the top, `series` (`fill`, `markers`, `dash`,
