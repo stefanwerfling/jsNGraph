@@ -1,6 +1,7 @@
 /**
  * jsngraph/widget — small standalone dashboard widgets (SVG/DOM, no canvas): DayClock, RingGauge,
- * SegmentGauge, SegmentBar, ProgressBars, MonthCalendar, StatList, WorldMap.
+ * SegmentGauge, SegmentBar, ProgressBars, MonthCalendar, StatList, WorldMap, ParliamentChart,
+ * TileCalendar, MajorityBar, ChoroplethMap.
  * Importing this subpath alone keeps the other parts out of a bundle;
  * `jsngraph` itself still exports everything.
  */
@@ -29,3 +30,15 @@ export { WorldMap } from './widget/WorldMap';
 export type { MapMarker, MapLegendItem, WorldMapOptions, WorldMapEvents } from './widget/WorldMap';
 export { WorldMapGeometry } from './widget/WorldMapGeometry';
 export type { LonLat } from './widget/WorldMapGeometry';
+export { ParliamentChart } from './widget/ParliamentChart';
+export type { ParliamentParty, ParliamentChartOptions, ParliamentChartEvents } from './widget/ParliamentChart';
+export { ParliamentGeometry } from './widget/ParliamentGeometry';
+export type { Seat } from './widget/ParliamentGeometry';
+export { TileCalendar } from './widget/TileCalendar';
+export type { TileCategory, TileCalendarOptions, TileCalendarEvents } from './widget/TileCalendar';
+export { MajorityBar } from './widget/MajorityBar';
+export type { MajorityPart, MajorityBarOptions, MajorityBarEvents } from './widget/MajorityBar';
+export { ChoroplethMap } from './widget/ChoroplethMap';
+export type { ChoroplethMapOptions, ChoroplethMapEvents, ChoroplethLegend, ChoroplethLegendRow } from './widget/ChoroplethMap';
+export { ChoroplethGeometry, ColorScale } from './widget/ChoroplethGeometry';
+export type { MapRing, MapPolygon, MapRegion, MapProjection, MapBounds, MapFit } from './widget/ChoroplethGeometry';

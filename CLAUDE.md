@@ -231,6 +231,24 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   with the raw value at the nearest x, DOM legend grouped by `layer.group` (hover highlights, click hides), x zoom/pan,
   morph on offset/order/visibility. Example: `examples/stream.html` (made-up podcast, 5 voices × studio/remote, 4 panels).
 
+  Newsroom set (canvas, `jsngraph/chart`): `ChartNotes` is the shared note layer (DOM text over the canvas, plain or
+  boxed, `**bold**`, curved/straight pointer with an arrowhead from the facing box edge — `ChartNotes.pointer` is pure;
+  the chart resolves anchors to px every frame; `setDimmed` while a canvas tooltip shows). `BarChart`: categories ×
+  series, grouped/stacked, small multiples side by side on one nice range (`BarLayout.range`/`bars`/`hit`, pure),
+  labels rotate when crowded, zero line over the bars, bars grow/morph (`setData`), value labels. `UnitHistogram`: every
+  item one block in its bin (`UnitLayout.place`: bin, then stack by category order, then value), panels share x and the
+  count scale, per-panel colours per category, legend swatches split per panel, dashed marks labelled under the axis,
+  units drop in, O(1) hit test via a bin/stack map. `AreaChart`: `AreaLayout.stack` none/zero/expand, `projectFrom`
+  (lighter overlay + divider + label), marks, hover guide with every series, reveal left → right.
+  Widgets (SVG/DOM, `jsngraph/widget`): `ParliamentChart` (`ParliamentGeometry.seats`: fewest rows with equal spacing,
+  seats ∝ radius per row, ordered by angle so parties form wedges; colours sweep in by seat order; hover/legend focus),
+  `TileCalendar` (months of day tiles coloured by category from a function or 'YYYY-MM-DD' map, `from`/`to`, labels
+  beside tiles, legend with counts), `MajorityBar` (first part from the left, last from the right, threshold mark,
+  count-up), `ChoroplethMap` (GeoJSON or plane polygons, mercator/equirectangular/none, `ColorScale.threshold`/
+  `sequential`/`diverging`, outlines, step legend below or overlaid, viewBox pan/zoom; drag captures the pointer only
+  after 3 px so clicks still reach regions). Pure parts tested in `test/Newsroom.test.ts`. Example: `examples/newsroom.html`
+  (made-up country Nordhavn; the map is 201 Voronoi cells clipped to a generated island, the majority bar counts them).
+
 - `records/` — `RecordGraph` (subpath `jsngraph/records`): cards with a header (icon, title, subtitle) and a table of
   rows (`label`, `value`), links run row → row (`RecordLink {from: {node,row}, to}`), cards may sit in group frames
   (`RecordGroup`, `collapsed` folds a group into one box; merged links keep all `ids`). Pure `RecordLayout`: columns =

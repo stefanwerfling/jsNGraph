@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — newsroom charts</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    :root { --page: #ffffff; --ink: #222222; --dim: #555555; --rule: #d6d6d6; --ctl: #f3f3f3; }
+    html.dark { --page: #14161b; --ink: #ececec; --dim: #a3a7b0; --rule: #33363e; --ctl: #22252c; }
+    html, body { background: var(--page); }
+    main { max-width: 1440px; margin: 0 auto; padding: 12px 18px 26px; color: var(--ink);
+        font-family: Helvetica, Arial, system-ui, sans-serif; }
+    .bar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .bar p { margin: 0 auto 0 0; color: var(--dim); font-size: 13px; }
+    button { background: var(--ctl); color: var(--ink); border: 1px solid var(--rule); border-radius: 4px;
+        padding: 4px 10px; font: 12px Helvetica, Arial, sans-serif; cursor: pointer; }
+    button.on { background: var(--ink); color: var(--page); }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 26px; }
+    .story { display: flex; flex-direction: column; min-width: 0; padding: 10px 0 0; }
+    .story h2 { font-size: 21px; line-height: 1.18; margin: 0 0 4px; font-weight: 700; letter-spacing: -.01em; }
+    .story .sub { font-size: 15px; margin: 0 0 8px; color: var(--ink); }
+    .story .note { font-size: 12px; color: var(--dim); margin: 6px 0 0; }
+    .story footer { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--ink);
+        margin-top: 8px; padding-top: 4px; font-size: 12px; color: var(--dim); }
+    .story footer b { font: 700 10px/1 Helvetica, Arial, sans-serif; letter-spacing: .08em; color: var(--ink);
+        border: 1px solid var(--ink); padding: 2px 4px; }
+    .chart { position: relative; }
+    #units { height: 430px; }
+    #bars { height: 300px; }
+    #area { height: 280px; }
+    .pick { display: flex; gap: 6px; margin: 0 0 6px; }
+    #majority { margin: 2px 0 10px; }
+    @media (max-width: 1100px) { .grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="dashboard.html">Dashboard widgets</a>
+    <a href="newsroom.html" class="active">Newsroom charts</a>
+</nav>
+
+<main>
+    <div class="bar">
+        <p>Seven news-graphic types on made-up data about a made-up country, Nordhavn. Hover anything.</p>
+        <button id="replay">Replay</button>
+        <button id="theme">Dark</button>
+    </div>
+
+    <div class="grid">
+        <section class="story">
+            <h2>Harbour surge</h2>
+            <p class="sub">Change in vote share per council candidate, 2026</p>
+            <div id="units" class="chart"></div>
+            <footer><span>Source: Nordhavn Electoral Office (fictional)</span><b>jsNGraph</b></footer>
+        </section>
+
+        <section class="story">
+            <h2>E-book loans are a twenty-something habit; printed books are read by every age</h2>
+            <p class="sub">Library loans per 10,000 residents, 2025</p>
+            <div id="bars" class="chart"></div>
+            <p class="note">NB. 2,180 loans without a recorded age are left out.</p>
+            <footer><span>Source: Nordhavn Library Service (fictional)</span><b>jsNGraph</b></footer>
+        </section>
+
+        <section class="story">
+            <h2 id="parl-title">Results of the 2026 election</h2>
+            <div class="pick"><button data-year="2022">2022</button><button data-year="2026" class="on">2026</button></div>
+            <div id="parliament"></div>
+            <footer><span>Source: Nordhavn Electoral Office (fictional)</span><b>jsNGraph</b></footer>
+        </section>
+
+        <section class="story">
+            <h2>How Nordhavn makes its electricity</h2>
+            <p class="sub">Share of generation, 1970–2050</p>
+            <div id="area" class="chart"></div>
+            <footer><span>Source: Nordhavn Grid Agency (fictional)</span><b>jsNGraph</b></footer>
+        </section>
+
+        <section class="story">
+            <h2 id="ferry-title">The island ferry has a few regular sailing days left before the refit</h2>
+            <div id="tiles"></div>
+            <p class="note">Note: the ferry sometimes sails on Fridays for school trips.</p>
+            <footer><span>Source: Nordhavn Ferry Company (fictional)</span><b>jsNGraph</b></footer>
+        </section>
+
+        <section class="story">
+            <h2>Harbour Party takes the council</h2>
+            <div id="majority"></div>
+            <div id="map"></div>
+            <footer><span>Source: made up. Grey districts are still counting</span><b>jsNGraph</b></footer>
+        </section>
+    </div>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+(() => {
+    const G = window.JSNGraph;
+
+    // ---- deterministic randomness ----------------------------------------
+    let seed = 20261;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const normal = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
+    const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
+    const head = ['Esk', 'Brann', 'Lun', 'Tor', 'Hav', 'Mor', 'Sel', 'Vind', 'Kal', 'Ost', 'Sand', 'Fjell', 'Lyng', 'Stor', 'Ny'];
+    const tail = ['vik', 'dal', 'by', 'holm', 'ness', 'strand', 'berg', 'fjord', 'mark', 'sund', 'havn', 'li'];
+    const place = () => pick(head) + pick(tail);
+
+    const BLUE = ['#1d5c99', '#89b4dc'];
+    const RED = ['#b3122e', '#f29aa6'];
+    const charts = [];
+    let dark = false;
+    const chartTheme = () => dark
+        ? {...G.ChartTheme.dark, background: '#14161b', band: '', grid: 'rgba(255,255,255,0.12)', text: '#a3a7b0', title: '#ececec'}
+        : {...G.ChartTheme.light, background: '#ffffff', band: '', grid: '#dddddd', text: '#555555', title: '#222222', axis: '#999999'};
+
+    // ---- 1 · unit histogram ------------------------------------------------
+    const units = [];
+    const candidates = (party, mean, sd, n, bias) => {
+        for (let i = 0; i < n; i++) {
+            const value = Math.round((mean + sd * normal()) * 10) / 10;
+            const won = rnd() < 1 / (1 + Math.exp(-(value - bias) / 2.2));
+            units.push({value, panel: party, category: won ? 'won' : 'lost', label: `${party === 'harbour' ? 'Harbour' : 'Moor'} · ${place()}`});
+        }
+    };
+    candidates('harbour', 4.5, 5, 290, 6);
+    candidates('moor', -2.5, 4.2, 290, -4);
+    units.push({value: 18.6, panel: 'harbour', category: 'won', label: 'Ida Brennholm · Eskvik North'});
+    units.push({value: -14.2, panel: 'moor', category: 'won', label: 'Arne Tolle · Torness'});
+    units.push({value: -13.6, panel: 'moor', category: 'won', label: 'Siv Lunde · Kalberg'});
+
+    const hist = new G.UnitHistogram(document.getElementById('units'), {
+        units, theme: chartTheme(), binWidth: 1,
+        categories: [{id: 'won', label: 'Won seat'}, {id: 'lost', label: 'Did not win'}],
+        panels: [
+            {id: 'harbour', label: 'Harbour Party candidates', colors: {won: BLUE[0], lost: BLUE[1]}},
+            {id: 'moor', label: 'Moor Party candidates', colors: {won: RED[0], lost: RED[1]}}
+        ],
+        xRange: {min: -18, max: 22},
+        xFormat: (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v) + '%',
+        marks: [{x: 0, label: '0% change in\nvote share'}],
+        notes: [
+            {panel: 'harbour', x: 18.6, text: '**Ida Brennholm**, the youngest councillor ever, won Eskvik North with a 19-point jump',
+                dx: -10, dy: -78, width: 150},
+            {panel: 'moor', x: -14, text: 'Moor held Torness and Kalberg despite a 14-point swing against them',
+                dx: 6, dy: -86, width: 140, align: 'left'}
+        ]
+    });
+    charts.push(hist);
+
+    // ---- 2 · bar chart -----------------------------------------------------
+    const ages = ['0-15', '16-24', '25-34', '35-49', '50-64', '65+'];
+    const bars = new G.BarChart(document.getElementById('bars'), {
+        theme: chartTheme(),
+        categories: ages,
+        rotateLabels: 45,
+        panels: [
+            {title: 'E-books', series: [{name: 'E-books', color: '#1380a1', values: [1350, 8420, 5960, 4180, 2210, 690]}]},
+            {title: 'Printed books', series: [{name: 'Printed books', color: '#990000', values: [5120, 3010, 3480, 3920, 4370, 4910]}]}
+        ],
+        legend: false,
+        notes: [{x: '16-24', text: 'Students borrow\nfor their courses', dx: 22, dy: 6, width: 110}]
+    });
+    charts.push(bars);
+
+    // ---- 3 · parliament ----------------------------------------------------
+    const results = {
+        2022: [
+            {id: 'red', label: 'Red Alliance', seats: 21, color: '#7a0d1a'},
+            {id: 'labour', label: 'Labour Union', seats: 61, color: '#d22d3d'},
+            {id: 'green', label: 'Greens', seats: 13, color: '#7cc576'},
+            {id: 'centre', label: 'Centre', seats: 22, color: '#3f8f2e'},
+            {id: 'lib', label: 'Liberals', seats: 16, color: '#1f4e9c'},
+            {id: 'cd', label: 'Christian Dems', seats: 14, color: '#1b2350'},
+            {id: 'mod', label: 'Moderates', seats: 37, color: '#7fb4e0'},
+            {id: 'first', label: 'Nordhavn First', seats: 17, color: '#f6c445'}
+        ],
+        2026: [
+            {id: 'red', label: 'Red Alliance', seats: 18, color: '#7a0d1a'},
+            {id: 'labour', label: 'Labour Union', seats: 54, color: '#d22d3d'},
+            {id: 'green', label: 'Greens', seats: 17, color: '#7cc576'},
+            {id: 'centre', label: 'Centre', seats: 20, color: '#3f8f2e'},
+            {id: 'lib', label: 'Liberals', seats: 12, color: '#1f4e9c'},
+            {id: 'cd', label: 'Christian Dems', seats: 13, color: '#1b2350'},
+            {id: 'mod', label: 'Moderates', seats: 33, color: '#7fb4e0'},
+            {id: 'first', label: 'Nordhavn First', seats: 34, color: '#f6c445'}
+        ]
+    };
+    const parliament = new G.ParliamentChart(document.getElementById('parliament'), {
+        parties: results[2026], theme: 'light', duration: 900
+    });
+    charts.push(parliament);
+    for (const b of document.querySelectorAll('.pick button')) {
+        b.addEventListener('click', () => {
+            document.querySelectorAll('.pick button').forEach((x) => x.classList.toggle('on', x === b));
+            parliament.setParties(results[b.dataset.year]);
+            document.getElementById('parl-title').textContent = `Results of the ${b.dataset.year} election`;
+        });
+    }
+
+    // ---- 4 · area chart ----------------------------------------------------
+    const years = Array.from({length: 81}, (_, i) => 1970 + i);
+    const smooth = (t, a, b) => { const k = Math.max(0, Math.min(1, (t - a) / (b - a))); return k * k * (3 - 2 * k); };
+    const mix = years.map((y) => {
+        const wind = 2 + 58 * smooth(y, 1986, 2045) + 1.5 * Math.sin(y / 3);
+        const hydro = 24 + 3 * Math.sin(y / 7);
+        const gas = 8 + 30 * Math.exp(-((y - 2004) ** 2) / 260);
+        const coal = Math.max(1, 66 * (1 - smooth(y, 1978, 2030)));
+        return [coal, gas, hydro, wind];
+    });
+    const area = new G.AreaChart(document.getElementById('area'), {
+        theme: chartTheme(), stack: 'expand', x: years,
+        series: [
+            {name: 'Coal', color: '#5b5b5b', values: mix.map((m) => m[0])},
+            {name: 'Gas', color: '#fab418', values: mix.map((m) => m[1])},
+            {name: 'Hydro', color: '#1380a1', values: mix.map((m) => m[2])},
+            {name: 'Wind & solar', color: '#588300', values: mix.map((m) => m[3])}
+        ],
+        yFormat: (v) => Math.round(v * 100) + '%',
+        format: (v) => v.toFixed(1) + ' TWh',
+        projectFrom: 2026, projectLabel: 'Projected\nfigures',
+        marks: [{x: 1986, color: '#ffffff'}],
+        notes: [{x: 1986, y: 0.55, text: '**1986**\nFirst offshore\nwind farm', color: '#ffffff', dx: 26, dy: -10, width: 96,
+            align: 'center'}]
+    });
+    charts.push(area);
+
+    // ---- 5 · tile calendar -------------------------------------------------
+    const refit = new Date(2027, 2, 26);
+    const breakDays = new Set(['2027-02-15', '2027-02-16', '2027-02-17', '2027-02-18', '2027-02-19', '2027-01-25']);
+    const tiles = new G.TileCalendar(document.getElementById('tiles'), {
+        theme: 'light',
+        start: {year: 2027, month: 0}, months: 3, locale: 'en-GB',
+        from: new Date(2027, 0, 11), to: refit,
+        categories: [
+            {id: 'regular', label: 'Monday to Thursday', color: '#1380a1'},
+            {id: 'reduced', label: 'Friday', color: '#9ccbe0'},
+            {id: 'weekend', label: 'Weekend', color: '#d4e3ea'},
+            {id: 'none', label: 'No sailing', color: '#f5b8c0'},
+            {id: 'refit', label: 'Refit', color: '#990000'}
+        ],
+        counts: true,
+        days: (d) => {
+            const key = G.TileCalendar.key(d);
+            if (d.getTime() === refit.getTime()) return 'refit';
+            if (breakDays.has(key)) return 'none';
+            const wd = d.getDay();
+            return wd === 0 || wd === 6 ? 'weekend' : wd === 5 ? 'reduced' : 'regular';
+        },
+        labels: {'2027-03-26': 'Refit'}
+    });
+    charts.push(tiles);
+    document.getElementById('ferry-title').textContent =
+        `The island ferry has ${tiles.count().get('regular') ?? 0} regular sailing days before the refit`;
+
+    // ---- 6 · districts: a made-up island cut into 201 Voronoi cells ----------
+    const outline = [];
+    for (let i = 0; i < 140; i++) {
+        const t = i / 140 * Math.PI * 2;
+        const r = 1 + 0.22 * Math.sin(3 * t + 0.6) + 0.1 * Math.sin(7 * t + 2) + 0.05 * Math.sin(13 * t);
+        outline.push([500 + 430 * r * Math.cos(t), 330 + 270 * r * Math.sin(t)]);
+    }
+    const inside = (p, poly) => {
+        let c = false;
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+            const [xi, yi] = poly[i], [xj, yj] = poly[j];
+            if ((yi > p[1]) !== (yj > p[1]) && p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi) c = !c;
+        }
+        return c;
+    };
+    // cities pull points together (small urban districts), the rest is spread out
+    const cities = [[760, 300], [300, 420], [560, 160]];
+    const sites = [];
+    while (sites.length < 201) {
+        const city = rnd() < 0.45 ? pick(cities) : null;
+        const p = city ? [city[0] + normal() * 55, city[1] + normal() * 45] : [80 + rnd() * 840, 20 + rnd() * 620];
+        if (inside(p, outline)) sites.push(p);
+    }
+    // clip the island by the half-plane closer to site i than to site j (Sutherland–Hodgman)
+    const clip = (poly, a, b) => {
+        const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, nx = b[0] - a[0], ny = b[1] - a[1];
+        const side = (p) => (p[0] - mx) * nx + (p[1] - my) * ny;   // < 0: closer to a
+        const out = [];
+        for (let i = 0; i < poly.length; i++) {
+            const p = poly[i], q = poly[(i + 1) % poly.length];
+            const sp = side(p), sq = side(q);
+            if (sp <= 0) out.push(p);
+            if ((sp < 0) !== (sq < 0) && sp !== sq) {
+                const t = sp / (sp - sq);
+                out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]);
+            }
+        }
+        return out;
+    };
+    const regions = sites.map((s, i) => {
+        let cell = outline;
+        const others = sites.map((o, j) => [j, Math.hypot(o[0] - s[0], o[1] - s[1])]).filter(([j]) => j !== i).sort((a, b) => a[1] - b[1]);
+        for (const [j, d] of others) {
+            const reach = Math.max(...cell.map((p) => Math.hypot(p[0] - s[0], p[1] - s[1])));
+            if (d > 2 * reach) break;
+            cell = clip(cell, s, sites[j]);
+            if (cell.length < 3) break;
+        }
+        return {id: 'd' + i, name: place() + (rnd() < 0.3 ? ' East' : rnd() < 0.3 ? ' West' : ''), polygons: [[cell]]};
+    });
+    // lean: harbour towns (east, coast) vs the moors (west, inland); value = Harbour share − Moor share
+    const values = {};
+    regions.forEach((r, i) => {
+        const [x, y] = sites[i];
+        const coast = Math.min(...outline.map((p) => Math.hypot(p[0] - x, p[1] - y)));
+        const lean = (x - 470) / 9 + (70 - coast) / 6 + normal() * 9 + (Math.hypot(x - 760, y - 300) < 120 ? 16 : 0);
+        if (rnd() > 0.06) values[r.id] = Math.max(-60, Math.min(60, lean));
+    });
+    const blues = ['#a9c8e6', '#5b93c9', '#1d5c99'];
+    const reds = ['#f4b5be', '#e06676', '#b3122e'];
+    const shade = (v) => {
+        const share = 50 + Math.abs(v) / 2;        // the winner's share
+        const step = share < 60 ? 0 : share < 70 ? 1 : 2;
+        return v >= 0 ? blues[step] : reds[step];
+    };
+    const won = Object.values(values).filter((v) => v >= 0).length;
+    const lost = Object.values(values).length - won;
+    const majority = new G.MajorityBar(document.getElementById('majority'), {
+        theme: 'light', duration: 900,
+        parts: [{label: 'Harbour', value: won, color: '#1d5c99'}, {label: 'Moor', value: lost, color: '#b3122e'}],
+        total: regions.length, threshold: Math.floor(regions.length / 2) + 1
+    });
+    charts.push(majority);
+    const map = new G.ChoroplethMap(document.getElementById('map'), {
+        theme: 'light', regions, values, color: (v) => shade(v), missing: '#cfcfcf',
+        format: (v) => `${v >= 0 ? 'Harbour' : 'Moor'} ${(50 + Math.abs(v) / 2).toFixed(0)}%`,
+        legend: {title: '% of votes', rows: [{label: 'Harbour', colors: blues}, {label: 'Moor', colors: reds}], ticks: ['50', '60', '70+']}
+    });
+    charts.push(map);
+
+    // ---- page controls -----------------------------------------------------
+    document.getElementById('replay').addEventListener('click', () => {
+        hist.replay();
+        bars.replay();
+        area.replay();
+        parliament.replay();
+        majority.replay();
+    });
+    const themeBtn = document.getElementById('theme');
+    themeBtn.addEventListener('click', () => {
+        dark = !dark;
+        document.documentElement.classList.toggle('dark', dark);
+        themeBtn.textContent = dark ? 'Light' : 'Dark';
+        for (const c of [hist, bars, area]) c.setTheme(chartTheme());
+        for (const w of [parliament, tiles, majority, map]) w.setTheme(dark ? 'dark' : 'light');
+    });
+})();
+</script>
+</body>
+</html>

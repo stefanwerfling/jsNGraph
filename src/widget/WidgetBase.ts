@@ -268,6 +268,51 @@ export class WidgetStyles {
             ':where(.wg-map-legend-bottom .wg-legend){flex-direction:row;flex-wrap:wrap;gap:6px 16px}',
             ':where(.wg-legend-item){display:flex;align-items:center;gap:7px;white-space:nowrap}',
             ':where(.wg-legend-dot){width:9px;height:9px;border-radius:50%;flex:none}',
+            // parliament
+            ':where(.wg-parl-seat){stroke:none}',
+            ':where(.wg-parl-total){font-size:22px;font-weight:800;text-anchor:middle}',
+            ':where(.wg-parl-sub){font-size:7.5px;text-anchor:middle}',
+            ':where(.wg-parl-legend){display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:4px 14px;' +
+                'margin-top:10px;font-size:12px;color:var(--wg-ink)}',
+            ':where(.wg-parl-item){display:flex;align-items:center;gap:6px;cursor:default;transition:opacity .15s}',
+            ':where(.wg-parl-swatch){width:12px;height:12px;flex:none}',
+            // tile calendar
+            ':where(.wg-tiles-legend){display:flex;flex-wrap:wrap;gap:4px 16px;margin-bottom:8px;font-size:13px;color:var(--wg-ink)}',
+            ':where(.wg-tiles-item){display:inline-flex;align-items:center;gap:6px}',
+            ':where(.wg-tiles-swatch){width:14px;height:14px;flex:none}',
+            ':where(.wg-tiles-month){font-size:14px;fill:var(--wg-ink)}',
+            ':where(.wg-tiles-weekday){font-size:9px;text-anchor:middle;fill:var(--wg-muted)}',
+            ':where(.wg-tiles-label){font-size:11px;font-weight:700;dominant-baseline:central;fill:var(--wg-ink);pointer-events:none}',
+            ':where(.wg-tile){stroke:var(--wg-surface);stroke-width:0}',
+            ':where(.wg-tile:hover){stroke:var(--wg-ink);stroke-width:1.5}',
+            // majority bar
+            ':where(.wg-major-head){position:relative;display:flex;justify-content:space-between;align-items:flex-end;' +
+                'min-height:24px;font-size:15px;margin-bottom:4px}',
+            ':where(.wg-major-side b){font-weight:800}',
+            ':where(.wg-major-mark-label){position:absolute;bottom:0;transform:translateX(-50%);font-size:11px;' +
+                'color:var(--wg-muted);white-space:nowrap}',
+            ':where(.wg-major-bar){position:relative;height:10px;background:var(--wg-track)}',
+            ':where(.wg-major-seg){position:absolute;top:0;bottom:0}',
+            ':where(.wg-major-mark){position:absolute;top:-6px;bottom:0;width:1px;background:var(--wg-ink);' +
+                'border-left:1px solid var(--wg-surface);transform:translateX(-1px)}',
+            // choropleth
+            ':where(.wg-choro){position:relative}',
+            ':where(.wg-choro-svg){touch-action:none}',
+            ':where(.wg-choro-region){stroke:var(--wg-surface);stroke-width:.5;vector-effect:non-scaling-stroke;transition:fill .4s}',
+            ':where(.wg-choro-region.wg-choro-hover){stroke:var(--wg-ink);stroke-width:1.6}',
+            ':where(.wg-choro-outline){fill:none;stroke:var(--wg-surface);stroke-width:1.4;vector-effect:non-scaling-stroke;' +
+                'pointer-events:none}',
+            ':where(.wg-choro-legend){display:flex;flex-direction:column;align-items:flex-end;margin-top:4px;font-size:10px;' +
+                'color:var(--wg-ink);pointer-events:none}',
+            ':where(.wg-choro-overlay .wg-choro-legend){position:absolute;right:4px;bottom:4px;margin:0}',
+            ':where(.wg-choro-legend-title){margin-bottom:3px;color:var(--wg-muted)}',
+            ':where(.wg-choro-legend-grid){display:grid;gap:2px 1px;align-items:center}',
+            ':where(.wg-choro-legend-grid > span:not(.wg-choro-step):not(.wg-choro-tick)){padding-right:6px;white-space:nowrap}',
+            ':where(.wg-choro-step){height:9px}',
+            ':where(.wg-choro-tick){text-align:right;color:var(--wg-muted)}',
+            ':where(.wg-choro-tip){position:absolute;display:none;pointer-events:none;padding:4px 8px;border-radius:5px;' +
+                'background:var(--wg-surface);color:var(--wg-ink);border:1px solid var(--wg-track);font-size:12px;white-space:nowrap;' +
+                'box-shadow:0 2px 8px rgba(0,0,0,.15)}',
             '@media (prefers-reduced-motion:reduce){:where(.wg-marker-pulse){animation:none;opacity:0}}'
         ].join('');
     }

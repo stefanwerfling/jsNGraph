@@ -1,8 +1,8 @@
 /**
- * jsngraph/chart — scientific x/y charts on canvas: WaterfallChart (stacked
- * spectra with hover/select and a draggable slice marker), RadarChart
- * (spider / web chart), StorylineChart (who was where, when), StreamChart
- * (streamgraph with small multiples) and LineChart.
+ * jsngraph/chart — x/y charts on canvas: WaterfallChart (stacked spectra with
+ * hover/select and a draggable slice marker), RadarChart (spider / web chart),
+ * StorylineChart (who was where, when), StreamChart (streamgraph with small
+ * multiples), LineChart, BarChart, UnitHistogram and AreaChart.
  * Importing this subpath alone keeps the other parts out of a bundle;
  * `jsngraph` itself still exports everything.
  */
@@ -33,3 +33,17 @@ export { StreamLayout } from './chart/StreamLayout';
 export type {
     StreamLayer, StreamPanel, StreamData, StreamOffset, StreamOrder, StreamLayoutOptions, StreamPanelResult, StreamResult
 } from './chart/StreamLayout';
+export { ChartNotes } from './chart/ChartNotes';
+export type { ChartNote, NoteAnchor } from './chart/ChartNotes';
+export { BarChart } from './chart/BarChart';
+export type { BarChartOptions, BarChartEvents } from './chart/BarChart';
+export { BarLayout } from './chart/BarLayout';
+export type { BarSeries, BarPanel, PlacedBar } from './chart/BarLayout';
+export { UnitHistogram } from './chart/UnitHistogram';
+export type { UnitHistogramOptions, UnitHistogramEvents, UnitMark } from './chart/UnitHistogram';
+export { UnitLayout } from './chart/UnitLayout';
+export type { Unit, UnitCategory, UnitPanel, UnitCell, UnitResult } from './chart/UnitLayout';
+export { AreaChart } from './chart/AreaChart';
+export type { AreaChartOptions, AreaChartEvents, AreaSeries, AreaMark } from './chart/AreaChart';
+export { AreaLayout } from './chart/AreaLayout';
+export type { AreaStack, AreaBand } from './chart/AreaLayout';
