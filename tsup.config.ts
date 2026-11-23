@@ -13,7 +13,8 @@ export default defineConfig([
             widget: 'src/widget.ts',
             netview: 'src/netview.ts',
             chart: 'src/chart.ts',
-            records: 'src/records.ts'
+            records: 'src/records.ts',
+            iso: 'src/iso.ts'
         },
         format: ['esm', 'cjs'],
         splitting: true,

@@ -53,6 +53,11 @@
       "types": "./dist/records.d.ts",
       "import": "./dist/records.js",
       "require": "./dist/records.cjs"
+    },
+    "./iso": {
+      "types": "./dist/iso.d.ts",
+      "import": "./dist/iso.js",
+      "require": "./dist/iso.cjs"
     }
   },
   "files": [

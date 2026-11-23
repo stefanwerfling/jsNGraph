@@ -383,6 +383,20 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   drawer), `RecordTheme` light/dark, Camera pan/zoom/fit. `test/Records.test.ts`. Example: `examples/records.html`
   (made-up bike supply chain with a recycling loop).
 
+- `iso/` — `IsoEditor` (subpath `jsngraph/iso`): isometric architecture diagrams, plan + milestones I1–I6 in
+  `docs/iso-editor.md` (status I1 = viewer). DOM + SVG on one stage moved by `view/Camera` (CSS transform): the floor is
+  one SVG group under the 2:1 matrix from `IsoProjection` (tile {x,y} covers [x,x+1]×[y,y+1]; X = (u−v)·w/2,
+  Y = (u+v)·w/4), so grid (visible tiles only, thinned far out), regions (rounded rects, label along the front edge),
+  floor texts (drawn ×100 and scaled 0.01 against font minimums; axis y = `rotate(-90)`) and item base tiles are in tile
+  units with `non-scaling-stroke`. Items are absolutely placed divs (`z-index` by `IsoProjection.depth`), label callouts
+  (dotted leader, `labelHeight` in tile heights) in a layer above. `IsoIcons`: our own procedural kit — 19 icons from
+  isometric solids (`box`, `cylinder`, `band`, panels) in a 100×140 box with the tile centre at (50,115), three shades +
+  dark outline from one colour; host types via `icons`/`registerIcons` (`render(color)` → inner SVG, `height`). Viewer:
+  pan (drag past 3 px, capture only then), wheel zoom, dblclick fit / `itemDblClick`, click/Shift select, `highlight`,
+  `focus` (fly), `fit` (auto until the user moves), `setTheme` (`data-iso-theme`), `setGrid`, `setStyleVars` (`--iso-*`,
+  `IsoStyles` `:where()` sheet). Connectors are already in the types (`IsoConnector`), drawn from I2. Pure parts tested
+  in `test/Iso.test.ts`. Example: `examples/iso.html` (made-up web shop, icon-kit gallery linked to highlight).
+
 ## Commands
 
 - `npm run dev` — `tsup --watch`. `npm run build` — `dist/index.{js,cjs,d.ts}` (npm) +

@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — isometric diagram</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    html, body { background: #11141c; }
+    body.light { background: #eef1f6; }
+    main { max-width: 1600px; margin: 0 auto; padding: 12px 16px 28px; color: #d6dbe6; font-family: system-ui, sans-serif; }
+    body.light main { color: #273142; }
+    h1 { font-size: 20px; margin: 4px 0 2px; font-weight: 600; }
+    .sub { margin: 0 0 12px; color: #8d96aa; font-size: 13px; max-width: 1000px; line-height: 1.45; }
+    .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; font-size: 12px; }
+    button { background: #1c2130; color: #d6dbe6; border: 1px solid #333b50; border-radius: 4px; padding: 5px 10px;
+        font: 12px system-ui, sans-serif; cursor: pointer; }
+    body.light button { background: #fff; color: #273142; border-color: #c8cfdc; }
+    button.on { border-color: #8b7cf6; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
+    @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } }
+    #iso { height: min(80vh, 860px); min-height: 520px; border: 1px solid #262d3f; border-radius: 6px; overflow: hidden; }
+    body.light #iso { border-color: #d3d9e4; }
+    aside { display: flex; flex-direction: column; gap: 12px; font-size: 12px; }
+    .box { background: #171b26; border: 1px solid #262d3f; border-radius: 6px; padding: 10px 12px; line-height: 1.45; }
+    body.light .box { background: #fff; border-color: #d3d9e4; }
+    .box h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #8d96aa; margin: 0 0 8px; font-weight: 600; }
+    .icons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+    .icons figure { margin: 0; text-align: center; font-size: 10px; color: #8d96aa; cursor: pointer; border-radius: 4px; padding: 2px 0; }
+    .icons figure:hover { background: rgba(139,124,246,.15); }
+    .icons svg { width: 52px; height: 72px; display: block; margin: 0 auto -6px; }
+    #detail dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; }
+    #detail dt { color: #8d96aa; }
+    #detail dd { margin: 0; }
+    .muted { color: #6f7890; }
+    .credit { color: #626b80; font-size: 11px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="iso.html" class="active">Isometric diagram</a>
+</nav>
+
+<main>
+    <h1>Isometric architecture — a made-up web shop</h1>
+    <p class="sub">Devices and services stand on a tile grid as 3D icons, regions mark zones on the floor, labels float above
+        their items. Every icon is drawn by the library from a few isometric solids and can take any colour — no image files.
+        This is milestone I1 of the isometric editor (viewing); connectors and editing come next.</p>
+
+    <div class="bar">
+        <button id="theme">Light</button>
+        <button id="grid" class="on">Grid</button>
+        <button id="fit">Fit</button>
+        <button id="hl-data">Highlight data tier</button>
+        <button id="hl-edge">Highlight edge</button>
+        <button id="hl-none">Clear</button>
+    </div>
+
+    <div class="layout">
+        <div>
+            <div id="iso"></div>
+            <p class="credit">Drag to pan, wheel to zoom, double-click the floor to fit, click an item to select it (Shift adds),
+                double-click an item to fly to it. Hover an icon on the right to light the items using it.</p>
+        </div>
+        <aside>
+            <div class="box" id="detail">
+                <h2>Selection</h2>
+                <span class="muted">Click an item.</span>
+            </div>
+            <div class="box">
+                <h2>Icon kit</h2>
+                <div class="icons" id="icons"></div>
+            </div>
+        </aside>
+    </div>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+(() => {
+    const {IsoEditor, IsoIcons} = window.JSNGraph;
+
+    const items = [
+        {id: 'customer', tile: {x: 0, y: 5}, icon: 'user', label: 'Customer', labelHeight: 1.4},
+        {id: 'mobile', tile: {x: 1, y: 7}, icon: 'phone', label: 'Mobile app', labelHeight: 0.8},
+        {id: 'browser', tile: {x: 1, y: 3}, icon: 'laptop', label: 'Browser'},
+        {id: 'internet', tile: {x: 4, y: 5}, icon: 'internet', label: 'Internet', labelHeight: 0.6},
+        {id: 'cdn', tile: {x: 4, y: 1}, icon: 'cloud', label: 'CDN', description: 'static assets'},
+        {id: 'firewall', tile: {x: 7, y: 5}, icon: 'firewall', label: 'WAF', labelHeight: 1.2},
+        {id: 'lb', tile: {x: 9, y: 5}, icon: 'loadbalancer', label: 'Load balancer', labelHeight: 2},
+        {id: 'web1', tile: {x: 11, y: 3}, icon: 'server', label: 'web-1', labelHeight: 1.6},
+        {id: 'web2', tile: {x: 11, y: 5}, icon: 'server', label: 'web-2', labelHeight: 0.9},
+        {id: 'web3', tile: {x: 11, y: 7}, icon: 'server', label: 'web-3', labelHeight: 0.3},
+        {id: 'resize', tile: {x: 12, y: 9}, icon: 'function', label: 'Image resize', description: 'serverless', labelHeight: 0.6},
+        {id: 'queue', tile: {x: 14, y: 5}, icon: 'queue', label: 'Order queue', labelHeight: 1},
+        {id: 'worker', tile: {x: 16, y: 7}, icon: 'container', label: 'Fulfilment worker', labelHeight: 0.8},
+        {id: 'cache', tile: {x: 13, y: 1}, icon: 'cache', label: 'Session cache', labelHeight: 2},
+        {id: 'db', tile: {x: 15, y: 1}, icon: 'database', label: 'Orders DB', description: 'primary', labelHeight: 0.6},
+        {id: 'replica', tile: {x: 17, y: 1}, icon: 'database', label: 'Replica', color: '#a9b8d6', labelHeight: 1.8},
+        {id: 'objects', tile: {x: 15, y: 10}, icon: 'storage', label: 'Object storage', labelHeight: 0.8},
+        {id: 'backup', tile: {x: 19, y: 5}, icon: 'rack', label: 'Backup rack', labelHeight: 0.5},
+        {id: 'vpn', tile: {x: 7, y: 11}, icon: 'router', label: 'Office VPN'},
+        {id: 'switch', tile: {x: 5, y: 12}, icon: 'switch', label: 'Office switch', labelHeight: 0.6},
+        {id: 'admin', tile: {x: 3, y: 12}, icon: 'desktop', label: 'Admin desk', labelHeight: 0.5}
+    ];
+    const doc = {
+        items,
+        regions: [
+            {id: 'vpc', from: {x: 10, y: 0}, to: {x: 20, y: 11}, color: '#8b7cf6', label: 'VPC · eu-central'},
+            {id: 'data', from: {x: 12, y: 0}, to: {x: 18, y: 2}, color: '#2fb3a5', label: 'Data tier'},
+            {id: 'edge', from: {x: 6, y: 3}, to: {x: 9, y: 7}, color: '#e0664f', label: 'Edge'},
+            {id: 'office', from: {x: 2, y: 10}, to: {x: 8, y: 13}, color: '#f0a03c', label: 'Office'}
+        ],
+        texts: [
+            {id: 't1', tile: {x: -1, y: 8}, text: 'customers', size: 0.5, bold: true, axis: 'y'},
+            {id: 't2', tile: {x: 10, y: 12}, text: 'all traffic TLS 1.3', size: 0.34}
+        ]
+    };
+
+    const iso = new IsoEditor(document.getElementById('iso'), {document: doc});
+    window.iso = iso;
+
+    // ---- toolbar ------------------------------------------------------------------------------------------------
+    const $ = (id) => document.getElementById(id);
+    $('theme').onclick = (e) => {
+        const light = document.body.classList.toggle('light');
+        iso.setTheme(light ? 'light' : 'dark');
+        e.target.textContent = light ? 'Dark' : 'Light';
+    };
+    $('grid').onclick = (e) => { const on = e.target.classList.toggle('on'); iso.setGrid(on); };
+    $('fit').onclick = () => iso.fit();
+    $('hl-data').onclick = () => iso.highlight(['cache', 'db', 'replica', 'objects', 'backup']);
+    $('hl-edge').onclick = () => iso.highlight(['internet', 'cdn', 'firewall', 'lb']);
+    $('hl-none').onclick = () => iso.highlight(null);
+
+    // ---- selection ----------------------------------------------------------------------------------------------
+    const show = (ids) => {
+        const box = $('detail');
+        const sel = items.filter((i) => ids.includes(i.id));
+        if (sel.length === 0) {
+            box.innerHTML = '<h2>Selection</h2><span class="muted">Click an item.</span>';
+            return;
+        }
+        box.innerHTML = '<h2>Selection</h2>' + sel.map((i) => `<dl>
+            <dt>Label</dt><dd><b>${i.label}</b></dd>
+            <dt>Icon</dt><dd>${i.icon}</dd>
+            <dt>Tile</dt><dd>${i.tile.x}, ${i.tile.y}</dd>
+            ${i.description ? `<dt>Note</dt><dd>${i.description}</dd>` : ''}</dl>`).join('<hr style="border:0;border-top:1px solid #262d3f">');
+    };
+    iso.on('selectionChange', show);
+    iso.on('itemDblClick', ({item}) => iso.focus(item.id, 1.3));
+
+    // ---- icon kit -----------------------------------------------------------------------------------------------
+    $('icons').innerHTML = iso.getIconTypes().map((t) => `<figure data-icon="${t.id}">${IsoIcons.svg(t)}${t.label ?? t.id}</figure>`).join('');
+    $('icons').querySelectorAll('figure').forEach((f) => {
+        const using = items.filter((i) => i.icon === f.dataset.icon).map((i) => i.id);
+        f.onmouseenter = () => iso.highlight(using);
+        f.onmouseleave = () => iso.highlight(null);
+        f.onclick = () => { if (using.length) { iso.select(using); iso.focus(using[0]); } };
+    });
+
+    const q = new URLSearchParams(location.search);
+    if (q.get('theme') === 'light') $('theme').click();
+})();
+</script>
+</body>
+</html>

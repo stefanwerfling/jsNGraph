@@ -1,0 +1,113 @@
+# Isometric diagram editor — plan
+
+An isometric architecture-diagram widget for jsNGraph: devices and services as
+3D-looking icons standing on a tile grid, regions (zones, VPCs, racks) as
+coloured areas on the floor, connectors routed along the grid with arrows,
+labels and travelling dots, text printed on the floor. One widget, `IsoEditor`,
+owns the picture; `readOnly: true` makes it a viewer — and, with live status
+on items and connectors, a monitoring view (the NGraph use case, drawn in 3D).
+
+All code and all icons are new and our own; nothing is taken over from other
+isometric editors. Zero runtime dependencies, as everywhere in the library.
+
+## Scope
+
+**In jsNGraph (graphics only):** projection, grid, camera, items with icons and
+labels, regions, connectors with routing, floor text, editing gestures,
+undo/redo, export (JSON / SVG / PNG), live-status display, theming.
+
+**In the consuming app:** what an item *is* (inventory, monitoring source),
+persistence, several pages/views (the app keeps one document per page), its own
+palette and inspector UI. The widget emits events and takes documents; the
+example shows a palette and an inspector built on that API.
+
+## Architecture — `src/iso/`, subpath `jsngraph/iso`
+
+| File | Role |
+|---|---|
+| `IsoTypes.ts` | Public types: document, items, connectors, regions, texts, icon types, events. |
+| `IsoProjection.ts` | Pure: tile ↔ screen (2:1 dimetric: `x = (c − r)·W/2`, `y = (c + r)·H/2`), the SVG matrix of the floor plane, screen → tile picking, depth key (`c + r`), view rotation (0/90/180/270°) as a tile remap. Tested. |
+| `IsoModel.ts` | Pure document model: add/update/remove/move items, regions, connectors, texts; occupied tiles; anchors that follow moved items; fragments for copy/paste. Tested. |
+| `IsoRoute.ts` | Pure connector routing on the grid: A* over tiles with 4-neighbours, cost for turns and for crossing occupied tiles, optional user waypoints (route = chain of A* legs), simplify to corners, length, point/tangent at a fraction (labels, arrows, dots). Tested. |
+| `IsoIcons.ts` | Our own procedural icon kit: SVG built from isometric primitives (box, slab, cylinder, panel/screen, prism, person) with three face shades derived from one colour (top light, left mid, right dark). ~16 built-ins: server, rack, database, storage, laptop, desktop, phone, user, router, switch, firewall, load balancer, cloud, queue, cache, function, container. Host icons: `{id, svg \| url \| render(color), isometric?: boolean}` — non-isometric ones are laid flat onto the tile through the floor matrix. |
+| `IsoStyles.ts` | `:where()` rules over `--iso-*` CSS variables, dark + light, injected once (same pattern as `WorkflowStyles`). |
+| `IsoEditor.ts` | The widget: layers, camera, gestures, keyboard, undo, events, status. |
+| `IsoExport.ts` | Self-contained SVG string of the document (fonts as system stack, icons inline), PNG via an offscreen canvas `drawImage` of that SVG. |
+
+### Rendering
+
+DOM + SVG, like the workflow editor (hundreds of items at most, crisp text,
+host content possible), on one stage moved by `view/Camera` (CSS transform):
+
+1. **Floor layer** — one SVG `<g>` with the isometric matrix, everything in tile
+   units: grid lines, regions (rounded rects), tile hover/selection diamonds,
+   connectors (polylines on tile centres, dashes, arrows), floor texts, flat
+   icons. One transform = no per-element projection maths.
+2. **Upright layer** — icons and label callouts as absolutely positioned
+   elements at the projected tile centre, `z-index` = depth key, so nearer
+   items cover farther ones. Label = box raised by `labelHeight` with a dotted
+   leader down to the icon.
+3. **Overlay** — handles (region corners, connector waypoints), lasso band,
+   drag preview, in-place text editor.
+
+Connector labels are upright (readable), placed at `labelAt` (0…1) along the route.
+
+Reused: `view/Camera` (pan/zoom/fit/fly), `rect/RectHistory` (undo),
+`util/EventEmitter`, the `beginDrag`/`dropAt` and clipboard patterns of
+`WorkflowEditor`, `util/Color` for the face shades.
+
+### Data model
+
+```ts
+interface IsoTile { x: number; y: number }
+interface IsoItem {
+    id: string; tile: IsoTile; icon: string;
+    label?: string; description?: string;
+    color?: string;            // icon base colour (faces shaded from it)
+    labelHeight?: number;      // tiles the callout floats above the icon (0 = no callout)
+    meta?: unknown;
+}
+type IsoAnchor = {item: string} | {tile: IsoTile};
+interface IsoConnector {
+    id: string; from: IsoAnchor; to: IsoAnchor;
+    via?: IsoTile[];           // user waypoints
+    style?: 'solid' | 'dashed' | 'dotted'; width?: number; color?: string;
+    arrows?: 'none' | 'end' | 'both'; label?: string; labelAt?: number;
+    animated?: boolean;        // dots travelling from → to
+}
+interface IsoRegion { id: string; from: IsoTile; to: IsoTile; color?: string; label?: string }
+interface IsoText { id: string; tile: IsoTile; text: string; size?: number; axis?: 'x' | 'y'; color?: string }
+interface IsoDocument { items: IsoItem[]; connectors: IsoConnector[]; regions?: IsoRegion[]; texts?: IsoText[] }
+```
+
+Decisions:
+
+- **One item per tile**; items are 1×1 tiles (a later `size` can widen them).
+- **Connectors route on the grid** (axis-parallel along tile centres), which is
+  what makes the isometric look clean; the route is recomputed when an end
+  moves, waypoints pin it.
+- **The widget owns the document** — `getDocument`/`setDocument`, built-in
+  undo/redo, one `change` event per finished gesture, `readOnly`/`setReadOnly`.
+  Unknown icons render as a generic box, so a viewer never drops data.
+- **Live status is not document data** (as in the workflow editor):
+  `setItemStatus(id, 'ok' | 'warn' | 'down' | 'unknown', {message?})` (floor glow
+  ring + badge, pulse when down), `setConnectorStatus(id, {load?, active?})`
+  (load colours green → red, dot speed), `clearStatus()`.
+
+## Milestones
+
+Status: I1 done (`examples/iso.html`).
+
+| # | Content |
+|---|---|
+| **I1** | Static picture: `IsoProjection`, floor grid, camera (pan/zoom/fit, wheel at cursor), `IsoIcons` built-ins, items with callout labels and depth order, regions, floor texts, dark/light. Viewer only (`readOnly`), hover/click events. Example page with a made-up web-shop architecture. |
+| **I2** | Connectors: `IsoRoute` (A*, waypoints, simplify), styles, arrows, upright labels, animated dots, anchors to items or tiles that follow moved items. |
+| **I3** | Editing: select (click, Shift/Ctrl, lasso), move with tile snap (connectors re-route live), arrow keys, delete, undo/redo, copy/cut/paste (JSON fragment on the system clipboard), place from a host palette (`beginDrag(icon, event)` / `dropAt`), draw region (drag on the floor) + corner resize, draw connector (from item/tile to item/tile, click to add waypoints), text tool, double-click edits labels in place. |
+| **I4** | Export (`toJSON`, `exportSVG`, `exportPNG`), host icon types (SVG string, URL, render function; flat or isometric), `setStyleVars` / `IsoStyles.varsFromTheme`, keyboard map, minimap (optional). |
+| **I5** | Live view: item/connector status API, load colours, pulse, `focus(id)` fly-to, `highlight(ids)` dims the rest; example toggles editor ↔ live monitoring with simulated failures. |
+| **I6** (optional) | View rotation in 90° steps (tile remap, icons mirrored per side), elevation (items/regions on stacked levels — floors of a building, layers of a stack). |
+
+Tests: `test/IsoProjection.test.ts`, `test/IsoModel.test.ts`, `test/IsoRoute.test.ts`
+(pure parts only, as for the other modules). Example: `examples/iso.html` —
+palette left, canvas, inspector right (label, colour, icon, connector style),
+toolbar (modes, undo, export, editor/live toggle), Save/Load via localStorage.
