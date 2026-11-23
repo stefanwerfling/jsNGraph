@@ -193,6 +193,16 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   wheel zoom about the pointer / drag pan / double-click reset. Radius leaves room for the measured side labels.
   `setSeries` keeps the hover while the series exists (live updates). Pure part `RadarGeometry` (angle, point,
   label alignment, vertex hit). Example: `examples/radar.html` (static comparison + live host-health radar).
+  `StorylineChart` ("who was where, when"): `{events (time, period, series), entities (color, icon), appearances
+  (weight)}`; entities are bands through the events they take part in, bundled inside an event bar, passing freely
+  in between, width = weight. Pure `StorylineLayout`: columns = distinct times (events with the same time stack),
+  idle entities are singleton groups, barycentre sweeps keep the ordering with the fewest crossings, then every
+  column's groups move towards their members' y in the neighbour columns under order + gap constraints — an exact
+  weighted isotonic regression (PAVA) per column, repeated (`test/Storyline.test.ts`). View scales x and y
+  separately (time fills the width, the stack the height; y ≤ 4·x); band hit test in screen px. Hover = white
+  outline + dim others, click band / legend chip = `focusEntity` (its events + everyone in them), click event =
+  `focusSeries`, double-click background = `reset`; DOM legend chips. Example: `examples/storyline.html`
+  (made-up open-source project, 22 people × 30 events).
 
 ## Commands
 

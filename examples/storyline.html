@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — storyline</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    body { background: #3a3f4f; }
+    main { padding: 14px 16px 16px; }
+    header { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 8px; }
+    h1 { font-size: 22px; font-weight: 500; margin: 0; color: #eef1f7; letter-spacing: .01em; }
+    .lead { color: #c3c9d6; font-size: 13px; margin: 0 0 10px; max-width: 980px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
+    .controls button { background: rgba(255,255,255,.08); color: #eef1f7; border: 1px solid rgba(255,255,255,.18);
+        border-radius: 6px; padding: 4px 10px; cursor: pointer; font: inherit; }
+    .controls button.on { border-color: #f2c12e; color: #f2c12e; }
+    .controls .sep { width: 1px; height: 20px; background: rgba(255,255,255,.2); margin: 0 4px; }
+    #chart { height: calc(100vh - 190px); min-height: 520px; border-radius: 10px; overflow: hidden; }
+    #status { margin-top: 8px; font: 12px ui-monospace, monospace; color: #c3c9d6; min-height: 1.4em; }
+    body.light { background: #eef0f4; }
+    body.light h1 { color: #1c2230; }
+    body.light .lead, body.light #status { color: #4b5466; }
+    body.light .controls { color: #1c2230; }
+    body.light .controls button { background: #fff; color: #1c2230; border-color: #cfd5df; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="flow.html">Flow dashboard</a>
+    <a href="storyline.html" class="active">Storyline</a>
+</nav>
+
+<main>
+    <header>
+        <h1>Project storyline</h1>
+        <div class="controls">
+            <span>Series:</span>
+            <button data-series="Core">Core</button>
+            <button data-series="Plugins">Plugins</button>
+            <button data-series="Docs">Docs</button>
+            <button data-series="Mobile">Mobile</button>
+            <button data-series="Summit">Summit</button>
+            <span class="sep"></span>
+            <button id="reset">Show all</button>
+            <button id="fit">Fit</button>
+            <button id="theme">Light</button>
+        </div>
+    </header>
+    <p class="lead">Ten years of a (made-up) open-source project: every contributor is a band that runs through the
+        releases, docs pushes and meetups they took part in; the band width is their share of the work there.
+        Hover a band or a chip to follow one person, click it to see only their events and everyone they worked with,
+        click an event bar for its series, double-click the background to go back. Wheel zooms, drag pans.
+        <code>new StorylineChart(el, {data})</code> — canvas, no dependencies.</p>
+
+    <div id="chart"></div>
+    <div id="status"></div>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+(() => {
+    const {StorylineChart} = window.JSNGraph;
+
+    const people = [
+        ['ada', 'Ada'], ['ben', 'Ben'], ['cleo', 'Cleo'], ['dev', 'Dev'], ['eli', 'Eli'], ['fay', 'Fay'],
+        ['gus', 'Gus'], ['hana', 'Hana'], ['ivo', 'Ivo'], ['jun', 'Jun'], ['kai', 'Kai'], ['lea', 'Lea'],
+        ['mo', 'Mo'], ['nia', 'Nia'], ['oli', 'Oli'], ['pia', 'Pia'], ['quinn', 'Quinn'], ['raj', 'Raj'],
+        ['sol', 'Sol'], ['tea', 'Tea'], ['uma', 'Uma'], ['vik', 'Vik']
+    ];
+    const entities = people.map(([id, label]) => ({id, label, icon: label.slice(0, 2)}));
+
+    // [time, period, series, label, "id:weight id:weight …"] — events with the same time share a column
+    const story = [
+        [1, '2016', 'Core', 'Kickoff', 'ada:5 ben:3 cleo:2'],
+        [2, '2016', 'Docs', 'First docs', 'cleo:3 dev:2'],
+        [3, '2017', 'Core', 'v0.1', 'ada:4 ben:4 eli:2'],
+        [4, '2017', 'Plugins', 'Plugin API', 'dev:3 fay:3 gus:1'],
+        [5, '2017', 'Summit', 'Meetup #1', 'ada:1 ben:1 cleo:1 dev:1 fay:1 hana:1'],
+        [6, '2018', 'Core', 'v0.5', 'ada:3 ben:2 eli:3 hana:2'],
+        [6, '2018', 'Plugins', 'Theme pack', 'fay:4 gus:3 ivo:2'],
+        [7, '2018', 'Docs', 'Tutorials', 'cleo:2 dev:3 jun:2'],
+        [8, '2019', 'Core', 'v1.0', 'ada:5 ben:3 eli:4 hana:3 kai:2'],
+        [9, '2019', 'Summit', 'Summit 2019', 'ada:1 ben:1 cleo:1 eli:1 fay:1 gus:1 hana:1 ivo:1 jun:1 kai:1'],
+        [10, '2019', 'Mobile', 'Mobile beta', 'lea:4 mo:3 kai:2'],
+        [11, '2020', 'Plugins', 'Marketplace', 'fay:3 ivo:3 nia:2 gus:2'],
+        [11, '2020', 'Docs', 'Docs rewrite', 'jun:4 cleo:2 oli:2'],
+        [12, '2020', 'Core', 'v1.5', 'eli:4 hana:3 kai:3 ben:2'],
+        [13, '2021', 'Mobile', 'Mobile 1.0', 'lea:5 mo:4 pia:2'],
+        [14, '2021', 'Core', 'Perf sprint', 'eli:3 kai:4 quinn:2'],
+        [14, '2021', 'Plugins', 'Plugin SDK 2', 'ivo:4 nia:3 raj:2'],
+        [15, '2022', 'Summit', 'Summit 2022', 'ada:1 eli:1 hana:1 kai:1 lea:1 mo:1 nia:1 ivo:1 jun:1 oli:1 pia:1 quinn:1 raj:1'],
+        [16, '2022', 'Core', 'v2.0', 'eli:5 kai:4 quinn:3 hana:2 sol:2'],
+        [16, '2022', 'Docs', 'API reference', 'oli:3 jun:2 tea:2'],
+        [17, '2023', 'Mobile', 'Offline mode', 'mo:4 pia:3 sol:2'],
+        [17, '2023', 'Plugins', 'Theme pack 2', 'nia:3 raj:3 gus:2 uma:2'],
+        [18, '2023', 'Core', 'WebGL layer', 'kai:4 quinn:4 sol:3 vik:2'],
+        [19, '2024', 'Docs', 'Docs site', 'tea:4 oli:2 uma:2'],
+        [20, '2024', 'Core', 'v2.5', 'quinn:4 sol:3 vik:3 kai:2 eli:1'],
+        [20, '2024', 'Mobile', 'Tablet UI', 'pia:4 lea:2 uma:1'],
+        [21, '2025', 'Summit', 'Summit 2025', 'ada:1 ben:1 kai:1 mo:1 nia:1 pia:1 quinn:1 raj:1 sol:1 tea:1 uma:1 vik:1'],
+        [22, '2025', 'Core', 'v3.0', 'quinn:5 vik:4 sol:3 tea:2 ada:1'],
+        [23, '2026', 'Plugins', 'Plugin store', 'raj:4 uma:3 nia:2'],
+        [24, '2026', 'Core', 'Roadmap 4', 'quinn:3 vik:3 ada:2 ben:1']
+    ];
+
+    const events = [];
+    const appearances = [];
+    story.forEach(([time, period, series, label, members], i) => {
+        const id = `ev${i}`;
+        events.push({id, label, time, period, series});
+        for (const m of members.split(' ')) {
+            const [entity, w] = m.split(':');
+            appearances.push({entity, event: id, weight: Number(w)});
+        }
+    });
+
+    const theme = {
+        background: '#3a3f4f', band: '', grid: 'rgba(255,255,255,.06)', axis: 'rgba(255,255,255,.25)', text: '#c3c9d6',
+        title: '#e6e8ee', line: '#64bae4', hover: '#ffffff', select: '#ffffff', marker: '#f2c12e',
+        pill: 'rgba(255,255,255,.08)', pillBorder: 'rgba(255,255,255,.35)'
+    };
+    const lightTheme = {
+        background: '#eef0f4', band: '', grid: 'rgba(0,0,0,.06)', axis: 'rgba(0,0,0,.25)', text: '#4b5466',
+        title: '#3a4152', line: '#2f8fc4', hover: '#111827', select: '#111827', marker: '#e8590c',
+        pill: 'rgba(0,0,0,.04)', pillBorder: 'rgba(0,0,0,.3)'
+    };
+
+    const chart = new StorylineChart(document.getElementById('chart'), {
+        data: {events, entities, appearances},
+        theme
+    });
+
+    const status = document.getElementById('status');
+    const label = (id) => entities.find((e) => e.id === id)?.label ?? id;
+    let focus = {entity: null, series: null};
+    function showStatus(extra = '') {
+        const r = chart.getLayout();
+        const what = focus.entity !== null ? `focus: ${label(focus.entity)}` : focus.series !== null ? `series: ${focus.series}` : 'all events';
+        status.textContent = `${what} · ${r?.events.size ?? 0} events · ${r?.entities.size ?? 0} people · ${r?.crossings ?? 0} crossings${extra}`;
+    }
+
+    chart.on('filterChange', (f) => {
+        focus = f;
+        document.querySelectorAll('[data-series]').forEach((b) => b.classList.toggle('on', b.dataset.series === f.series));
+        showStatus();
+    });
+    chart.on('hover', ({entity, event}) => {
+        if (entity !== null) showStatus(` · hover: ${label(entity)}`);
+        else if (event !== null) showStatus(` · hover: ${events.find((e) => e.id === event)?.label}`);
+        else showStatus();
+    });
+
+    document.querySelectorAll('[data-series]').forEach((b) => b.addEventListener('click', () => {
+        chart.focusSeries(focus.series === b.dataset.series ? null : b.dataset.series);
+    }));
+    document.getElementById('reset').addEventListener('click', () => chart.reset());
+    document.getElementById('fit').addEventListener('click', () => chart.fit());
+
+    const themeBtn = document.getElementById('theme');
+    themeBtn.addEventListener('click', () => {
+        const light = themeBtn.classList.toggle('on');
+        document.body.classList.toggle('light', light);
+        chart.setTheme(light ? lightTheme : theme);
+    });
+
+    showStatus();
+})();
+</script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 /**
  * jsngraph/chart — scientific x/y charts on canvas: WaterfallChart (stacked
  * spectra with hover/select and a draggable slice marker), RadarChart
- * (spider / web chart) and LineChart.
+ * (spider / web chart), StorylineChart (who was where, when) and LineChart.
  * Importing this subpath alone keeps the other parts out of a bundle;
  * `jsngraph` itself still exports everything.
  */
@@ -11,6 +11,13 @@ export { RadarChart } from './chart/RadarChart';
 export type { RadarChartOptions, RadarChartEvents, RadarSeries } from './chart/RadarChart';
 export { RadarGeometry } from './chart/RadarGeometry';
 export type { RadarPoint } from './chart/RadarGeometry';
+export { StorylineChart } from './chart/StorylineChart';
+export type { StorylineChartOptions, StorylineChartEvents } from './chart/StorylineChart';
+export { StorylineLayout } from './chart/StorylineLayout';
+export type {
+    StoryEvent, StoryEntity, StoryAppearance, StorylineData, StorylineLayoutOptions, StoryColumn, PlacedEvent,
+    EntityPoint, PlacedEntity, StorylineResult
+} from './chart/StorylineLayout';
 export { LineChart } from './chart/LineChart';
 export type { LineChartOptions, LineChartEvents, LineSeries } from './chart/LineChart';
 export { ChartScale } from './chart/ChartScale';
