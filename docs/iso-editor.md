@@ -96,7 +96,36 @@ Decisions:
 
 ## Milestones
 
-Status: I1–I2 done (`examples/iso.html`).
+Status: I1–I3 done (`examples/iso.html`); part of I5 (live status, actors) and region walls done for
+`examples/factory.html`.
+
+Live view as built: `setItemStatus(id, {state: ok | warn | down | idle, message?, progress?})` — a status ring on the floor
+(dashed when idle, pulsing when down) plus a status line and a progress bar inside the item's label; `setConnectorStatus(id,
+{active?, color?})` — inactive = dimmed without dots; `clearStatus()`. Status is display state, re-applied after every
+render, never in the document. `setActors([{id, icon, u, v, color?, scale?, flip?, title?}])` places moving things at any
+floor point; elements are kept per id and only moved (cheap enough for every frame). Depth is a z-index from the floor
+position for everything upright (`IsoProjection.zOf(u, v)`: items, labels, actors with a small bias so a crate on a
+conveyor shows, wall pieces). `IsoRegion.wall` (tile heights) draws the two back edges as walls, one SVG per tile piece so
+each gets its own depth, `doors` leave gaps (`IsoProjection.walls`). `IsoItem.scale` / `flip` (flip = mirror, which turns
+an icon drawn along u onto the v axis).
+
+I3 as built: `IsoModel` (pure, `test/IsoModel.test.ts`) — `normalize`, `kindOf`, `occupied`, `freeTileNear`, `canMove` /
+`move` (waypoints and free ends travel along when the connector or both its items move), `remove` (with the connectors
+of removed items), `fragment` / `origin` / `paste` (fresh per-prefix ids, items onto the nearest free tile), `uid`,
+`resizeRegion`. The editor is no longer read-only by default. Modes `select | connect | region | text | pan` (keys V C R T
+H, `setMode`, `modeChange`). Select mode: click / Shift / Ctrl, Shift-drag lasso (items by centre, regions fully inside,
+texts, plus connectors whose items are both in), drag moves the selection tile by tile — a move onto a staying item keeps
+the last valid place, connectors re-route live —; a region only drags when already selected (otherwise the drag pans).
+One selected region shows corner handles, one selected connector shows end handles (drag = re-attach to an item or a
+tile), waypoint handles (drag, double-click removes) and a midpoint dot on segments ≥ 3 tiles (drag = new waypoint);
+handles live in their own floor SVG above every label, and the selected connector's label lets clicks through.
+Connect: drag or click-click from item/tile to item/tile with a live draft route. Region: drag out a rectangle. Text:
+click places "Text" and opens the inline editor. Double-click / F2 edit labels in place (an `<input>` over the label;
+an empty text removes it). Keys: arrows move, Delete, Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y, Ctrl+A, Ctrl+D duplicate, Esc
+cancels → select mode → clears. Clipboard: copy/cut/paste on the system clipboard as `{"jsngraph-iso": fragment}`, pasted
+at the pointer tile. Palette: `beginDrag(icon, pointerEvent, data)` (ghost at the current zoom, dashed target tile) /
+`dropAt`. Undo: `RectHistory` snapshots, one `change` event `{kind, ids}` per finished gesture or API call
+(`addItem/Connector/Region/Text`, `update*`, `remove`, `undo`/`redo`, `canUndo`/`canRedo`); `setDocument` resets it.
 
 I2 as built: `IsoRoute` A* runs over (tile, entry direction) states — 1 per step, `turnCost` 0.6 per turn, `blockedCost` 12
 per occupied tile crossed (the end tiles are free), never straight back, search box = the ends ± `margin` 8, a plain L

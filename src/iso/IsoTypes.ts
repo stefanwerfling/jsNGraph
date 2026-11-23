@@ -18,6 +18,10 @@ export interface IsoItem {
     base?: string;
     /** How high the label callout floats above the icon, in tile heights (default 1; 0 = label right on the icon). */
     labelHeight?: number;
+    /** Icon size relative to a tile (default 1), e.g. 0.6 for a pallet. */
+    scale?: number;
+    /** Mirror the icon left ↔ right (faces the other diagonal). */
+    flip?: boolean;
     meta?: unknown;
 }
 
@@ -49,6 +53,10 @@ export interface IsoRegion {
     to: IsoTile;
     color?: string;
     label?: string;
+    /** Walls along the two back edges (the far ones), in tile heights — rooms and halls seen as a cut-away. */
+    wall?: number;
+    /** Tiles inside the region along a back edge where the wall has a gap. */
+    doors?: IsoTile[];
 }
 
 /** Text printed on the floor, starting at a tile, running along x (to the lower right) or y (from the tile to the upper right). */
@@ -82,10 +90,64 @@ export interface IsoIconType {
     height?: number;
 }
 
+export type IsoStatusState = 'ok' | 'warn' | 'down' | 'idle';
+
+/** Live status of an item — display state, not document data. */
+export interface IsoItemStatus {
+    state: IsoStatusState;
+    /** Short line shown in the label (e.g. "running · 42/min"). */
+    message?: string;
+    /** 0…1, drawn as a bar in the label. */
+    progress?: number;
+}
+
+/** Live status of a connector. */
+export interface IsoConnectorStatus {
+    /** false = dimmed, no travelling dots. */
+    active?: boolean;
+    /** Override the line colour (e.g. by load). */
+    color?: string;
+}
+
+/**
+ * Something moving over the floor (forklift, worker, crate): drawn like an item
+ * but placed at any floor point and updated cheaply, every frame if needed.
+ * Not document data; no events.
+ */
+export interface IsoActor {
+    id: string;
+    icon: string;
+    /** Floor position in tiles (the centre of tile {x, y} is x + 0.5, y + 0.5). */
+    u: number;
+    v: number;
+    color?: string;
+    scale?: number;
+    flip?: boolean;
+    /** Tooltip. */
+    title?: string;
+}
+
+/** What a press on the floor does: select/move, draw a connector, draw a region, place a text, or always pan. */
+export type IsoMode = 'select' | 'connect' | 'region' | 'text' | 'pan';
+
+export type IsoChangeKind = 'add' | 'move' | 'remove' | 'update' | 'connect' | 'reroute' | 'region' | 'resize' | 'text'
+    | 'paste' | 'undo' | 'redo';
+
+/** One finished gesture or API edit (the document after it: `getDocument()`). */
+export interface IsoChange {
+    kind: IsoChangeKind;
+    /** Ids added, moved, removed or updated. */
+    ids: string[];
+}
+
 export interface IsoEditorOptions {
     document?: IsoDocument;
-    /** Only viewing in this milestone; editing arrives with I3. */
+    /** Viewer only: pan, zoom, select, click events — no editing (default false). */
     readOnly?: boolean;
+    /** Initial mode (default 'select'). */
+    mode?: IsoMode;
+    /** Undo steps kept (default 100). */
+    historySize?: number;
     theme?: 'dark' | 'light';
     /** Extra or replacing icon types. */
     icons?: IsoIconType[];
@@ -121,7 +183,9 @@ export interface IsoEditorEvents extends Record<string, unknown> {
     regionClick: IsoRegionEvent;
     /** A click on the empty floor, with the tile under the pointer. */
     floorClick: {tile: IsoTile; originalEvent: MouseEvent};
-    /** Selected item and connector ids. */
+    /** Selected ids (items, connectors, regions, texts). */
     selectionChange: string[];
+    change: IsoChange;
+    modeChange: IsoMode;
     viewportChange: {scale: number; offsetX: number; offsetY: number};
 }

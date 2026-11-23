@@ -46,6 +46,17 @@ describe('IsoProjection', () => {
         expect(t.y0).toBeLessThanOrEqual(0);
         expect(t.y1).toBeGreaterThanOrEqual(3);
     });
+    it('orders by depth and builds back walls with door gaps', () => {
+        expect(IsoProjection.zOf(3.5, 2.5)).toBeGreaterThan(IsoProjection.zOf(2.5, 2.5));
+        // the wall behind a tile sits between it and the tile behind it
+        const wallZ = IsoProjection.zOf(2.5, 2);
+        expect(wallZ).toBeLessThan(IsoProjection.zOf(2.5, 2.5));
+        expect(wallZ).toBeGreaterThan(IsoProjection.zOf(2.5, 1.5));
+        const w = IsoProjection.walls({x: 4, y: 3}, {x: 2, y: 1}, [{x: 3, y: 1}, {x: 2, y: 2}]);
+        expect(w.filter((p) => p.face === 'left').map((p) => p.u0)).toEqual([2, 4]);
+        expect(w.filter((p) => p.face === 'right').map((p) => p.v0)).toEqual([1, 3]);
+        expect(w.every((p) => p.face === 'left' ? p.v0 === 1 && p.v1 === 1 : p.u0 === 2 && p.u1 === 2)).toBe(true);
+    });
 });
 
 describe('IsoIcons', () => {

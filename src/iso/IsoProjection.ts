@@ -64,6 +64,35 @@ export class IsoProjection {
         return (t.x + t.y) * 1000 + (t.x - t.y);
     }
 
+    /** CSS z-index of something standing on floor point (u, v): nearer (larger u + v) covers farther. */
+    public static zOf(u: number, v: number, bias = 0): number {
+        return Math.round((u + v) * 32) + bias + 1000;
+    }
+
+    /**
+     * Wall pieces along the two back edges of a tile rectangle (inclusive), one
+     * per tile: along y = y0 (face towards +v, shown as the left face) and along
+     * x = x0 (face towards +u, the right face). `doors` leave gaps.
+     */
+    public static walls(from: IsoTile, to: IsoTile, doors: ReadonlyArray<IsoTile> = []): Array<{u0: number; v0: number; u1: number; v1: number; face: 'left' | 'right'}> {
+        const {x0, y0, x1, y1} = IsoProjection.rect(from, to);
+        const gap = new Set(doors.map((d) => `${d.x},${d.y}`));
+        const out: Array<{u0: number; v0: number; u1: number; v1: number; face: 'left' | 'right'}> = [];
+
+        for (let x = x0; x <= x1; x++) {
+            if (!gap.has(`${x},${y0}`)) {
+                out.push({u0: x, v0: y0, u1: x + 1, v1: y0, face: 'left'});
+            }
+        }
+        for (let y = y0; y <= y1; y++) {
+            if (!gap.has(`${x0},${y}`)) {
+                out.push({u0: x0, v0: y, u1: x0, v1: y + 1, face: 'right'});
+            }
+        }
+
+        return out;
+    }
+
     /** World bounds of a floor rectangle (tiles, inclusive) — its four corners. */
     public rectBounds(from: IsoTile, to: IsoTile): IsoBounds {
         const x0 = Math.min(from.x, to.x), x1 = Math.max(from.x, to.x) + 1;

@@ -33,6 +33,19 @@
     #detail dt { color: #8d96aa; }
     #detail dd { margin: 0; }
     .muted { color: #6f7890; }
+    .sep { width: 1px; height: 20px; background: #333b50; margin: 0 4px; }
+    button.mode.on { background: #8b7cf6; border-color: #8b7cf6; color: #fff; }
+    button:disabled { opacity: .4; cursor: default; }
+    .icons figure { touch-action: none; user-select: none; }
+    .insp { display: grid; grid-template-columns: 72px 1fr; gap: 6px 8px; align-items: center; }
+    .insp label { color: #8d96aa; }
+    .insp input, .insp select { width: 100%; box-sizing: border-box; background: #10131b; color: #d6dbe6; border: 1px solid #333b50;
+        border-radius: 4px; padding: 4px 6px; font: 12px system-ui, sans-serif; }
+    .insp input[type=color] { padding: 0 2px; height: 26px; }
+    .insp input[type=checkbox] { width: auto; }
+    body.light .insp input, body.light .insp select { background: #fff; color: #273142; border-color: #c8cfdc; }
+    kbd { font: 11px ui-monospace, monospace; border: 1px solid #333b50; border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; }
+    .keys { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; }
     .credit { color: #626b80; font-size: 11px; margin-top: 8px; }
 </style>
 </head>
@@ -48,33 +61,62 @@
     <p class="sub">Devices and services stand on a tile grid as 3D icons, regions mark zones on the floor, labels float above
         their items. Every icon is drawn by the library from a few isometric solids and can take any colour — no image files.
         Connectors are routed along the grid around the other items, with arrows lying on the floor, labels and travelling
-        dots. This is the viewer (milestones I1–I2); editing comes next.</p>
+        dots. It is an editor: drag icons in from the kit, move things around (connectors re-route live), draw connectors,
+        zones and floor text, edit labels in place, undo — or switch to <i>View</i> for a plain viewer.</p>
 
     <div class="bar">
+        <button id="edit" class="on">Editing</button>
+        <span class="sep"></span>
+        <button class="mode on" data-mode="select" title="V">Select</button>
+        <button class="mode" data-mode="connect" title="C">Connect</button>
+        <button class="mode" data-mode="region" title="R">Zone</button>
+        <button class="mode" data-mode="text" title="T">Text</button>
+        <button class="mode" data-mode="pan" title="H">Pan</button>
+        <span class="sep"></span>
+        <button id="undo" title="Ctrl+Z">Undo</button>
+        <button id="redo" title="Ctrl+Shift+Z">Redo</button>
+        <button id="dup" title="Ctrl+D">Duplicate</button>
+        <button id="del" title="Delete">Delete</button>
+        <span class="sep"></span>
+        <button id="save">Save</button>
+        <button id="load">Load</button>
+        <button id="reset">Reset</button>
+        <span class="sep"></span>
         <button id="theme">Light</button>
         <button id="grid" class="on">Grid</button>
-        <button id="fit">Fit</button>
-        <button id="hl-data">Highlight data tier</button>
-        <button id="hl-edge">Highlight edge</button>
-        <button id="hl-none">Clear</button>
         <button id="traffic" class="on">Traffic</button>
-        <button id="move">Move replica</button>
+        <button id="fit">Fit</button>
+        <span id="status" class="muted"></span>
     </div>
 
     <div class="layout">
         <div>
             <div id="iso"></div>
-            <p class="credit">Drag to pan, wheel to zoom, double-click the floor to fit, click an item to select it (Shift adds),
-                double-click an item to fly to it. Click a connector to see its route; “Move replica” shows connectors re-routing. Hover an icon on the right to light the items using it.</p>
+            <p class="credit">Drag an item to move it (snaps to tiles, never onto another item), drag the floor to pan, Shift-drag
+                for a lasso, wheel to zoom, double-click to edit a label. A selected connector shows handles: drag the small dot
+                on a segment to add a waypoint, drag a waypoint to move it (double-click removes it), drag an end to re-attach.
+                A selected zone has corner handles.</p>
         </div>
         <aside>
             <div class="box" id="detail">
-                <h2>Selection</h2>
-                <span class="muted">Click an item.</span>
+                <h2>Inspector</h2>
+                <span class="muted">Select something.</span>
             </div>
             <div class="box">
-                <h2>Icon kit</h2>
+                <h2>Icon kit — drag onto the floor</h2>
                 <div class="icons" id="icons"></div>
+            </div>
+            <div class="box">
+                <h2>Keys</h2>
+                <div class="keys">
+                    <span><kbd>V</kbd> <kbd>C</kbd> <kbd>R</kbd> <kbd>T</kbd> <kbd>H</kbd></span><span>select, connect, zone, text, pan</span>
+                    <span><kbd>←↑→↓</kbd></span><span>move the selection one tile</span>
+                    <span><kbd>Del</kbd></span><span>delete (connectors of deleted items go too)</span>
+                    <span><kbd>Ctrl</kbd> <kbd>Z</kbd> / <kbd>Y</kbd></span><span>undo / redo</span>
+                    <span><kbd>Ctrl</kbd> <kbd>C</kbd> <kbd>X</kbd> <kbd>V</kbd> <kbd>D</kbd></span><span>copy, cut, paste at the pointer, duplicate</span>
+                    <span><kbd>F2</kbd></span><span>edit the label</span>
+                    <span><kbd>Esc</kbd></span><span>cancel, back to select, clear</span>
+                </div>
             </div>
         </aside>
     </div>
@@ -146,11 +188,43 @@
         ]
     };
 
+    const STORE = 'jsngraph-iso-example';
     const iso = new IsoEditor(document.getElementById('iso'), {document: doc});
     window.iso = iso;
 
     // ---- toolbar ------------------------------------------------------------------------------------------------
     const $ = (id) => document.getElementById(id);
+    const status = (text) => { $('status').textContent = text; clearTimeout(status.t); status.t = setTimeout(() => $('status').textContent = '', 2500); };
+    const refresh = () => {
+        $('undo').disabled = !iso.canUndo;
+        $('redo').disabled = !iso.canRedo;
+        const none = iso.getSelection().length === 0 || iso.isReadOnly();
+        $('dup').disabled = none;
+        $('del').disabled = none;
+    };
+    document.querySelectorAll('button.mode').forEach((b) => b.onclick = () => { iso.setMode(b.dataset.mode); iso.element.focus(); });
+    iso.on('modeChange', (m) => document.querySelectorAll('button.mode').forEach((b) => b.classList.toggle('on', b.dataset.mode === m)));
+    $('edit').onclick = (e) => {
+        const on = e.target.classList.toggle('on');
+        iso.setReadOnly(!on);
+        e.target.textContent = on ? 'Editing' : 'View';
+        document.querySelectorAll('button.mode, #dup, #del, #undo, #redo').forEach((b) => b.style.visibility = on ? '' : 'hidden');
+        show(iso.getSelection());
+    };
+    $('undo').onclick = () => iso.undo();
+    $('redo').onclick = () => iso.redo();
+    $('dup').onclick = () => iso.duplicate();
+    $('del').onclick = () => iso.remove(iso.getSelection());
+    $('save').onclick = () => {
+        try { localStorage.setItem(STORE, JSON.stringify(iso.getDocument())); status('Saved to this browser.'); }
+        catch { status('Could not save.'); }
+    };
+    $('load').onclick = () => {
+        let saved = null;
+        try { saved = localStorage.getItem(STORE); } catch { /* storage blocked */ }
+        if (saved) { iso.setDocument(JSON.parse(saved)); iso.fit(); status('Loaded.'); } else status('Nothing saved yet.');
+    };
+    $('reset').onclick = () => { iso.setDocument(doc); iso.fit(); status('Back to the sample.'); };
     $('theme').onclick = (e) => {
         const light = document.body.classList.toggle('light');
         iso.setTheme(light ? 'light' : 'dark');
@@ -158,61 +232,77 @@
     };
     $('grid').onclick = (e) => { const on = e.target.classList.toggle('on'); iso.setGrid(on); };
     $('fit').onclick = () => iso.fit();
-    $('hl-data').onclick = () => iso.highlight(['cache', 'db', 'replica', 'objects', 'backup']);
-    $('hl-edge').onclick = () => iso.highlight(['internet', 'cdn', 'firewall', 'lb']);
-    $('hl-none').onclick = () => iso.highlight(null);
-    $('traffic').onclick = (e) => {
-        const on = e.target.classList.toggle('on');
-        for (const c of connectors.filter((c) => c.animated !== undefined)) iso.updateConnector(c.id, {animated: on});
-    };
-    // moving an item re-routes every connector touching it
-    let moved = false;
-    $('move').onclick = () => {
-        moved = !moved;
-        iso.updateItem('replica', {tile: moved ? {x: 17, y: 7} : {x: 17, y: 1}});
-    };
+    // traffic dots are display state here: the document keeps `animated`, the toggle hides the dots via CSS
+    const dotsOff = document.createElement('style');
+    dotsOff.textContent = '.no-traffic .iso-conn circle:not(.iso-conn-end) { display: none; }';
+    document.head.appendChild(dotsOff);
+    $('traffic').onclick = (e) => $('iso').classList.toggle('no-traffic', !e.target.classList.toggle('on'));
 
-    // ---- selection ----------------------------------------------------------------------------------------------
-    const byId = Object.fromEntries(items.map((i) => [i.id, i]));
+    // ---- inspector ----------------------------------------------------------------------------------------------
+    const esc = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+    const nameOf = (a) => a.item !== undefined ? (iso.get(a.item)?.label ?? a.item) : `tile ${a.tile.x}, ${a.tile.y}`;
+    const field = (label, key, value, type = 'text', extra = '') => `<label>${label}</label>` + (type === 'select'
+        ? `<select data-k="${key}">${extra.split(',').map((o) => `<option${o === value ? ' selected' : ''}>${o}</option>`).join('')}</select>`
+        : type === 'checkbox' ? `<input type="checkbox" data-k="${key}"${value ? ' checked' : ''}>`
+        : `<input type="${type}" data-k="${key}" value="${esc(value)}" ${extra}>`);
+    const toHex = (c, d) => /^#[0-9a-f]{6}$/i.test(c ?? '') ? c : d;
     const show = (ids) => {
+        refresh();
         const box = $('detail');
-        const sel = items.filter((i) => ids.includes(i.id));
-        const conns = connectors.filter((c) => ids.includes(c.id));
-        if (conns.length > 0 && sel.length === 0) {
-            const c = conns[0];
-            box.innerHTML = `<h2>Connector</h2><dl>
-                <dt>From</dt><dd><b>${byId[c.from.item].label}</b></dd>
-                <dt>To</dt><dd><b>${byId[c.to.item].label}</b></dd>
-                ${c.label ? `<dt>Label</dt><dd>${c.label}</dd>` : ''}
-                <dt>Style</dt><dd>${c.style ?? 'solid'} · arrows ${c.arrows ?? 'end'}${c.animated ? ' · animated' : ''}</dd>
-                <dt>Route</dt><dd>${iso.getRoute(c.id).map((t) => `${t.x},${t.y}`).join(' → ')}</dd></dl>`;
+        if (ids.length !== 1) {
+            box.innerHTML = `<h2>Inspector</h2><span class="muted">${ids.length ? ids.length + ' selected — drag to move them together.' : 'Select something.'}</span>`;
             return;
         }
-        if (sel.length === 0) {
-            box.innerHTML = '<h2>Selection</h2><span class="muted">Click an item.</span>';
-            return;
+        const id = ids[0], kind = iso.kindOf(id), x = iso.get(id);
+        const ro = iso.isReadOnly();
+        let rows = '';
+        if (kind === 'item') {
+            const icons = iso.getIconTypes().map((t) => t.id).join(',');
+            rows = field('Label', 'label', x.label) + field('Note', 'description', x.description)
+                + field('Icon', 'icon', x.icon, 'select', icons)
+                + field('Colour', 'color', toHex(x.color, iso.getIconTypes().find((t) => t.id === x.icon)?.color ?? '#8b7cf6'), 'color')
+                + field('Label up', 'labelHeight', x.labelHeight ?? 1, 'number', 'min="0" max="4" step="0.1"')
+                + `<label>Tile</label><span>${x.tile.x}, ${x.tile.y}</span>`;
+        } else if (kind === 'connector') {
+            rows = `<label>From</label><span>${esc(nameOf(x.from))}</span><label>To</label><span>${esc(nameOf(x.to))}</span>`
+                + field('Label', 'label', x.label) + field('Style', 'style', x.style ?? 'solid', 'select', 'solid,dashed,dotted')
+                + field('Arrows', 'arrows', x.arrows ?? 'end', 'select', 'end,both,none')
+                + field('Colour', 'color', toHex(x.color, '#9d8cff'), 'color')
+                + field('Width', 'width', x.width ?? 6, 'number', 'min="1" max="16" step="1"')
+                + field('Traffic', 'animated', x.animated, 'checkbox')
+                + `<label>Route</label><span>${iso.getRoute(id).map((t) => `${t.x},${t.y}`).join(' → ')}</span>`;
+        } else if (kind === 'region') {
+            rows = field('Label', 'label', x.label) + field('Colour', 'color', toHex(x.color, '#8b7cf6'), 'color')
+                + `<label>Tiles</label><span>${x.from.x},${x.from.y} → ${x.to.x},${x.to.y}</span>`;
+        } else if (kind === 'text') {
+            rows = field('Text', 'text', x.text) + field('Size', 'size', x.size ?? 0.4, 'number', 'min="0.1" max="2" step="0.05"')
+                + field('Axis', 'axis', x.axis ?? 'x', 'select', 'x,y') + field('Bold', 'bold', x.bold, 'checkbox');
         }
-        box.innerHTML = '<h2>Selection</h2>' + sel.map((i) => `<dl>
-            <dt>Label</dt><dd><b>${i.label}</b></dd>
-            <dt>Icon</dt><dd>${i.icon}</dd>
-            <dt>Tile</dt><dd>${i.tile.x}, ${i.tile.y}</dd>
-            <dt>Links</dt><dd>${connectors.filter((c) => c.from.item === i.id || c.to.item === i.id).length}</dd>
-            ${i.description ? `<dt>Note</dt><dd>${i.description}</dd>` : ''}</dl>`).join('<hr style="border:0;border-top:1px solid #262d3f">');
+        box.innerHTML = `<h2>${kind}</h2><div class="insp">${rows}</div>`;
+        box.querySelectorAll('[data-k]').forEach((el) => {
+            el.disabled = ro;
+            el.onchange = () => {
+                const v = el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value) : el.value;
+                const patch = {[el.dataset.k]: v};
+                ({item: iso.updateItem, connector: iso.updateConnector, region: iso.updateRegion, text: iso.updateText})[kind].call(iso, id, patch);
+            };
+        });
     };
     iso.on('selectionChange', show);
-    iso.on('itemDblClick', ({item}) => iso.focus(item.id, 1.3));
+    iso.on('change', () => show(iso.getSelection()));
 
-    // ---- icon kit -----------------------------------------------------------------------------------------------
-    $('icons').innerHTML = iso.getIconTypes().map((t) => `<figure data-icon="${t.id}">${IsoIcons.svg(t)}${t.label ?? t.id}</figure>`).join('');
+    // ---- icon kit = palette ---------------------------------------------------------------------------------------
+    $('icons').innerHTML = iso.getIconTypes().map((t) => `<figure data-icon="${t.id}" title="Drag onto the floor">${IsoIcons.svg(t)}${t.label ?? t.id}</figure>`).join('');
     $('icons').querySelectorAll('figure').forEach((f) => {
-        const using = items.filter((i) => i.icon === f.dataset.icon).map((i) => i.id);
-        f.onmouseenter = () => iso.highlight(using);
+        f.onpointerdown = (e) => iso.beginDrag(f.dataset.icon, e);
+        f.onmouseenter = () => iso.highlight(iso.getDocument().items.filter((i) => i.icon === f.dataset.icon).map((i) => i.id));
         f.onmouseleave = () => iso.highlight(null);
-        f.onclick = () => { if (using.length) { iso.select(using); iso.focus(using[0]); } };
     });
 
+    show([]);
     const q = new URLSearchParams(location.search);
     if (q.get('theme') === 'light') $('theme').click();
+    if (q.get('view') === '1') $('edit').click();
 })();
 </script>
 </body>

@@ -8,6 +8,8 @@ export { IsoProjection } from './iso/IsoProjection';
 export type { IsoBounds } from './iso/IsoProjection';
 export { IsoIcons } from './iso/IsoIcons';
 export type { IsoShades } from './iso/IsoIcons';
+export { IsoModel } from './iso/IsoModel';
+export type { IsoFragment, IsoKind } from './iso/IsoModel';
 export { IsoRoute } from './iso/IsoRoute';
 export type { IsoRouteOptions, IsoRoutePoint } from './iso/IsoRoute';
 export { IsoStyles } from './iso/IsoStyles';
@@ -25,5 +27,12 @@ export type {
     IsoItemEvent,
     IsoRegionEvent,
     IsoConnectorEvent,
-    IsoEditorEvents
+    IsoEditorEvents,
+    IsoMode,
+    IsoChange,
+    IsoChangeKind,
+    IsoStatusState,
+    IsoItemStatus,
+    IsoConnectorStatus,
+    IsoActor
 } from './iso/IsoTypes';
