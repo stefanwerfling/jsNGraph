@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — social sky</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    html, body { background: #060a18; }
+    main { max-width: 1480px; margin: 0 auto; padding: 12px 16px 28px; color: #c9d2ee; font-family: system-ui, sans-serif; }
+    h1 { font-size: 20px; margin: 4px 0 2px; font-weight: 600; }
+    .sub { margin: 0 0 12px; color: #8590b4; font-size: 13px; max-width: 1040px; line-height: 1.45; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 16px; align-items: start; }
+    @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+    #sky { height: min(80vh, 800px); min-height: 520px; border: 1px solid #18203d; border-radius: 6px; }
+    .timebar { display: flex; gap: 10px; align-items: center; margin-top: 10px; font-size: 12px; color: #8590b4; }
+    .timebar input { flex: 1; accent-color: #9fb4ff; }
+    #seasons { position: relative; height: 16px; margin: 2px 0 0 86px; font-size: 10px; color: #5d6890; }
+    #seasons span { position: absolute; transform: translateX(-50%); }
+    aside { display: flex; flex-direction: column; gap: 12px; font-size: 12px; }
+    .box { background: #0c1230; border: 1px solid #18203d; border-radius: 6px; padding: 10px 12px; }
+    .box h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #8590b4; margin: 0 0 8px; font-weight: 600; }
+    .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .row + .row { margin-top: 6px; }
+    button, .chip { background: #060a18; color: #c9d2ee; border: 1px solid #27305a; border-radius: 4px; padding: 4px 9px;
+        font: 12px system-ui, sans-serif; cursor: pointer; }
+    button.on { border-color: #9fb4ff; color: #fff; background: #1a2350; }
+    .chip { display: inline-flex; gap: 6px; align-items: center; }
+    .chip i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+    .chip.off { opacity: .35; }
+    .row input[type=range] { flex: 1; accent-color: #9fb4ff; }
+    .val { font: 600 12px ui-monospace, monospace; color: #fff; min-width: 34px; }
+    .muted { color: #5d6890; }
+    #units div { display: flex; justify-content: space-between; padding: 3px 4px; border-top: 1px solid #18203d; cursor: default; }
+    #units div:hover { background: #141c44; }
+    #units i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    #card .head { display: flex; gap: 10px; align-items: center; }
+    #card svg.fin { width: 110px; height: 80px; flex: none; background: #060a18; border: 1px solid #18203d; border-radius: 4px; }
+    #card .name { font-size: 16px; font-weight: 600; color: #fff; }
+    #card svg.life { width: 100%; height: 34px; display: block; margin-top: 8px; }
+    #card ol { margin: 6px 0 0; padding-left: 18px; }
+    #card li { cursor: pointer; padding: 1px 0; }
+    #card li:hover { color: #fff; }
+    #card .bar { display: inline-block; height: 6px; background: #9fb4ff; border-radius: 3px; margin-left: 6px; vertical-align: middle; opacity: .7; }
+    .credit { color: #4c5680; font-size: 11px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="encounters.html">Encounter rose</a>
+    <a href="socialsky.html" class="active">Social sky</a>
+</nav>
+
+<main>
+    <h1>Social sky — who swims with whom</h1>
+    <p class="sub">Every individual recognised by its dorsal fin is a star; the more often it was resighted, the brighter it
+        burns. Animals seen together again and again are joined into constellations (half-weight index, the usual
+        association measure for photo-ID data) and tight groups become named social units. Drag the time: stars rise as
+        animals are first photographed, calves appear next to their mothers (gold dashes), the latest encounters ring,
+        animals not seen for two seasons fade.</p>
+    <div class="layout">
+        <div>
+            <div id="sky"></div>
+            <div class="timebar">
+                <button id="play">▶ Play</button>
+                <input id="time" type="range" min="0" max="1000" value="1000">
+            </div>
+            <div id="seasons"></div>
+            <p class="credit">Hover a star for its companions, a dotted outline for its unit; click a star for its card; wheel
+                zooms (names appear), drag pans, double-click resets. Individuals, fins, units and every encounter are invented.</p>
+        </div>
+        <aside>
+            <div class="box">
+                <h2>Sky</h2>
+                <div class="row" id="species"></div>
+                <div class="row"><span class="muted">lines from HWI</span><input id="min" type="range" min="5" max="90" value="25"><span class="val" id="min-v">0.25</span></div>
+                <div class="row"><span class="muted">unit from HWI</span><input id="unit" type="range" min="20" max="95" value="50"><span class="val" id="unit-v">0.50</span></div>
+            </div>
+            <div class="box" id="card"><h2>Individual</h2><span class="muted">Click a star.</span></div>
+            <div class="box"><h2>Social units <span class="muted" id="unit-count"></span></h2><div id="units"></div></div>
+        </aside>
+    </div>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+(() => {
+    const {AssociationSky} = window.JSNGraph;
+
+    let seed = 2024;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const pick = (a) => a[Math.floor(rnd() * a.length)];
+    const DAY = 86400000;
+
+    // ---- an invented photo-ID catalogue -----------------------------------------------------------------------
+    const SPECIES = [
+        {id: 'tt', name: 'Bottlenose dolphin', color: '#7cc4ff', code: 'TT', units: [6, 9, 5, 7, 8], transients: 9, weight: 5},
+        {id: 'gm', name: 'Short-finned pilot whale', color: '#c79bff', code: 'GM', units: [12, 10, 14, 9], transients: 6, weight: 4},
+        {id: 'gg', name: "Risso's dolphin", color: '#ffd9a0', code: 'GG', units: [5, 6], transients: 4, weight: 2}
+    ];
+    const UNIT_NAMES = ['The Lantern', 'Three Sisters', 'Old Harbour', 'Saw-tooth', 'The Ferry', 'Long Reef', 'Salt Crown',
+        'Grey Choir', 'Driftwood', 'The Kestrels', 'Ember Bank'];
+    const NICK = ['Notch', 'Hook', 'Pale Tip', 'Saw', 'Ragged', 'Comma', 'Twin Nick', 'Scoop', 'Ladder', 'Bite', 'Feather', 'Stub',
+        'Crescent', 'Zip', 'Lace', 'Pebble', 'Flag', 'Tally', 'Rake', 'Chisel', 'Wren', 'Spur', 'Knot', 'Sickle', 'Dent', 'Fork',
+        'Ripple', 'Shard', 'Moth', 'Clef', 'Rune', 'Gap', 'Quill', 'Tern', 'Ash', 'Brim', 'Echo', 'Fable', 'Gale', 'Hush'];
+    const START = Date.UTC(2019, 2, 1), YEARS = 7;
+
+    const individuals = [];
+    const units = [];       // {name, species, members[], from, until, alliance}
+    let nick = 0;
+    const newInd = (sp, extra = {}) => {
+        const n = individuals.filter((i) => i.category === sp.id).length + 1;
+        const ind = {id: `${sp.code}-${String(n).padStart(3, '0')}`, name: NICK[nick++ % NICK.length] + (nick > NICK.length ? ' II' : ''),
+            category: sp.id, fin: Math.floor(rnd() * 1e9), ...extra};
+        individuals.push(ind);
+        return ind;
+    };
+    let un = 0;
+    for (const sp of SPECIES) {
+        for (const size of sp.units) {
+            // some units are around from the start, some arrive later, one leaves
+            const from = START + (rnd() < 0.6 ? 0 : Math.floor(rnd() * 3) * 365 * DAY);
+            const until = rnd() < 0.18 ? from + (2 + Math.floor(rnd() * 2)) * 365 * DAY : Infinity;
+            const u = {name: UNIT_NAMES[un++], species: sp, members: [], from, until, core: 0.6 + rnd() * 0.3};
+            for (let k = 0; k < size; k++) {
+                const ind = newInd(sp, {unit: u.name});
+                ind.presence = 0.55 + rnd() * 0.4;          // how faithfully it travels with its unit
+                u.members.push(ind);
+            }
+            // calves: born in a later season to a unit member, then with the mother
+            const calves = Math.floor(rnd() * 3);
+            for (let c = 0; c < calves; c++) {
+                const mother = pick(u.members.filter((m) => !m.mother));
+                const born = Math.max(from, START) + (1 + Math.floor(rnd() * (YEARS - 2))) * 365 * DAY + Math.floor(rnd() * 120) * DAY;
+                const calf = newInd(sp, {unit: u.name, mother: mother.id, born, presence: 0.95});
+                u.members.push(calf);
+            }
+            units.push(u);
+        }
+        for (let k = 0; k < sp.transients; k++) newInd(sp, {transient: true});
+    }
+
+    // ---- encounters: trips through the seasons ------------------------------------------------------------------------
+    const encounters = [];
+    for (let y = 0; y < YEARS; y++) {
+        for (let d = 0; d < 250; d += 2 + Math.floor(rnd() * 3)) {
+            const t = Date.UTC(2019 + y, 2, 1) + d * DAY + 10 * 3600000;
+            const n = Math.floor(rnd() * 2.6);
+            for (let k = 0; k < n; k++) {
+                const sp = SPECIES[pickW(SPECIES.map((s) => s.weight))];
+                const here = units.filter((u) => u.species === sp && t >= u.from && t < u.until);
+                const ids = new Set();
+                if (here.length && rnd() < 0.85) {
+                    const u = pick(here);
+                    const present = (u2) => u2.members.forEach((m) => {
+                        if (m.born !== undefined && t < m.born) return;
+                        if (m.mother && ids.has(m.mother)) { if (rnd() < 0.95) ids.add(m.id); return; }
+                        if (rnd() < m.presence * u2.core) ids.add(m.id);
+                    });
+                    present(u);
+                    // calves follow mothers: second pass catches mothers added after their calf was checked
+                    u.members.filter((m) => m.mother && ids.has(m.mother) && (m.born === undefined || t >= m.born)).forEach((m) => ids.add(m.id));
+                    // alliances: two units of the same species meet now and then
+                    if (here.length > 1 && rnd() < 0.14) present(pick(here.filter((x) => x !== u)));
+                }
+                if (rnd() < 0.3) {
+                    const tr = individuals.filter((i) => i.transient && i.category === sp.id);
+                    ids.add(pick(tr).id);
+                }
+                if (ids.size) encounters.push({t: t + k * 5400000, ids: [...ids]});
+            }
+        }
+    }
+    function pickW(ws) { let r = rnd() * ws.reduce((a, b) => a + b, 0); for (let i = 0; i < ws.length; i++) if ((r -= ws[i]) <= 0) return i; return 0; }
+    const known = new Set(encounters.flatMap((e) => e.ids));
+    const catalogue = individuals.filter((i) => known.has(i.id));
+    const byId = new Map(catalogue.map((i) => [i.id, i]));
+
+    // ---- sky ---------------------------------------------------------------------------------------------------------
+    const fmt = (t) => new Date(t).toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC'});
+    const sky = new AssociationSky(document.getElementById('sky'), {
+        individuals: catalogue, encounters,
+        categories: SPECIES.map(({id, name, color}) => ({id, name, color})),
+        formatTime: fmt,
+        unitName: (members) => {
+            const votes = new Map();
+            members.forEach((m) => { const u = byId.get(m)?.unit; if (u) votes.set(u, (votes.get(u) ?? 0) + 1); });
+            const best = [...votes].sort((a, b) => b[1] - a[1])[0];
+            return best && best[1] >= 2 ? best[0] : null;
+        }
+    });
+    window.sky = sky;
+
+    // ---- time ------------------------------------------------------------------------------------------------------------
+    const [t0, t1] = sky.getRange();
+    const slider = document.getElementById('time');
+    const seasons = document.getElementById('seasons');
+    for (let y = 0; y < YEARS; y++) {
+        const t = Date.UTC(2019 + y, 6, 1);
+        seasons.insertAdjacentHTML('beforeend', `<span style="left:${(t - t0) / (t1 - t0) * 100}%">${2019 + y}</span>`);
+    }
+    const setT = (t) => { sky.setTime(t); panels(); };
+    slider.addEventListener('input', () => setT(t0 + (t1 - t0) * slider.value / 1000));
+    let timer = null;
+    const playBtn = document.getElementById('play');
+    playBtn.addEventListener('click', () => {
+        if (timer) { clearInterval(timer); timer = null; playBtn.textContent = '▶ Play'; playBtn.classList.remove('on'); return; }
+        if (Number(slider.value) >= 1000) slider.value = 0;
+        playBtn.textContent = '❚❚ Pause'; playBtn.classList.add('on');
+        timer = setInterval(() => {
+            const v = Math.min(1000, Number(slider.value) + 2);
+            slider.value = v; setT(t0 + (t1 - t0) * v / 1000);
+            if (v >= 1000) playBtn.click();
+        }, 50);
+    });
+
+    // ---- controls ---------------------------------------------------------------------------------------------------------
+    const spBox = document.getElementById('species');
+    for (const sp of SPECIES) {
+        const c = document.createElement('span');
+        c.className = 'chip';
+        c.innerHTML = `<i style="background:${sp.color}"></i>${sp.name}`;
+        c.addEventListener('click', () => { c.classList.toggle('off'); sky.setCategoryVisible(sp.id, !c.classList.contains('off')); });
+        spBox.appendChild(c);
+    }
+    const min = document.getElementById('min'), unit = document.getElementById('unit');
+    min.addEventListener('input', () => { sky.setMinHwi(min.value / 100); document.getElementById('min-v').textContent = (min.value / 100).toFixed(2); });
+    unit.addEventListener('input', () => { sky.setUnitHwi(unit.value / 100); document.getElementById('unit-v').textContent = (unit.value / 100).toFixed(2); panels(); });
+
+    // ---- a dorsal fin drawn from the individual's marks -------------------------------------------------------------------
+    function fin(ind, color) {
+        let s = ind.fin || 1;
+        const r = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+        const tipX = 66 + r() * 16, tipY = 10 + r() * 10, back = 96 + r() * 8;
+        const pts = [];
+        for (let i = 0; i <= 40; i++) {
+            const u = i / 40;
+            // trailing edge: tip → concave → base
+            const x = (1 - u) * (1 - u) * tipX + 2 * u * (1 - u) * (tipX - 6 + r() * 0.4) + u * u * back;
+            const y = (1 - u) * (1 - u) * tipY + 2 * u * (1 - u) * (52 + r() * 0.4) + u * u * 72;
+            pts.push([x, y]);
+        }
+        const notches = 1 + Math.floor(r() * 4);
+        for (let k = 0; k < notches; k++) {
+            const c = 4 + Math.floor(r() * 30), depth = 3 + r() * 6, w = 1 + Math.floor(r() * 2);
+            for (let j = -w; j <= w; j++) { const p = pts[c + j]; if (p) p[0] -= depth * (1 - Math.abs(j) / (w + 1)); }
+        }
+        const lead = `M8,72 C30,66 ${tipX - 30},${tipY + 22} ${tipX},${tipY}`;
+        const trail = pts.map((p) => `L${p[0].toFixed(1)},${p[1].toFixed(1)}`).join('');
+        return `<svg class="fin" viewBox="0 0 110 80"><path d="${lead}${trail}Z" fill="${color}" fill-opacity="0.25" stroke="${color}" stroke-width="1.4"/>
+            <line x1="2" y1="72.5" x2="108" y2="72.5" stroke="#27305a"/></svg>`;
+    }
+
+    // ---- individual card ------------------------------------------------------------------------------------------------------
+    let selected = null;
+    const card = document.getElementById('card');
+    function showCard(id) {
+        selected = id;
+        const info = id && sky.getInfo(id);
+        if (!info) { card.innerHTML = '<h2>Individual</h2><span class="muted">Click a star.</span>'; return; }
+        const ind = info.individual, sp = SPECIES.find((s) => s.id === ind.category);
+        const seen = sky.getEncounters().filter((e) => e.ids.includes(id));
+        const life = seen.map((e) => {
+            const x = (e.t - t0) / (t1 - t0) * 300;
+            const company = e.ids.length - 1;
+            return `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${26 - Math.min(20, 4 + company * 1.6)}" y2="26" stroke="${sp.color}" stroke-opacity="0.75"/>`;
+        }).join('');
+        const years = Array.from({length: YEARS}, (_, y) => {
+            const x = (Date.UTC(2019 + y, 0, 1) - t0) / (t1 - t0) * 300;
+            return `<line x1="${x}" x2="${x}" y1="4" y2="30" stroke="#27305a"/><text x="${x + 2}" y="33" fill="#5d6890" font-size="7">${2019 + y}</text>`;
+        }).join('');
+        const nowX = (sky.getTime() - t0) / (t1 - t0) * 300;
+        const mom = ind.mother && byId.get(ind.mother);
+        const kids = catalogue.filter((c) => c.mother === id);
+        card.innerHTML = `<h2>Individual</h2>
+            <div class="head">${fin(ind, sp.color)}<div>
+                <div class="name">${ind.name}</div>
+                <div>${ind.id} · <span style="color:${sp.color}">${sp.name}</span></div>
+                <div class="muted">${info.unitName ? 'unit ' + info.unitName : ind.transient ? 'transient — no unit' : 'no unit at this threshold'}</div>
+                <div>${info.tally.sightings}× seen · ${fmt(info.tally.first)} – ${fmt(info.tally.last)}</div>
+                ${mom ? `<div class="muted">calf of ${mom.name}</div>` : ''}${kids.length ? `<div class="muted">mother of ${kids.map((k) => k.name).join(', ')}</div>` : ''}
+            </div></div>
+            <svg class="life" viewBox="0 0 300 36" preserveAspectRatio="none">${years}${life}
+                <line x1="${nowX}" x2="${nowX}" y1="0" y2="36" stroke="#fff" stroke-opacity="0.5" stroke-dasharray="2 2"/></svg>
+            <span class="muted">sightings (taller = bigger company)</span>
+            <ol>${info.associates.slice(0, 6).map((a) => {
+                const o = byId.get(a.id);
+                return `<li data-id="${a.id}">${o?.name ?? a.id} <span class="muted">${a.id}</span> · ${a.hwi.toFixed(2)} (${a.together}×)<span class="bar" style="width:${Math.round(a.hwi * 60)}px"></span></li>`;
+            }).join('') || '<span class="muted">nobody yet</span>'}</ol>`;
+        card.querySelectorAll('li[data-id]').forEach((li) => {
+            li.addEventListener('click', () => { sky.select(li.dataset.id); showCard(li.dataset.id); });
+            li.addEventListener('mouseenter', () => sky.highlight([id, li.dataset.id]));
+            li.addEventListener('mouseleave', () => sky.highlight(null));
+        });
+    }
+    sky.on('click', (info) => showCard(info ? info.individual.id : null));
+
+    // ---- units list -------------------------------------------------------------------------------------------------------
+    function panels() {
+        const us = sky.getUnits();
+        document.getElementById('unit-count').textContent = `(${us.length})`;
+        const box = document.getElementById('units');
+        box.innerHTML = '';
+        for (const u of us) {
+            const sp = SPECIES.find((s) => s.id === byId.get(u.members[0])?.category);
+            const row = document.createElement('div');
+            row.innerHTML = `<span><i style="background:${sp?.color}"></i>${u.name ?? 'unnamed'}</span><span class="muted">${u.members.length} animals</span>`;
+            row.addEventListener('mouseenter', () => sky.highlight(u.members));
+            row.addEventListener('mouseleave', () => sky.highlight(null));
+            box.appendChild(row);
+        }
+        if (selected) showCard(selected);
+    }
+    panels();
+    const start = new URLSearchParams(location.search).get('t');
+    if (start !== null) { slider.value = Number(start); setT(t0 + (t1 - t0) * Number(start) / 1000); }
+})();
+</script>
+</body>
+</html>

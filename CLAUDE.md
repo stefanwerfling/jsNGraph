@@ -316,6 +316,19 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   season of 7 species with correlated random-walk models — bow-riders pulled back, sperm whales on long dives — filters
   for species/reaction/behaviour/Beaufort, species table, detail with a speed line).
 
+  `AssociationSky` (canvas, `jsngraph/chart`): photo-ID association network as a night sky. `individuals` (category,
+  optional `mother`), `encounters` (`t`, `ids` seen together). Stars = individuals seen up to `time` (radius ∝ log
+  sightings, spikes from 8, fade when not seen for `fadeAfter`), lines = pairs with half-weight index ≥ `minHwi`
+  (width/alpha by HWI), mother → calf gold dashes, units = connected groups with HWI ≥ `unitHwi` and ≥ 2 co-sightings,
+  drawn as dotted padded hulls with `unitName(members)`; encounters within `flare` ring; milky-way dust twinkles. Layout
+  is one deterministic force layout over *all* encounters (attraction ∝ HWI², mother pairs count as 1), so stars keep
+  their place while time moves. Hover star (tooltip, focus on its associates) / unit hull (`unitHover`), click selects,
+  wheel zoom at pointer (names from zoom 1.8), drag pan, `highlight`, `setCategoryVisible`, `getInfo` (tally,
+  associates, unit), `getUnits`, `getEncounters`. Pure `AssociationIndex` (`hwi`, `tally` until t, `pairs`, `units`
+  union-find, `layout`, `hull`; `test/Association.test.ts`). Example: `examples/socialsky.html` (invented catalogue of
+  three species, 11 units arriving/leaving, alliances, transients, calves; time slider + play, HWI sliders, an
+  individual card with a dorsal fin drawn from its seed, sighting lifeline and associates, unit list).
+
 - `records/` — `RecordGraph` (subpath `jsngraph/records`): cards with a header (icon, title, subtitle) and a table of
   rows (`label`, `value`), links run row → row (`RecordLink {from: {node,row}, to}`), cards may sit in group frames
   (`RecordGroup`, `collapsed` folds a group into one box; merged links keep all `ids`). Pure `RecordLayout`: columns =

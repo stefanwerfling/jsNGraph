@@ -78,3 +78,9 @@ export type {
 } from './chart/EncounterRose';
 export { EncounterGeometry } from './chart/EncounterGeometry';
 export type { EncounterFix, AlignedFix } from './chart/EncounterGeometry';
+export { AssociationSky } from './chart/AssociationSky';
+export type {
+    AssociationSkyOptions, AssociationSkyEvents, SkyIndividual, SkyCategory, SkyEncounter, SkyIndividualInfo
+} from './chart/AssociationSky';
+export { AssociationIndex } from './chart/AssociationIndex';
+export type { AssociationEncounter, AssociationPair, AssociationTally } from './chart/AssociationIndex';
