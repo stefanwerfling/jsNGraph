@@ -204,6 +204,18 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   `focusSeries`, double-click background = `reset`; DOM legend chips. Example: `examples/storyline.html`
   (made-up open-source project, 22 people × 30 events).
 
+- `records/` — `RecordGraph` (subpath `jsngraph/records`): cards with a header (icon, title, subtitle) and a table of
+  rows (`label`, `value`), links run row → row (`RecordLink {from: {node,row}, to}`), cards may sit in group frames
+  (`RecordGroup`, `collapsed` folds a group into one box; merged links keep all `ids`). Pure `RecordLayout`: columns =
+  longest path after DFS cycle breaking (`column` overrides), lone cards / frames / collapsed boxes are blocks packed
+  per column like a skyline (a frame never covers a foreign card), ordering passes by partner mean keep the pass with
+  the shortest vertical link span; a collapsed box sits right of its feeders. Forward links are curves, backward ones
+  orthogonal lanes under everything. `RecordQuery`: `lineage` (row up- + downstream, links only, no sibling spill),
+  `linkLineage`, `produce` (+1, inputs −1, refuses when one is ≤ 0). Chart: click row/link = highlight flow (again =
+  clear), `produce: true` shows "+" on the hovered row, values ≤ 0 are alerts, `RecordIcons` (15 line glyphs or a
+  drawer), `RecordTheme` light/dark, Camera pan/zoom/fit. `test/Records.test.ts`. Example: `examples/records.html`
+  (made-up bike supply chain with a recycling loop).
+
 ## Commands
 
 - `npm run dev` — `tsup --watch`. `npm run build` — `dist/index.{js,cjs,d.ts}` (npm) +

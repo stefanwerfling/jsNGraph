@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — record graph</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    body { background: #e9eef2; }
+    main { padding: 14px 16px 16px; display: grid; grid-template-columns: 1fr 280px; gap: 14px; }
+    .stage { position: relative; height: calc(100vh - 80px); min-height: 560px; border-radius: 10px; overflow: hidden;
+        box-shadow: 0 1px 4px rgba(20,40,60,.15); }
+    #chart { position: absolute; inset: 0; }
+    .toolbar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; padding: 4px;
+        background: #fff; border-radius: 8px; box-shadow: 0 1px 6px rgba(20,40,60,.2); z-index: 2; }
+    .toolbar button { border: 0; background: transparent; color: #1d2733; border-radius: 6px; padding: 4px 9px; cursor: pointer;
+        font: 500 12px Inter, system-ui, sans-serif; }
+    .toolbar button:hover { background: #eef4f8; }
+    .toolbar .sep { width: 1px; background: #d5dde5; margin: 2px 3px; }
+    aside { color: #2a3542; font: 13px/1.5 Inter, system-ui, sans-serif; }
+    aside h1 { font-size: 24px; color: #e8175d; margin: 4px 0 10px; font-weight: 700; }
+    aside p { margin: 0 0 10px; }
+    aside code { font-size: 12px; }
+    #log { margin-top: 14px; font: 12px ui-monospace, monospace; color: #44505e; white-space: pre-line; }
+    body.dark { background: #0e1319; }
+    body.dark aside { color: #c9d3de; }
+    body.dark .toolbar { background: #1f2731; }
+    body.dark .toolbar button { color: #e2e8ef; }
+    body.dark .toolbar button:hover { background: #28323e; }
+    body.dark #log { color: #95a3b4; }
+    @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="storyline.html">Storyline</a>
+    <a href="records.html" class="active">Record graph</a>
+</nav>
+
+<main>
+    <div class="stage">
+        <div class="toolbar">
+            <button id="zoomOut" title="Zoom out">−</button>
+            <button id="zoomIn" title="Zoom in">+</button>
+            <button id="fit" title="Fit">Fit</button>
+            <span class="sep"></span>
+            <button id="clear">Clear highlights</button>
+            <button id="fold">Collapse all</button>
+            <span class="sep"></span>
+            <button id="theme">Dark</button>
+        </div>
+        <div id="chart"></div>
+    </div>
+    <aside>
+        <h1>Bike supply chain</h1>
+        <p>A (made-up) bicycle supply chain: every card is a site with the items it makes and their stock. Links run
+            from an item to the items made from it — ore to steel to tubes to frames to bikes, and worn parts back to
+            the smelter through the recycling yard.</p>
+        <p><b>Click an item or a link</b> to light its whole flow, up- and downstream. Click it again (or the
+            background) to clear.</p>
+        <p><b>Hover an item and press +</b> to make one more: its stock rises, every input drops by one. When an
+            input reaches 0 it turns red and production stops — keep the chain running.</p>
+        <p>The <b>−</b> in a frame's title bar folds the group into one box. Wheel zooms, drag pans, double-click fits.</p>
+        <p><code>new RecordGraph(el, {data, produce: true})</code> — canvas, no dependencies.</p>
+        <div id="log"></div>
+    </aside>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+(() => {
+    const {RecordGraph} = window.JSNGraph;
+
+    // [id, title, subtitle, icon, group, [[rowId, label, stock], …]]
+    const sites = [
+        ['mine', 'Ore Mine', 'Kiruna, Sweden', 'mine', null, [['ore', 'iron ore', 6], ['bauxite', 'bauxite', 5]]],
+        ['rubber', 'Rubber Estate', 'Penang, Malaysia', 'leaf', null, [['latex', 'latex', 4]]],
+        ['chem', 'Chemical Works', 'Ludwigshafen', 'drop', null, [['paint', 'paint', 5], ['lube', 'lubricant', 3]]],
+        ['cells', 'Cell Import', 'Rotterdam', 'battery', null, [['cells', 'battery cells', 4]]],
+        ['smelter', 'Smelter', 'Duisburg', 'factory', 'metal', [['steel', 'steel', 5], ['alu', 'aluminium', 4]]],
+        ['tubes', 'Tube Mill', 'Hagen', 'gear', 'metal', [['stube', 'steel tubes', 3], ['atube', 'alu tubes', 4], ['spokes', 'spokes', 6]]],
+        ['frames', 'Frame Shop', 'Bielefeld', 'wrench', 'parts', [['sframe', 'steel frame', 3], ['aframe', 'alu frame', 2]]],
+        ['tyres', 'Tyre Factory', 'Hanover', 'wheel', 'parts', [['tyre', 'tyres', 5], ['inner', 'inner tubes', 4]]],
+        ['wheels', 'Wheel Works', 'Schweinfurt', 'wheel', 'parts', [['cwheel', 'city wheels', 4], ['rwheel', 'race wheels', 0]]],
+        ['drive', 'Drivetrain', 'Schweinfurt', 'gear', 'parts', [['chain', 'chains', 5], ['gears', 'gear sets', 3]]],
+        ['pack', 'Battery Pack', 'Zwickau', 'bolt', 'parts', [['packs', 'battery packs', 2]]],
+        ['city', 'City Bike Plant', 'Leipzig', 'factory', 'assembly', [['citybike', 'city bike', 3]]],
+        ['race', 'Race Bike Plant', 'Stuttgart', 'factory', 'assembly', [['racebike', 'race bike', 1]]],
+        ['ebike', 'E-Bike Plant', 'Dresden', 'factory', 'assembly', [['ebike', 'e-bike', 2]]],
+        ['hub', 'Central Warehouse', 'Kassel', 'warehouse', 'dist', [['boxed', 'bikes boxed', 4], ['spares', 'spare parts', 5]]],
+        ['port', 'Port Terminal', 'Hamburg', 'ship', 'dist', [['crates', 'export crates', 2]]],
+        ['shop', 'Bike Shop', 'Munich', 'store', 'retail', [['scity', 'city bikes', 3], ['srace', 'race bikes', 2], ['repair', 'repairs', 4]]],
+        ['online', 'Online Store', 'Berlin', 'cart', 'retail', [['oebike', 'e-bikes', 3], ['parcel', 'parcels', 5]]],
+        ['rental', 'Rental Fleet', 'Cologne', 'bolt', 'retail', [['rbike', 'rental bikes', 6], ['worn', 'worn parts', 4]]],
+        ['yard', 'Recycling Yard', 'Essen', 'recycle', null, [['scrap', 'steel scrap', 3], ['ascrap', 'alu scrap', 2]]]
+    ];
+    const groups = [
+        {id: 'metal', label: 'Ruhr Metal Works'},
+        {id: 'parts', label: 'Component Valley'},
+        {id: 'assembly', label: 'Assembly'},
+        {id: 'dist', label: 'Distribution'},
+        {id: 'retail', label: 'Retail'}
+    ];
+    // "node.row node.row …" → "node.row"
+    const flows = [
+        ['mine.ore yard.scrap', 'smelter.steel'],
+        ['mine.bauxite yard.ascrap', 'smelter.alu'],
+        ['smelter.steel', 'tubes.stube'],
+        ['smelter.alu', 'tubes.atube'],
+        ['smelter.steel', 'tubes.spokes'],
+        ['tubes.stube chem.paint', 'frames.sframe'],
+        ['tubes.atube chem.paint', 'frames.aframe'],
+        ['rubber.latex', 'tyres.tyre'],
+        ['rubber.latex', 'tyres.inner'],
+        ['tubes.spokes tyres.tyre tyres.inner', 'wheels.cwheel'],
+        ['tubes.spokes tubes.atube tyres.tyre', 'wheels.rwheel'],
+        ['smelter.steel chem.lube', 'drive.chain'],
+        ['smelter.steel', 'drive.gears'],
+        ['cells.cells', 'pack.packs'],
+        ['frames.sframe wheels.cwheel drive.chain', 'city.citybike'],
+        ['frames.aframe wheels.rwheel drive.gears', 'race.racebike'],
+        ['frames.aframe wheels.cwheel pack.packs drive.chain', 'ebike.ebike'],
+        ['city.citybike race.racebike ebike.ebike', 'hub.boxed'],
+        ['tyres.tyre drive.chain', 'hub.spares'],
+        ['hub.boxed', 'port.crates'],
+        ['hub.boxed', 'shop.scity'],
+        ['hub.boxed', 'shop.srace'],
+        ['hub.spares', 'shop.repair'],
+        ['hub.boxed', 'online.oebike'],
+        ['hub.spares', 'online.parcel'],
+        ['hub.boxed', 'rental.rbike'],
+        ['rental.worn', 'yard.ascrap'],
+        ['rental.worn shop.repair', 'yard.scrap']
+    ];
+
+    const nodes = sites.map(([id, title, subtitle, icon, group, rows]) => ({
+        id, title, subtitle, icon, group: group ?? undefined,
+        rows: rows.map(([rid, label, value]) => ({id: rid, label, value}))
+    }));
+    const port = (s) => { const [node, row] = s.split('.'); return {node, row}; };
+    const links = [];
+    for (const [from, to] of flows) {
+        for (const f of from.split(' ')) links.push({id: `${f}>${to}`, from: port(f), to: port(to)});
+    }
+
+    const chart = new RecordGraph(document.getElementById('chart'), {
+        data: {nodes, links, groups},
+        produce: true
+    });
+
+    const log = document.getElementById('log');
+    const labelOf = (p) => nodes.find((n) => n.id === p.node)?.rows.find((r) => r.id === p.row)?.label ?? p.row;
+    const lines = [];
+    const say = (text) => { lines.unshift(text); lines.length = Math.min(lines.length, 8); log.textContent = lines.join('\n'); };
+
+    chart.on('produce', ({node, row, ok}) => {
+        const inputs = links.filter((l) => l.to.node === node && l.to.row === row).map((l) => labelOf(l.from));
+        say(ok
+            ? `+1 ${labelOf({node, row})}${inputs.length ? ` (−1 ${inputs.join(', ')})` : ''}`
+            : `✗ ${labelOf({node, row})}: an input is out of stock`);
+    });
+    chart.on('highlightChange', ({rows, links: ids}) => {
+        if (rows.length) say(`flow: ${rows.length} items, ${ids.length} links`);
+    });
+    chart.on('groupToggle', ({group, collapsed}) => say(`${collapsed ? 'collapsed' : 'expanded'} ${groups.find((g) => g.id === group).label}`));
+
+    document.getElementById('zoomIn').addEventListener('click', () => chart.zoomIn());
+    document.getElementById('zoomOut').addEventListener('click', () => chart.zoomOut());
+    document.getElementById('fit').addEventListener('click', () => chart.fit());
+    document.getElementById('clear').addEventListener('click', () => chart.clearHighlight());
+
+    const fold = document.getElementById('fold');
+    fold.addEventListener('click', () => {
+        const collapse = fold.textContent === 'Collapse all';
+        for (const g of groups) chart.setGroupCollapsed(g.id, collapse);
+        fold.textContent = collapse ? 'Expand all' : 'Collapse all';
+        chart.fit();
+    });
+
+    const themeBtn = document.getElementById('theme');
+    themeBtn.addEventListener('click', () => {
+        const dark = themeBtn.textContent === 'Dark';
+        themeBtn.textContent = dark ? 'Light' : 'Dark';
+        document.body.classList.toggle('dark', dark);
+        chart.setTheme(dark ? 'dark' : 'light');
+    });
+})();
+</script>
+</body>
+</html>

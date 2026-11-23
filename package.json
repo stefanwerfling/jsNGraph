@@ -48,6 +48,11 @@
       "types": "./dist/chart.d.ts",
       "import": "./dist/chart.js",
       "require": "./dist/chart.cjs"
+    },
+    "./records": {
+      "types": "./dist/records.d.ts",
+      "import": "./dist/records.js",
+      "require": "./dist/records.cjs"
     }
   },
   "files": [
