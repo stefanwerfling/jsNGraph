@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — sightings by moon phase</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    html, body { background: #000000; }
+    main { max-width: 1240px; margin: 0 auto; padding: 14px 18px 28px; color: #e6e8ec; font-family: system-ui, sans-serif; }
+    h1 { font-size: 21px; margin: 4px 0 2px; font-weight: 600; }
+    .sub { margin: 0 0 12px; color: #9aa3ad; font-size: 13px; max-width: 900px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; font-size: 12px; color: #9aa3ad; margin-bottom: 6px; }
+    .group { display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+    .group > span { margin-right: 4px; }
+    button { background: #101317; color: #d6dae0; border: 1px solid #2a3038; border-radius: 14px; padding: 4px 11px;
+        font: 12px system-ui, sans-serif; cursor: pointer; }
+    button.on { border-color: #ffd400; color: #ffd400; }
+    button .sw { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; background: var(--c); }
+    #chart { height: min(78vh, 720px); min-height: 560px; }
+    #chart.tall { height: 1120px; }
+    .kpis { display: flex; flex-wrap: wrap; gap: 26px; margin: 6px 0 14px; font-size: 12px; color: #9aa3ad; }
+    .kpis b { display: block; font-size: 20px; color: #ffffff; font-weight: 600; }
+    table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    th, td { padding: 6px 8px; text-align: right; border-bottom: 1px solid #1c2026; white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; }
+    th { color: #9aa3ad; font-weight: 500; vertical-align: bottom; white-space: normal; }
+    th canvas { display: block; margin: 0 0 4px auto; }
+    td small { color: #7d8792; }
+    td.hot, th.hot { background: #1a1d10; }
+    td .bar { display: inline-block; height: 4px; border-radius: 2px; vertical-align: middle; margin-left: 6px; background: var(--c); }
+    .wrap { overflow-x: auto; }
+    .credit { color: #6c757f; font-size: 11px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="gomera.html">Whale watching</a>
+    <a href="moonphase.html" class="active">Moon phase</a>
+</nav>
+
+<main>
+    <h1>Whale and dolphin sightings by moon phase</h1>
+    <p class="sub">Four years of (invented) whale-watching trips out of Valle Gran Rey, sorted by the age of the moon on the day of the
+        trip. The moons circle the Earth at the top; below, the ring rises and turns red where a species was seen more often (or
+        in bigger groups) than on average, and sinks into blue where it was seen less. Drag to turn, hover a phase.</p>
+
+    <div class="controls">
+        <div class="group" id="metric"><span>Show</span>
+            <button data-metric="rate" class="on">Sightings per 100 trips</button>
+            <button data-metric="size">Animals per sighting</button>
+            <button data-metric="count">Sightings</button>
+        </div>
+        <div class="group" id="layout"><span>Rings</span>
+            <button data-layout="single" class="on">One species</button>
+            <button data-layout="stack">All species</button>
+        </div>
+    </div>
+    <div class="controls"><div class="group" id="species"><span>Species</span></div></div>
+
+    <div id="chart"></div>
+
+    <div class="kpis" id="kpis"></div>
+    <div class="wrap"><table id="table"></table></div>
+    <p class="credit">All numbers are made up for this demo, including the effects of the moon; the species are the ones usually
+        seen off La Gomera. Moon phase from the mean synodic month (29.53 days) since the new moon of 6 Jan 2000.</p>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+(() => {
+    const {PhaseRing, PhaseRingGeometry} = window.JSNGraph;
+    const SYNODIC = 29.530588853, NEW_MOON_JD = 2451550.26, BINS = 30;
+    const moonPhase = (ms) => ((((ms / 86400000 + 2440587.5) - NEW_MOON_JD) / SYNODIC) % 1 + 1) % 1;
+
+    let seed = 2026;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
+    const cos = (x) => Math.cos(2 * Math.PI * x);
+    const season = (month, from, to) => (from <= to ? month >= from && month <= to : month >= from || month <= to) ? 1 : 0;
+
+    // ---- species: chance per trip and group size, both may follow the moon (invented) ----------------
+    const SPECIES = [
+        {id: 'pilot', name: 'Pilot whales', color: '#ff9ac0',
+            p: (m, mo) => 0.78 + 0.12 * cos(m - 0.5), size: (m) => 14 + 6 * cos(m)},
+        {id: 'bottlenose', name: 'Bottlenose dolphins', color: '#4fd1e8',
+            p: (m, mo) => 0.38 + 0.05 * Math.sin(2 * Math.PI * m), size: () => 9},
+        {id: 'spotted', name: 'Spotted dolphins', color: '#7cf0c8',
+            p: (m, mo) => 0.07 + season(mo, 6, 10) * (0.45 + 0.16 * cos(m)), size: (m) => 45 + 20 * cos(m)},
+        {id: 'common', name: 'Common dolphins', color: '#c2a8ff',
+            p: (m, mo) => 0.04 + season(mo, 12, 4) * (0.34 + 0.12 * cos(m - 0.25)), size: () => 60},
+        {id: 'sperm', name: 'Sperm whale', color: '#ff5c8a',
+            p: (m, mo) => 0.1 + 0.07 * cos(m - 0.5), size: () => 1.6},
+        {id: 'turtle', name: 'Loggerhead turtle', color: '#e0b95c',
+            p: (m, mo) => season(mo, 5, 10) * 0.16 + 0.02, size: () => 1.1}
+    ];
+
+    // ---- trips: one a day for four years, some stay in port (weather) --------------------------------
+    const trips = new Array(BINS).fill(0);
+    const seen = SPECIES.map(() => new Array(BINS).fill(0));
+    const animals = SPECIES.map(() => new Array(BINS).fill(0));
+    let tripTotal = 0;
+    for (let day = Date.UTC(2022, 0, 1); day < Date.UTC(2026, 0, 1); day += 86400000) {
+        if (rnd() < 0.09) continue;
+        const ms = day + 11 * 3600000, m = moonPhase(ms), mo = new Date(ms).getUTCMonth() + 1;
+        const bin = Math.round(m * BINS) % BINS;
+        trips[bin]++; tripTotal++;
+        SPECIES.forEach((s, i) => {
+            if (rnd() < s.p(m, mo)) {
+                seen[i][bin]++;
+                animals[i][bin] += Math.max(1, Math.round(s.size(m) * Math.exp(gauss() * 0.35)));
+            }
+        });
+    }
+
+    // the ring shows a running window of ±1 lunar day (about 45 trips per day of the moon are noisy on their own)
+    const win = (arr, b) => arr[(b + BINS - 1) % BINS] + arr[b] + arr[(b + 1) % BINS];
+    const METRICS = {
+        rate: {title: 'Sightings per 100 trips', low: 'seen less often', high: 'seen more often',
+            value: (i, b) => win(trips, b) ? win(seen[i], b) / win(trips, b) * 100 : 0, format: (v) => v.toFixed(0)},
+        size: {title: 'Animals per sighting', low: 'smaller groups', high: 'bigger groups',
+            value: (i, b) => win(seen[i], b) ? win(animals[i], b) / win(seen[i], b) : 0, format: (v) => v < 10 ? v.toFixed(1) : v.toFixed(0)},
+        count: {title: 'Sightings', low: 'fewer', high: 'more',
+            value: (i, b) => win(seen[i], b) / 3, format: (v) => v.toFixed(0)}
+    };
+    let metric = 'rate', layout = 'single', active = 0;
+
+    const seriesFor = () => SPECIES.map((s, i) => ({name: s.name, values: Array.from({length: BINS}, (_, b) => METRICS[metric].value(i, b))}));
+    const notesFor = (series) => {
+        if (layout !== 'single') return [];
+        const v = series[active].values;
+        const hi = v.indexOf(Math.max(...v)), lo = v.indexOf(Math.min(...v));
+        const f = METRICS[metric].format;
+        return [
+            {bin: hi, series: active, text: `Most: ${PhaseRingGeometry.moonName(hi / BINS).toLowerCase()}\n${f(v[hi])}`},
+            {bin: lo, series: active, text: `Least: ${PhaseRingGeometry.moonName(lo / BINS).toLowerCase()}\n${f(v[lo])}`}
+        ];
+    };
+    const legendFor = () => ({
+        title: METRICS[metric].title,
+        subtitle: (layout === 'single' ? SPECIES[active].name : 'each species on its own scale') + ' · 2022–2025, by age of the moon (±1 day)',
+        low: METRICS[metric].low, high: METRICS[metric].high
+    });
+
+    const ring = new PhaseRing(document.getElementById('chart'), {
+        theme: {background: '#000000', text: '#9aa3ad', title: '#f2f4f7', select: '#ffffff', marker: '#ffd400'},
+        series: seriesFor(), layout, active, glyphs: 8, glyph: 'moon',
+        center: {color: '#3d7fd9', radius: 0.07, label: 'Earth'},
+        format: (v) => METRICS[metric].format(v),
+        phaseLabel: (bin) => `${PhaseRingGeometry.moonName(bin / BINS)} · moon ${Math.round(bin / BINS * SYNODIC)} days old · ${trips[bin]} trips`,
+        legend: legendFor(), cursor: moonPhase(Date.now()), cursorLabel: 'today'
+    });
+    window.ring = ring;
+    const refresh = () => {
+        const series = seriesFor();
+        ring.setScale(layout === 'stack' ? 'each' : 'shared');
+        ring.setSeries(series);
+        ring.setNotes(notesFor(series));
+        ring.setLegend(legendFor());
+        renderTable();
+    };
+    ring.setNotes(notesFor(seriesFor()));
+
+    // ---- controls ---------------------------------------------------------------------------------------
+    const speciesBox = document.getElementById('species');
+    SPECIES.forEach((s, i) => {
+        const b = document.createElement('button');
+        b.innerHTML = `<span class="sw"></span>${s.name}`;
+        b.style.setProperty('--c', s.color);
+        b.classList.toggle('on', i === active);
+        b.addEventListener('click', () => {
+            active = i;
+            [...speciesBox.querySelectorAll('button')].forEach((x, k) => x.classList.toggle('on', k === i));
+            if (layout === 'stack') { layout = 'single'; syncLayout(); }
+            ring.setActive(i);
+            refresh();
+        });
+        speciesBox.appendChild(b);
+    });
+    for (const b of document.querySelectorAll('[data-metric]')) {
+        b.addEventListener('click', () => {
+            metric = b.dataset.metric;
+            document.querySelectorAll('[data-metric]').forEach((x) => x.classList.toggle('on', x === b));
+            refresh();
+        });
+    }
+    const syncLayout = () => {
+        document.querySelectorAll('[data-layout]').forEach((x) => x.classList.toggle('on', x.dataset.layout === layout));
+        document.getElementById('chart').classList.toggle('tall', layout === 'stack');
+        ring.setLayout(layout);
+    };
+    for (const b of document.querySelectorAll('[data-layout]')) {
+        b.addEventListener('click', () => { layout = b.dataset.layout; syncLayout(); refresh(); });
+    }
+
+    // ---- KPIs + table by the eight named phases ------------------------------------------------------
+    const kpis = document.getElementById('kpis');
+    const totalSeen = SPECIES.map((_, i) => seen[i].reduce((a, b) => a + b, 0));
+    kpis.innerHTML = `<div><b>${tripTotal.toLocaleString('en-GB')}</b>trips</div>` +
+        SPECIES.map((s, i) => `<div><b style="color:${s.color}">${totalSeen[i].toLocaleString('en-GB')}</b>${s.name.toLowerCase()} sightings</div>`).join('');
+
+    const eighth = (b) => Math.round(b / BINS * 8) % 8;
+    const table = document.getElementById('table');
+    const glyph = (phase) => {
+        const c = document.createElement('canvas');
+        const dpr = window.devicePixelRatio || 1;
+        c.width = c.height = 22 * dpr; c.style.width = c.style.height = '22px';
+        const g = c.getContext('2d'); g.scale(dpr, dpr);
+        const t = PhaseRingGeometry.terminator(phase);
+        g.translate(11, 11);
+        g.fillStyle = '#2e3136'; g.beginPath(); g.arc(0, 0, 9, 0, Math.PI * 2); g.fill();
+        if (t.lit > 0.005) {
+            g.fillStyle = '#e6e6e2'; g.beginPath();
+            g.arc(0, 0, 9, -Math.PI / 2, Math.PI / 2, !t.waxing);
+            g.ellipse(0, 0, Math.abs(t.mid) * 9, 9, 0, Math.PI / 2, -Math.PI / 2, t.mid > 0);
+            g.fill();
+        }
+        return c;
+    };
+    function renderTable() {
+        const groups = Array.from({length: 8}, () => ({trips: 0, seen: SPECIES.map(() => 0), animals: SPECIES.map(() => 0)}));
+        for (let b = 0; b < BINS; b++) {
+            const g = groups[eighth(b)];
+            g.trips += trips[b];
+            SPECIES.forEach((_, i) => { g.seen[i] += seen[i][b]; g.animals[i] += animals[i][b]; });
+        }
+        const maxRate = Math.max(...groups.flatMap((g) => g.seen.map((n) => n / Math.max(1, g.trips))));
+        table.innerHTML = '';
+        const head = table.insertRow();
+        head.insertCell().outerHTML = '<th>Species</th>';
+        groups.forEach((g, k) => {
+            const th = document.createElement('th');
+            th.dataset.col = k;
+            th.appendChild(glyph(k / 8));
+            th.append(PhaseRingGeometry.moonName(k / 8));
+            th.appendChild(document.createElement('br'));
+            const small = document.createElement('small'); small.textContent = g.trips + ' trips'; th.appendChild(small);
+            head.appendChild(th);
+        });
+        SPECIES.forEach((s, i) => {
+            const row = table.insertRow();
+            row.insertCell().innerHTML = `<span style="color:${s.color}">●</span> ${s.name}`;
+            groups.forEach((g, k) => {
+                const td = row.insertCell();
+                td.dataset.col = k;
+                const rate = g.seen[i] / Math.max(1, g.trips);
+                const avg = g.seen[i] ? g.animals[i] / g.seen[i] : 0;
+                td.innerHTML = `${g.seen[i]}× <small>· ⌀ ${avg < 10 ? avg.toFixed(1) : avg.toFixed(0)}</small>` +
+                    `<span class="bar" style="--c:${s.color};width:${Math.round(rate / maxRate * 26)}px"></span>`;
+                td.title = `${s.name}, ${PhaseRingGeometry.moonName(k / 8).toLowerCase()}: seen on ${g.seen[i]} of ${g.trips} trips ` +
+                    `(${Math.round(rate * 100)} %), ${g.animals[i]} animals in all, ${avg.toFixed(1)} per sighting`;
+            });
+        });
+        for (const cell of table.querySelectorAll('[data-col]')) {
+            cell.addEventListener('pointerenter', () => { ring.highlightBin(Math.round(Number(cell.dataset.col) * BINS / 8) % BINS); markCol(Number(cell.dataset.col)); });
+            cell.addEventListener('pointerleave', () => { ring.highlightBin(null); markCol(-1); });
+        }
+    }
+    const markCol = (k) => { for (const c of table.querySelectorAll('[data-col]')) c.classList.toggle('hot', Number(c.dataset.col) === k); };
+    ring.on('hover', (h) => markCol(h ? eighth(h.bin) : -1));
+    renderTable();
+})();
+</script>
+</body>
+</html>

@@ -61,3 +61,7 @@ export { RadarScope } from './chart/RadarScope';
 export type { RadarScopeOptions, RadarScopeEvents, ScopeTarget, ScopeKind, ScopeSector, ScopeShape, ScopeColors } from './chart/RadarScope';
 export { ScopeGeometry } from './chart/ScopeGeometry';
 export type { ScopePoint } from './chart/ScopeGeometry';
+export { PhaseRing } from './chart/PhaseRing';
+export type { PhaseRingOptions, PhaseRingEvents, PhaseSeries, PhaseNote, PhaseLegend, PhaseHover } from './chart/PhaseRing';
+export { PhaseRingGeometry } from './chart/PhaseRingGeometry';
+export type { RingView, RingPoint, RingSample } from './chart/PhaseRingGeometry';

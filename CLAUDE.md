@@ -280,6 +280,17 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   Catmull-Rom route out of Vueltas (slower near animals, route done/planned on the water, wake), radar centred on the
   boat with the coast as a shape, sightings log + pins, trip clock; `?t=seconds` fast-forwards.
 
+  `PhaseRing` (canvas, `jsngraph/chart`): a cyclic measurement drawn like an exoplanet phase curve — phase glyphs (moon
+  phases with the lit part, dots or a drawer) circle a centre body on an orbit coloured by value, below it one tilted ring
+  per series (`layout` single = `active` series, stack = all, flatter tilt) whose height above/below its disk (`baseline`
+  mean/min/value) and colour (`colors`, default spectral blue → red, `scale` shared/each) follow the value; drop lines from
+  the glyphs, guide rings at min/max, curve parts under the disk drawn before it, `notes` with leader lines, `cursor`
+  (e.g. today), direction arrows, colour-bar legend. Drag turns (yaw) / tilts, double-click resets, `hover`/`click`,
+  `highlightBin` for outside links, values morph on `setSeries`. Pure `PhaseRingGeometry` (`point`, cyclic Catmull-Rom
+  `smooth`, `binAt`, `terminator` = moon lit fraction/side, `moonName`, `colorAt`, `nearest`, `stats`;
+  `test/PhaseRing.test.ts`). Example: `examples/moonphase.html` (invented four years of La Gomera trips by lunar day,
+  ±1 day window, species/metric/layout switches, table by the eight phases linked to the ring).
+
 - `records/` — `RecordGraph` (subpath `jsngraph/records`): cards with a header (icon, title, subtitle) and a table of
   rows (`label`, `value`), links run row → row (`RecordLink {from: {node,row}, to}`), cards may sit in group frames
   (`RecordGroup`, `collapsed` folds a group into one box; merged links keep all `ids`). Pure `RecordLayout`: columns =
