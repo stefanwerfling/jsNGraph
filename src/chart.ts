@@ -72,3 +72,9 @@ export type {
 } from './chart/HoloTable';
 export { HoloGeometry } from './chart/HoloGeometry';
 export type { HoloCamera, HoloFrame, HoloPoint } from './chart/HoloGeometry';
+export { EncounterRose } from './chart/EncounterRose';
+export type {
+    EncounterRoseOptions, EncounterRoseEvents, EncounterData, EncounterCategory, EncounterAlign, EncounterHover, EncounterSector
+} from './chart/EncounterRose';
+export { EncounterGeometry } from './chart/EncounterGeometry';
+export type { EncounterFix, AlignedFix } from './chart/EncounterGeometry';

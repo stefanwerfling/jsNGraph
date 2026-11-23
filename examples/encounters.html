@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — encounter rose</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    html, body { background: #0d1320; }
+    main { max-width: 1440px; margin: 0 auto; padding: 12px 16px 28px; color: #c8d1e2; font-family: system-ui, sans-serif; }
+    h1 { font-size: 20px; margin: 4px 0 2px; font-weight: 600; }
+    .sub { margin: 0 0 12px; color: #8792a8; font-size: 13px; max-width: 1000px; line-height: 1.45; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+    @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+    #rose { height: min(82vh, 820px); min-height: 520px; border: 1px solid #1d2638; border-radius: 6px; }
+    aside { display: flex; flex-direction: column; gap: 12px; font-size: 12px; }
+    .box { background: #121a2a; border: 1px solid #1d2638; border-radius: 6px; padding: 10px 12px; }
+    .box h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #8792a8; margin: 0 0 8px; font-weight: 600; }
+    .row { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+    button, .chip { background: #0d1320; color: #c8d1e2; border: 1px solid #2a3550; border-radius: 4px; padding: 4px 9px;
+        font: 12px system-ui, sans-serif; cursor: pointer; }
+    button.on { border-color: #64bae4; color: #fff; background: #17304a; }
+    .chip { display: inline-flex; gap: 6px; align-items: center; }
+    .chip i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .chip.off { opacity: .35; }
+    .chip small { color: #8792a8; }
+    input[type=range] { flex: 1; accent-color: #64bae4; min-width: 120px; }
+    .mono { font: 600 13px ui-monospace, monospace; color: #fff; min-width: 52px; display: inline-block; }
+    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    th { text-align: right; font-weight: 500; color: #8792a8; padding: 3px 4px; font-size: 11px; }
+    th:first-child, td:first-child { text-align: left; }
+    td { text-align: right; padding: 3px 4px; border-top: 1px solid #1d2638; }
+    tbody tr { cursor: pointer; }
+    tbody tr:hover td { background: #17213a; }
+    td i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    #detail dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; }
+    #detail dt { color: #8792a8; }
+    #detail dd { margin: 0; color: #e3e9f4; }
+    #detail svg { width: 100%; height: 56px; margin-top: 8px; display: block; }
+    .muted { color: #66728a; }
+    .credit { color: #56627a; font-size: 11px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="moonphase.html">Moon phase</a>
+    <a href="encounters.html" class="active">Encounter rose</a>
+</nav>
+
+<main>
+    <h1>Encounter rose — where did they go after we met them?</h1>
+    <p class="sub">Every tracked encounter of one invented season starts in the centre, at the moment of first contact. All of them
+        are replayed on one shared clock: dolphins shoot outwards, pilot whales hardly move, sperm whales vanish on long
+        dives (dashed), bow-riders circle back. The ring outside counts where everybody is <em>right now</em>, stacked by
+        species; the arrows in the middle point where each species goes on average (longer = more agreement). Turn the dial
+        to <b>offshore</b> or <b>first heading</b> to ask different questions with the same tracks.</p>
+    <div class="layout">
+        <div>
+            <div id="rose"></div>
+            <p class="credit">Hover a track for its numbers, click to pin it, hover a sector of the outer ring to light its
+                encounters, wheel to zoom the distance, double-click to reset. Species models, tracks and every number are invented.</p>
+        </div>
+        <aside>
+            <div class="box">
+                <h2>Replay</h2>
+                <div class="row">
+                    <button id="play">▶ Play</button>
+                    <button id="whole" class="on">Whole tracks</button>
+                    <span class="mono" id="clock">—</span>
+                </div>
+                <div class="row" style="margin-top:6px">
+                    <input id="time" type="range" min="0" max="1000" value="0">
+                </div>
+                <div class="row" style="margin-top:6px" id="speeds">
+                    <span class="muted">speed</span>
+                    <button data-speed="30">30×</button><button data-speed="90" class="on">90×</button><button data-speed="240">240×</button>
+                </div>
+            </div>
+            <div class="box">
+                <h2>Up is …</h2>
+                <div class="row" id="align">
+                    <button data-align="north" class="on">North</button>
+                    <button data-align="reference">Offshore</button>
+                    <button data-align="first">First heading</button>
+                </div>
+                <div class="row" style="margin-top:6px" id="scale">
+                    <span class="muted">distance</span>
+                    <button data-scale="linear">linear</button><button data-scale="sqrt" class="on">√ near detail</button>
+                </div>
+            </div>
+            <div class="box">
+                <h2>Filter</h2>
+                <div class="row" id="species"></div>
+                <div class="row" style="margin-top:8px" id="reactions"></div>
+                <div class="row" style="margin-top:8px" id="behaviours"></div>
+                <div class="row" style="margin-top:8px">
+                    <span class="muted">Beaufort ≤</span><input id="bft" type="range" min="0" max="6" value="6"><span class="mono" id="bft-label">6</span>
+                </div>
+            </div>
+            <div class="box">
+                <h2>Species <span class="muted">(visible encounters)</span></h2>
+                <table>
+                    <thead><tr><th>species</th><th>n</th><th>km/h</th><th>straight</th><th>approach</th></tr></thead>
+                    <tbody id="table"></tbody>
+                </table>
+            </div>
+            <div class="box" id="detail"><h2>Encounter</h2><span class="muted">Click a track.</span></div>
+        </aside>
+    </div>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+(() => {
+    const {EncounterRose} = window.JSNGraph;
+
+    // ---- an invented season --------------------------------------------------------------------------------
+    let seed = 7;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const normal = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
+    const between = (a, b) => a + rnd() * (b - a);
+    const pickW = (items) => { let r = rnd() * items.reduce((s, x) => s + x[1], 0); for (const [v, w] of items) { if ((r -= w) <= 0) return v; } return items[0][0]; };
+    const D = Math.PI / 180;
+
+    // speed m/s, turn sd per 20 s step, group size, minutes followed, dives [every min, lasting min], heading bias
+    const SPECIES = [
+        {id: 'dd', name: 'Common dolphin', color: '#f2c14e', n: 38, speed: 3.4, turn: 0.16, group: [15, 160], minutes: [8, 22], young: 0.5,
+            bias: 'along', behaviours: [['travel', 6], ['feed', 3], ['bow-ride', 2], ['socialize', 2]], reaction: [['approach', 4], ['indifferent', 5], ['avoid', 1]]},
+        {id: 'tt', name: 'Bottlenose dolphin', color: '#64bae4', n: 34, speed: 2.1, turn: 0.42, group: [3, 18], minutes: [10, 30], young: 0.4,
+            bias: 'none', behaviours: [['bow-ride', 4], ['socialize', 4], ['travel', 3], ['feed', 2]], reaction: [['approach', 6], ['indifferent', 3], ['avoid', 1]]},
+        {id: 'sf', name: 'Atlantic spotted dolphin', color: '#9be26b', n: 26, speed: 2.9, turn: 0.26, group: [8, 60], minutes: [8, 25], young: 0.45,
+            bias: 'offshore', behaviours: [['travel', 4], ['bow-ride', 4], ['socialize', 3]], reaction: [['approach', 5], ['indifferent', 4], ['avoid', 1]]},
+        {id: 'gm', name: 'Short-finned pilot whale', color: '#c78bff', n: 30, speed: 0.75, turn: 0.22, group: [6, 35], minutes: [15, 45], young: 0.6,
+            dive: [6, 3], bias: 'along', behaviours: [['rest', 6], ['travel', 3], ['socialize', 2]], reaction: [['indifferent', 7], ['approach', 2], ['avoid', 2]]},
+        {id: 'pm', name: 'Sperm whale', color: '#ff7a59', n: 14, speed: 1.15, turn: 0.08, group: [1, 6], minutes: [35, 75], young: 0.25,
+            dive: [9, 38], bias: 'offshore', behaviours: [['travel', 4], ['feed', 5], ['rest', 2]], reaction: [['indifferent', 7], ['avoid', 3]]},
+        {id: 'be', name: "Bryde's whale", color: '#4fd1c5', n: 16, speed: 1.7, turn: 0.3, group: [1, 3], minutes: [15, 40], young: 0.2,
+            dive: [3, 5], bias: 'none', behaviours: [['feed', 6], ['travel', 4]], reaction: [['indifferent', 6], ['avoid', 3], ['approach', 1]]},
+        {id: 'gg', name: "Risso's dolphin", color: '#e8e1d4', n: 18, speed: 1.2, turn: 0.32, group: [4, 22], minutes: [12, 35], young: 0.3,
+            dive: [5, 4], bias: 'along', behaviours: [['rest', 3], ['travel', 4], ['socialize', 3]], reaction: [['indifferent', 6], ['avoid', 4], ['approach', 1]]}
+    ];
+    const MONTHS = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct'];
+
+    function track(sp, reaction, behaviour, offshore, bft) {
+        const fixes = [{t: 0, x: 0, y: 0}];
+        const step = 20;
+        const total = between(sp.minutes[0], sp.minutes[1]) * 60;
+        let target = sp.bias === 'offshore' ? offshore + normal() * 35 * D
+            : sp.bias === 'along' ? offshore + (rnd() < 0.5 ? 90 : -90) * D + normal() * 25 * D
+                : rnd() * Math.PI * 2;
+        if (reaction === 'avoid') target = rnd() * Math.PI * 2;
+        let heading = target + normal() * 0.6;
+        let x = 0, y = 0, t = 0;
+        const turnSd = sp.turn * (behaviour === 'feed' ? 2.2 : behaviour === 'rest' ? 1.4 : behaviour === 'socialize' ? 1.6 : 1) * (1 + bft * 0.04);
+        const speedK = (behaviour === 'rest' ? 0.35 : behaviour === 'feed' ? 0.7 : behaviour === 'travel' ? 1.15 : 1) * (reaction === 'avoid' ? 1.35 : 1);
+        let nextDive = sp.dive ? between(0.4, 1.2) * sp.dive[0] * 60 : Infinity;
+        while (t < total) {
+            if (t >= nextDive) {
+                // one long underwater leg
+                const len = Math.max(60, (sp.dive[1] + normal() * sp.dive[1] * 0.25) * 60);
+                heading += normal() * sp.turn * 3;
+                const v = sp.speed * speedK * 0.8;
+                x += Math.sin(heading) * v * len; y += Math.cos(heading) * v * len; t += len;
+                fixes.push({t, x, y, dive: true});
+                nextDive = t + Math.max(60, (sp.dive[0] + normal() * sp.dive[0] * 0.3) * 60);
+                continue;
+            }
+            // bow-riders and curious groups come back to where the boat is
+            let pull = 0;
+            const d = Math.hypot(x, y);
+            if ((reaction === 'approach' || behaviour === 'bow-ride') && d > 40) {
+                const home = Math.atan2(-x, -y);
+                pull = Math.atan2(Math.sin(home - heading), Math.cos(home - heading)) * Math.min(0.22, d / 2000);
+            } else if (reaction === 'avoid' && d > 1) {
+                const away = Math.atan2(x, y);
+                pull = Math.atan2(Math.sin(away - heading), Math.cos(away - heading)) * 0.12;
+            }
+            const toTarget = Math.atan2(Math.sin(target - heading), Math.cos(target - heading)) * (reaction === 'approach' ? 0.05 : 0.16);
+            heading += normal() * turnSd + pull + toTarget;
+            const v = Math.max(0.1, sp.speed * speedK * (1 + normal() * 0.18));
+            x += Math.sin(heading) * v * step; y += Math.cos(heading) * v * step; t += step;
+            fixes.push({t, x, y});
+        }
+        return fixes;
+    }
+
+    const ENCOUNTERS = [];
+    for (const sp of SPECIES) {
+        for (let k = 0; k < sp.n; k++) {
+            const reaction = pickW(sp.reaction);
+            const behaviour = pickW(sp.behaviours);
+            const bft = Math.min(6, Math.floor(Math.abs(normal()) * 1.6 + rnd() * 1.5));
+            const offshoreDeg = 215 + normal() * 25;
+            const count = Math.round(sp.group[0] + Math.pow(rnd(), 1.8) * (sp.group[1] - sp.group[0]));
+            const young = rnd() < sp.young ? 1 + Math.floor(rnd() * Math.min(4, count / 3)) : 0;
+            const month = MONTHS[Math.floor(rnd() * MONTHS.length)];
+            const day = 1 + Math.floor(rnd() * 28);
+            ENCOUNTERS.push({
+                id: `${sp.id.toUpperCase()}-${String(k + 1).padStart(2, '0')}`, category: sp.id,
+                fixes: track(sp, reaction, behaviour, offshoreDeg * D, bft),
+                count, young, reference: offshoreDeg,
+                // the page's own fields (the chart ignores them)
+                reaction, behaviour, bft, coast: Math.round(between(0.4, sp.id === 'pm' ? 9 : 5) * 10) / 10, date: `${day} ${month}`
+            });
+        }
+    }
+
+    // ---- chart ----------------------------------------------------------------------------------------------------------
+    const rose = new EncounterRose(document.getElementById('rose'), {
+        categories: SPECIES.map(({id, name, color}) => ({id, name, color})),
+        encounters: ENCOUNTERS,
+        upLabels: {reference: 'OFFSHORE', first: 'FIRST HEADING'},
+        scale: 'sqrt'
+    });
+    window.rose = rose;
+
+    // ---- filters ----------------------------------------------------------------------------------------------------------
+    const state = {species: new Set(SPECIES.map((s) => s.id)), reactions: new Set(['approach', 'indifferent', 'avoid']),
+        behaviours: new Set(['travel', 'feed', 'rest', 'socialize', 'bow-ride']), bft: 6};
+    const chips = (el, items, set, label) => {
+        el.innerHTML = '';
+        for (const it of items) {
+            const b = document.createElement('span');
+            b.className = 'chip';
+            b.innerHTML = label(it);
+            b.addEventListener('click', (e) => {
+                if (e.altKey || e.shiftKey) { set.clear(); set.add(it.id ?? it); }
+                else if (set.has(it.id ?? it)) set.delete(it.id ?? it); else set.add(it.id ?? it);
+                apply();
+            });
+            b.dataset.key = it.id ?? it;
+            el.appendChild(b);
+        }
+    };
+    const count = (key, value) => ENCOUNTERS.filter((e) => e[key] === value).length;
+    chips(document.getElementById('species'), SPECIES, state.species, (s) => `<i style="background:${s.color}"></i>${s.name} <small>${s.n}</small>`);
+    chips(document.getElementById('reactions'), ['approach', 'indifferent', 'avoid'], state.reactions, (r) => `${r} <small>${count('reaction', r)}</small>`);
+    chips(document.getElementById('behaviours'), ['travel', 'feed', 'rest', 'socialize', 'bow-ride'], state.behaviours, (b) => `${b} <small>${count('behaviour', b)}</small>`);
+    const bft = document.getElementById('bft');
+    bft.addEventListener('input', () => { state.bft = Number(bft.value); document.getElementById('bft-label').textContent = bft.value; apply(); });
+
+    function apply() {
+        for (const [id, set] of [['species', state.species], ['reactions', state.reactions], ['behaviours', state.behaviours]]) {
+            document.querySelectorAll(`#${id} .chip`).forEach((c) => c.classList.toggle('off', !set.has(c.dataset.key)));
+        }
+        rose.setFilter((e) => state.species.has(e.category) && state.reactions.has(e.reaction) && state.behaviours.has(e.behaviour) && e.bft <= state.bft);
+        table();
+        syncTime();
+    }
+
+    // ---- species table ------------------------------------------------------------------------------------------------------
+    const median = (a) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : 0; };
+    function table() {
+        const vis = rose.getVisible();
+        const body = document.getElementById('table');
+        body.innerHTML = '';
+        for (const sp of SPECIES) {
+            const rows = vis.filter((v) => v.encounter.category === sp.id);
+            if (!rows.length) continue;
+            const tr = document.createElement('tr');
+            const appr = rows.filter((r) => r.encounter.reaction === 'approach').length / rows.length;
+            tr.innerHTML = `<td><i style="background:${sp.color}"></i>${sp.name}</td><td>${rows.length}</td>
+                <td>${(median(rows.map((r) => r.stats.speed)) * 3.6).toFixed(1)}</td>
+                <td>${Math.round(median(rows.map((r) => r.stats.straightness)) * 100)} %</td><td>${Math.round(appr * 100)} %</td>`;
+            tr.addEventListener('mouseenter', () => rose.highlight(rows.map((r) => r.encounter.id)));
+            tr.addEventListener('mouseleave', () => rose.highlight(null));
+            body.appendChild(tr);
+        }
+    }
+
+    // ---- detail -------------------------------------------------------------------------------------------------------------
+    const detail = document.getElementById('detail');
+    function showDetail(h) {
+        if (!h) { detail.innerHTML = '<h2>Encounter</h2><span class="muted">Click a track.</span>'; return; }
+        const e = h.encounter, s = h.stats, sp = SPECIES.find((x) => x.id === e.category);
+        // speed along the track (surface legs only), as a little line
+        const f = [...e.fixes].sort((a, b) => a.t - b.t);
+        const pts = [];
+        for (let i = 1; i < f.length; i++) {
+            const v = Math.hypot(f[i].x - f[i - 1].x, f[i].y - f[i - 1].y) / Math.max(1, f[i].t - f[i - 1].t) * 3.6;
+            pts.push([f[i].t, v, f[i].dive]);
+        }
+        const maxV = Math.max(1, ...pts.map((p) => p[1])), T = Math.max(1, s.duration);
+        const line = pts.map((p, i) => `${i ? 'L' : 'M'}${(p[0] / T * 330).toFixed(1)},${(52 - p[1] / maxV * 46).toFixed(1)}`).join('');
+        const dives = pts.filter((p) => p[2]).map((p, i) => {
+            const prev = f[f.findIndex((x) => x.t === p[0]) - 1];
+            return `<rect x="${(prev.t / T * 330).toFixed(1)}" y="0" width="${((p[0] - prev.t) / T * 330).toFixed(1)}" height="56" fill="${sp.color}" opacity="0.12"/>`;
+        }).join('');
+        detail.innerHTML = `<h2>Encounter ${e.id}</h2><dl>
+            <dt>species</dt><dd style="color:${sp.color}">${sp.name}</dd>
+            <dt>date</dt><dd>${e.date} · Beaufort ${e.bft} · ${e.coast} km off the coast</dd>
+            <dt>group</dt><dd>${e.count} animals${e.young ? ` · ${e.young} calves/juveniles` : ''}</dd>
+            <dt>behaviour</dt><dd>${e.behaviour} · reaction to the boat: ${e.reaction}</dd>
+            <dt>followed</dt><dd>${EncounterRose.clock(s.duration)} · ${(s.length / 1000).toFixed(2)} km · ${(s.speed * 3.6).toFixed(1)} km/h</dd>
+            <dt>path</dt><dd>straightness ${Math.round(s.straightness * 100)} % · mean turn ${Math.round(s.meanTurn * 180 / Math.PI)}° / fix</dd>
+        </dl>
+        <svg viewBox="0 0 330 56" preserveAspectRatio="none">${dives}<path d="${line}" fill="none" stroke="${sp.color}" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>
+        <span class="muted">speed over the encounter (km/h, max ${maxV.toFixed(0)}); shaded = under water</span>`;
+    }
+    rose.on('click', showDetail);
+
+    // ---- replay controls ------------------------------------------------------------------------------------------------------
+    const slider = document.getElementById('time'), clock = document.getElementById('clock');
+    const playBtn = document.getElementById('play'), wholeBtn = document.getElementById('whole');
+    function syncTime() {
+        const t = rose.getTime(), max = rose.getMaxTime();
+        clock.textContent = t === null ? '—' : EncounterRose.clock(t);
+        slider.value = t === null ? 1000 : Math.round(t / Math.max(1, max) * 1000);
+        playBtn.textContent = rose.isPlaying() ? '❚❚ Pause' : '▶ Play';
+        playBtn.classList.toggle('on', rose.isPlaying());
+        wholeBtn.classList.toggle('on', t === null);
+    }
+    rose.on('time', syncTime);
+    playBtn.addEventListener('click', () => { rose.isPlaying() ? rose.pause() : rose.play(); syncTime(); });
+    wholeBtn.addEventListener('click', () => { rose.setTime(null); syncTime(); });
+    slider.addEventListener('input', () => { rose.pause(); rose.setTime(Number(slider.value) / 1000 * rose.getMaxTime()); });
+    document.querySelectorAll('[data-speed]').forEach((b) => b.addEventListener('click', () => {
+        rose.setSpeed(Number(b.dataset.speed));
+        document.querySelectorAll('[data-speed]').forEach((x) => x.classList.toggle('on', x === b));
+    }));
+    document.querySelectorAll('[data-align]').forEach((b) => b.addEventListener('click', () => {
+        rose.setAlign(b.dataset.align);
+        document.querySelectorAll('[data-align]').forEach((x) => x.classList.toggle('on', x === b));
+        table();
+    }));
+    document.querySelectorAll('[data-scale]').forEach((b) => b.addEventListener('click', () => {
+        rose.setScale(b.dataset.scale);
+        document.querySelectorAll('[data-scale]').forEach((x) => x.classList.toggle('on', x === b));
+    }));
+
+    apply();
+    if (!new URLSearchParams(location.search).has('still')) { rose.play(); syncTime(); }
+})();
+</script>
+</body>
+</html>

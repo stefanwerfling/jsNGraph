@@ -304,6 +304,18 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   `examples/smartcity.html` (made-up city Veldmark: energy ridges, traffic arteries by congestion + junction counters, a
   motorway, district incidents with pins, turbines/solar/storage, an hour slider driving every panel, fly-to buttons).
 
+  `EncounterRose` (canvas, `jsngraph/chart`): many movement tracks (`EncounterData.fixes` = t/x/y metres, `dive` legs)
+  moved to one common start in the centre and turned to a shared up (`align` north | `reference` bearing per encounter |
+  `first` heading), drawn up to one shared replay clock (`play`/`pause`/`setTime`, `speed` × real time, null = whole
+  tracks with faint ghosts while replaying); dives dashed, head dot ∝ √count with `young` dots trailing; outside a
+  direction rose of where everybody is *now*, stacked by category; inside one circular-mean arrow per category (length =
+  agreement). `scale` linear | sqrt, wheel zooms the radius (auto = 90th percentile of the farthest point), hover track
+  (tooltip) / sector (`sectorHover`, lights its tracks), click pins, `highlight`, `setFilter`, `getVisible` (stats). Pure
+  `EncounterGeometry` (`bearing`, `align`, `firstHeading`, `at`, `stats` incl. straightness/mean turn, `binOf`, `rose`,
+  `circularMean`, `ringStep`, `distanceToPath`; `test/Encounter.test.ts`). Example: `examples/encounters.html` (invented
+  season of 7 species with correlated random-walk models — bow-riders pulled back, sperm whales on long dives — filters
+  for species/reaction/behaviour/Beaufort, species table, detail with a speed line).
+
 - `records/` — `RecordGraph` (subpath `jsngraph/records`): cards with a header (icon, title, subtitle) and a table of
   rows (`label`, `value`), links run row → row (`RecordLink {from: {node,row}, to}`), cards may sit in group frames
   (`RecordGroup`, `collapsed` folds a group into one box; merged links keep all `ids`). Pure `RecordLayout`: columns =
