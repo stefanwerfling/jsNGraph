@@ -23,22 +23,30 @@ export type NetHit =
     | {kind: 'input'; index: number}
     | {kind: 'output'; index: number};
 
-const CELL = 9;
-const GAP = 1;
-const COL_W = 40;
-const HEAD_COLS = 4;
-const EXPERT_COLS = 8;
-const EXPERT_CELL = 5;
-const SECTION = 14;
-const IO_W = 96;
-const IO_ROW = 16;
-
 /**
  * Pure world geometry of a NetView: one column per block with the residual
  * bins on top, attention heads and MoE experts below, lens label and the
  * measurement strip under it; the prompt tokens left, the prediction right.
  */
 export class NetLayout {
+
+    private static readonly CELL = 9;
+
+    private static readonly GAP = 1;
+
+    public static readonly COL_W = 40;
+
+    private static readonly HEAD_COLS = 4;
+
+    private static readonly EXPERT_COLS = 8;
+
+    private static readonly EXPERT_CELL = 5;
+
+    private static readonly SECTION = 14;
+
+    public static readonly IO_W = 96;
+
+    private static readonly IO_ROW = 16;
 
     public readonly bins: number;
     public readonly spacing: number;
@@ -56,19 +64,16 @@ export class NetLayout {
 
     public constructor(public readonly model: NetModel, options: NetLayoutOptions = {}, ioRows = 0) {
         this.bins = Math.max(4, Math.floor(options.bins ?? 48));
-        this.spacing = Math.max(COL_W + 6, options.spacing ?? 58);
-        this.headRows = Math.ceil(Math.max(0, model.heads) / HEAD_COLS);
-        this.expertRows = Math.ceil(Math.max(0, model.experts ?? 0) / EXPERT_COLS);
-        this.headTop = this.bins * (CELL + GAP) + SECTION;
-        this.expertTop = this.headTop + this.headRows * (CELL + GAP) + (this.headRows > 0 ? SECTION : 0);
-        this.lensTop = this.expertTop + this.expertRows * EXPERT_CELL + (this.expertRows > 0 ? SECTION : 0);
+        this.spacing = Math.max(NetLayout.COL_W + 6, options.spacing ?? 58);
+        this.headRows = Math.ceil(Math.max(0, model.heads) / NetLayout.HEAD_COLS);
+        this.expertRows = Math.ceil(Math.max(0, model.experts ?? 0) / NetLayout.EXPERT_COLS);
+        this.headTop = this.bins * (NetLayout.CELL + NetLayout.GAP) + NetLayout.SECTION;
+        this.expertTop = this.headTop + this.headRows * (NetLayout.CELL + NetLayout.GAP) + (this.headRows > 0 ? NetLayout.SECTION : 0);
+        this.lensTop = this.expertTop + this.expertRows * NetLayout.EXPERT_CELL + (this.expertRows > 0 ? NetLayout.SECTION : 0);
         this.chartTop = this.lensTop + 34;
-        this.firstX = IO_W + 70;
+        this.firstX = NetLayout.IO_W + 70;
         this.ioRows = ioRows;
     }
-
-    public static readonly COL_W = COL_W;
-    public static readonly IO_W = IO_W;
 
     public columnX(block: number): number {
         return this.firstX + block * this.spacing;
@@ -76,11 +81,11 @@ export class NetLayout {
 
     /** Left edge of the output column. */
     public get outputX(): number {
-        return this.columnX(Math.max(0, this.model.blocks - 1)) + COL_W + 70;
+        return this.columnX(Math.max(0, this.model.blocks - 1)) + NetLayout.COL_W + 70;
     }
 
     public binRect(block: number, index: number): NetRect {
-        return {x: this.columnX(block), y: this.binTop + index * (CELL + GAP), w: COL_W, h: CELL};
+        return {x: this.columnX(block), y: this.binTop + index * (NetLayout.CELL + NetLayout.GAP), w: NetLayout.COL_W, h: NetLayout.CELL};
     }
 
     /** Centre of a bin's left (side 'in') or right (side 'out') edge — where path curves attach. */
@@ -91,38 +96,38 @@ export class NetLayout {
     }
 
     public headRect(block: number, head: number): NetRect {
-        const w = (COL_W - (HEAD_COLS - 1) * GAP) / HEAD_COLS;
+        const w = (NetLayout.COL_W - (NetLayout.HEAD_COLS - 1) * NetLayout.GAP) / NetLayout.HEAD_COLS;
 
         return {
-            x: this.columnX(block) + (head % HEAD_COLS) * (w + GAP),
-            y: this.headTop + Math.floor(head / HEAD_COLS) * (CELL + GAP),
+            x: this.columnX(block) + (head % NetLayout.HEAD_COLS) * (w + NetLayout.GAP),
+            y: this.headTop + Math.floor(head / NetLayout.HEAD_COLS) * (NetLayout.CELL + NetLayout.GAP),
             w,
-            h: CELL
+            h: NetLayout.CELL
         };
     }
 
     public expertRect(block: number, expert: number): NetRect {
         return {
-            x: this.columnX(block) + (expert % EXPERT_COLS) * EXPERT_CELL,
-            y: this.expertTop + Math.floor(expert / EXPERT_COLS) * EXPERT_CELL,
-            w: EXPERT_CELL - 1,
-            h: EXPERT_CELL - 1
+            x: this.columnX(block) + (expert % NetLayout.EXPERT_COLS) * NetLayout.EXPERT_CELL,
+            y: this.expertTop + Math.floor(expert / NetLayout.EXPERT_COLS) * NetLayout.EXPERT_CELL,
+            w: NetLayout.EXPERT_CELL - 1,
+            h: NetLayout.EXPERT_CELL - 1
         };
     }
 
     /** The whole block column, bins to lens label. */
     public columnRect(block: number): NetRect {
-        return {x: this.columnX(block), y: this.binTop, w: COL_W, h: this.lensTop + 26};
+        return {x: this.columnX(block), y: this.binTop, w: NetLayout.COL_W, h: this.lensTop + 26};
     }
 
     /** Prompt token row (input column, centred vertically on the bins). */
     public inputRect(index: number): NetRect {
-        return {x: 0, y: this.ioTop(this.ioRows) + index * IO_ROW, w: IO_W, h: IO_ROW - 2};
+        return {x: 0, y: this.ioTop(this.ioRows) + index * NetLayout.IO_ROW, w: NetLayout.IO_W, h: NetLayout.IO_ROW - 2};
     }
 
     /** Prediction row (output column). */
     public outputRect(index: number, rows: number): NetRect {
-        return {x: this.outputX, y: this.ioTop(rows) + index * IO_ROW, w: IO_W + 30, h: IO_ROW - 2};
+        return {x: this.outputX, y: this.ioTop(rows) + index * NetLayout.IO_ROW, w: NetLayout.IO_W + 30, h: NetLayout.IO_ROW - 2};
     }
 
     /** Points of the measurement strip are at x = column centre, y in [chartTop, chartTop + chartHeight]. */
@@ -133,7 +138,7 @@ export class NetLayout {
     }
 
     public bounds(): {minX: number; minY: number; maxX: number; maxY: number} {
-        return {minX: -8, minY: -28, maxX: this.outputX + IO_W + 40, maxY: this.chartTop + this.chartHeight + 24};
+        return {minX: -8, minY: -28, maxX: this.outputX + NetLayout.IO_W + 40, maxY: this.chartTop + this.chartHeight + 24};
     }
 
     /** What the world point (x, y) hits, most specific first; null = nothing. */
@@ -153,25 +158,25 @@ export class NetLayout {
 
         const block = Math.floor((x - this.firstX) / this.spacing);
 
-        if (block < 0 || block >= this.model.blocks || x - this.columnX(block) > COL_W) {
+        if (block < 0 || block >= this.model.blocks || x - this.columnX(block) > NetLayout.COL_W) {
             return null;
         }
 
         const dx = x - this.columnX(block);
 
-        if (y >= this.binTop && y < this.binTop + this.bins * (CELL + GAP)) {
-            return {kind: 'bin', block, index: Math.floor((y - this.binTop) / (CELL + GAP))};
+        if (y >= this.binTop && y < this.binTop + this.bins * (NetLayout.CELL + NetLayout.GAP)) {
+            return {kind: 'bin', block, index: Math.floor((y - this.binTop) / (NetLayout.CELL + NetLayout.GAP))};
         }
-        if (y >= this.headTop && y < this.headTop + this.headRows * (CELL + GAP)) {
-            const w = (COL_W - (HEAD_COLS - 1) * GAP) / HEAD_COLS;
-            const index = Math.floor((y - this.headTop) / (CELL + GAP)) * HEAD_COLS + Math.min(HEAD_COLS - 1, Math.floor(dx / (w + GAP)));
+        if (y >= this.headTop && y < this.headTop + this.headRows * (NetLayout.CELL + NetLayout.GAP)) {
+            const w = (NetLayout.COL_W - (NetLayout.HEAD_COLS - 1) * NetLayout.GAP) / NetLayout.HEAD_COLS;
+            const index = Math.floor((y - this.headTop) / (NetLayout.CELL + NetLayout.GAP)) * NetLayout.HEAD_COLS + Math.min(NetLayout.HEAD_COLS - 1, Math.floor(dx / (w + NetLayout.GAP)));
 
             if (index < this.model.heads) {
                 return {kind: 'head', block, index};
             }
         }
-        if (y >= this.expertTop && y < this.expertTop + this.expertRows * EXPERT_CELL) {
-            const index = Math.floor((y - this.expertTop) / EXPERT_CELL) * EXPERT_COLS + Math.min(EXPERT_COLS - 1, Math.floor(dx / EXPERT_CELL));
+        if (y >= this.expertTop && y < this.expertTop + this.expertRows * NetLayout.EXPERT_CELL) {
+            const index = Math.floor((y - this.expertTop) / NetLayout.EXPERT_CELL) * NetLayout.EXPERT_COLS + Math.min(NetLayout.EXPERT_COLS - 1, Math.floor(dx / NetLayout.EXPERT_CELL));
 
             if (index < (this.model.experts ?? 0)) {
                 return {kind: 'expert', block, index};
@@ -192,9 +197,9 @@ export class NetLayout {
     }
 
     private ioTop(rows: number): number {
-        const binsH = this.bins * (CELL + GAP);
+        const binsH = this.bins * (NetLayout.CELL + NetLayout.GAP);
 
-        return Math.max(0, (binsH - rows * IO_ROW) / 2);
+        return Math.max(0, (binsH - rows * NetLayout.IO_ROW) / 2);
     }
 
 }

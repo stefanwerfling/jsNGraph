@@ -12,13 +12,6 @@ export interface RadialLayoutOptions {
     minArc?: number;
 }
 
-const DEFAULTS: Required<RadialLayoutOptions> = {
-    easing: 0.12,
-    margin: 70,
-    hubRadius: 40,
-    minArc: 70
-};
-
 /**
  * Deterministic hub-and-ring layout: ring 0 sits at the canvas center,
  * higher rings form concentric ELLIPSES around it (a wide canvas spreads
@@ -32,10 +25,17 @@ const DEFAULTS: Required<RadialLayoutOptions> = {
  */
 export class RadialLayout {
 
+    private static readonly DEFAULTS: Required<RadialLayoutOptions> = {
+        easing: 0.12,
+        margin: 70,
+        hubRadius: 40,
+        minArc: 70
+    };
+
     private readonly options: Required<RadialLayoutOptions>;
 
     public constructor(options: RadialLayoutOptions = {}) {
-        this.options = {...DEFAULTS, ...options};
+        this.options = {...RadialLayout.DEFAULTS, ...options};
     }
 
     /**

@@ -39,7 +39,7 @@ export class ModelNode {
         this.kind = data.kind ?? 'generic';
         this.sublabel = data.sublabel ?? null;
         this.repeat = data.repeat !== undefined && data.repeat > 1 ? Math.floor(data.repeat) : 1;
-        this.detail = data.detail ?? null;
+        this.detail = data.detail === undefined ? null : {...data.detail};
         this.accent = data.accent ?? null;
         this.level = data.level ?? 0;
         this.parent = data.parent ?? null;

@@ -1,30 +1,35 @@
 import { RectColor } from './RectColor';
 import { RectGlossaryOptions, RectSymbolsOptions } from './RectKitTypes';
 
-/** Shared panel shell: a titled, rounded dark container. */
-function panel(title: string | undefined, subtitle: string | undefined): HTMLDivElement {
-    const el = document.createElement('div');
-    el.style.cssText = `
-        display: inline-flex; flex-direction: column; gap: 10px;
-        padding: 16px 18px; border-radius: 12px;
-        background: rgba(15, 20, 32, 0.72); border: 1px solid #2b3550;
-        color: #e8eefc; font-family: system-ui, sans-serif;
-    `;
+/** Shared panel shell of the reference panels (internal). */
+class RectPanel {
 
-    if (title !== undefined) {
-        const h = document.createElement('div');
-        h.textContent = title;
-        h.style.cssText = 'font-size:18px; font-weight:800; color:#fff;';
-        el.appendChild(h);
-    }
-    if (subtitle !== undefined) {
-        const s = document.createElement('div');
-        s.textContent = subtitle;
-        s.style.cssText = 'font-size:12px; color:#8595b5; line-height:1.4; margin-top:-6px;';
-        el.appendChild(s);
+    /** A titled, rounded dark container. */
+    public static shell(title: string | undefined, subtitle: string | undefined): HTMLDivElement {
+        const el = document.createElement('div');
+        el.style.cssText = `
+            display: inline-flex; flex-direction: column; gap: 10px;
+            padding: 16px 18px; border-radius: 12px;
+            background: rgba(15, 20, 32, 0.72); border: 1px solid #2b3550;
+            color: #e8eefc; font-family: system-ui, sans-serif;
+        `;
+
+        if (title !== undefined) {
+            const h = document.createElement('div');
+            h.textContent = title;
+            h.style.cssText = 'font-size:18px; font-weight:800; color:#fff;';
+            el.appendChild(h);
+        }
+        if (subtitle !== undefined) {
+            const s = document.createElement('div');
+            s.textContent = subtitle;
+            s.style.cssText = 'font-size:12px; color:#8595b5; line-height:1.4; margin-top:-6px;';
+            el.appendChild(s);
+        }
+
+        return el;
     }
 
-    return el;
 }
 
 /**
@@ -37,7 +42,7 @@ export class RectSymbols {
 
     public render(): HTMLDivElement {
         const o = this.options;
-        const el = panel(o.title, o.subtitle);
+        const el = RectPanel.shell(o.title, o.subtitle);
 
         const hasType = o.items.some((i) => i.type !== undefined);
         const hasNote = o.items.some((i) => i.note !== undefined);
@@ -100,7 +105,7 @@ export class RectGlossary {
 
     public render(): HTMLDivElement {
         const o = this.options;
-        const el = panel(o.title, o.subtitle);
+        const el = RectPanel.shell(o.title, o.subtitle);
         const accent = RectColor.resolve(o.accent, 'cyan');
 
         const list = document.createElement('div');

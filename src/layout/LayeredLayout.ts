@@ -56,19 +56,6 @@ export interface LayeredColumn {
     count: number;
 }
 
-const DEFAULTS: Required<LayeredLayoutOptions> = {
-    easing: 0.12,
-    marginX: 120,
-    marginY: 48,
-    maxSpacing: 84,
-    sweeps: 4,
-    minSpacing: 0,
-    minColumnGap: 0,
-    direction: 'right',
-    grid: {},
-    gridGap: 0
-};
-
 /**
  * Sugiyama-style layered layout: node.ring is the COLUMN (0 = leftmost),
  * columns are evenly spread left-to-right, nodes stack vertically inside
@@ -81,15 +68,28 @@ const DEFAULTS: Required<LayeredLayoutOptions> = {
  */
 export class LayeredLayout {
 
+    private static readonly DEFAULTS: Required<LayeredLayoutOptions> = {
+        easing: 0.12,
+        marginX: 120,
+        marginY: 48,
+        maxSpacing: 84,
+        sweeps: 4,
+        minSpacing: 0,
+        minColumnGap: 0,
+        direction: 'right',
+        grid: {},
+        gridGap: 0
+    };
+
     private readonly options: Required<LayeredLayoutOptions>;
     private placed: LayeredColumn[] = [];
 
     public constructor(options: LayeredLayoutOptions = {}) {
-        this.options = {...DEFAULTS, ...options};
+        this.options = {...LayeredLayout.DEFAULTS, ...options};
     }
 
     /** The layers as of the last tick, ordered by ring. */
-    public get columns(): ReadonlyArray<LayeredColumn> {
+    public get columns(): ReadonlyArray<Readonly<LayeredColumn>> {
         return this.placed;
     }
 

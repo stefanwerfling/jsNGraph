@@ -26,9 +26,10 @@ export interface ModelViewOptions {
     layout?: FlowLayoutOptions;
 }
 
-interface ModelViewEvents {
-    moduleHover: ModelNode | null;
-    moduleClick: ModelNode | null;
+/** Payloads are the live runtime modules, typed read-only: read them, do not write to them. */
+export interface ModelViewEvents {
+    moduleHover: Readonly<ModelNode> | null;
+    moduleClick: Readonly<ModelNode> | null;
     [key: string]: unknown;
 }
 
@@ -159,7 +160,7 @@ export class ModelView {
             }
         }
 
-        this.allFlows = data.flows;
+        this.allFlows = data.flows.map((flow) => ({...flow}));
         this.maxLevel = Granularity.maxLevel(this.metas());
         this.level = Math.min(this.level, this.maxLevel);
 
@@ -225,12 +226,16 @@ export class ModelView {
         this.panel.hide();
     }
 
-    public on<K extends keyof ModelViewEvents>(event: K, listener: (payload: ModelViewEvents[K]) => void): void {
+    public on<K extends keyof ModelViewEvents>(event: K, listener: (payload: ModelViewEvents[K]) => void): this {
         this.events.on(event, listener);
+
+        return this;
     }
 
-    public off<K extends keyof ModelViewEvents>(event: K, listener: (payload: ModelViewEvents[K]) => void): void {
+    public off<K extends keyof ModelViewEvents>(event: K, listener: (payload: ModelViewEvents[K]) => void): this {
         this.events.off(event, listener);
+
+        return this;
     }
 
     public destroy(): void {
@@ -242,6 +247,7 @@ export class ModelView {
         this.interaction.destroy();
         this.tooltip.destroy();
         this.panel.destroy();
+        this.events.clear();
         this.root.remove();
     }
 

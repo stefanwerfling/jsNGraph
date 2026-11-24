@@ -28,9 +28,9 @@ interface CameraFlight {
  */
 export class Camera {
 
-    public scale = 1;
-    public offsetX = 0;
-    public offsetY = 0;
+    private currentScale = 1;
+    private currentOffsetX = 0;
+    private currentOffsetY = 0;
 
     private readonly minScale: number;
     private readonly maxScale: number;
@@ -39,6 +39,19 @@ export class Camera {
     public constructor(minScale = 0.15, maxScale = 3) {
         this.minScale = minScale;
         this.maxScale = maxScale;
+    }
+
+    /** Current zoom factor (read-only; move with setState/panBy/zoomAt/flyTo). */
+    public get scale(): number {
+        return this.currentScale;
+    }
+
+    public get offsetX(): number {
+        return this.currentOffsetX;
+    }
+
+    public get offsetY(): number {
+        return this.currentOffsetY;
     }
 
     public get limits(): {min: number; max: number} {
@@ -77,26 +90,28 @@ export class Camera {
         return {scale: this.scale, offsetX: this.offsetX, offsetY: this.offsetY};
     }
 
+    /** Jump to a pose. Non-finite parts (NaN, ±Infinity) are ignored and keep their current value. */
     public setState(state: CameraState): void {
         this.flight = null;
-        this.scale = this.clampScale(state.scale);
-        this.offsetX = state.offsetX;
-        this.offsetY = state.offsetY;
+        this.currentScale = this.clampScale(state.scale);
+        this.currentOffsetX = Camera.finiteOr(state.offsetX, this.currentOffsetX);
+        this.currentOffsetY = Camera.finiteOr(state.offsetY, this.currentOffsetY);
     }
 
     public panBy(dx: number, dy: number): void {
         this.flight = null;
-        this.offsetX += dx;
-        this.offsetY += dy;
+        this.currentOffsetX += Camera.finiteOr(dx, 0);
+        this.currentOffsetY += Camera.finiteOr(dy, 0);
     }
 
     /** Zoom by `factor`, keeping the world point under (screenX, screenY) fixed. */
     public zoomAt(screenX: number, screenY: number, factor: number): void {
         this.flight = null;
+        if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) return;
         const before = this.toWorld(screenX, screenY);
-        this.scale = this.clampScale(this.scale * factor);
-        this.offsetX = screenX - before.x * this.scale;
-        this.offsetY = screenY - before.y * this.scale;
+        this.currentScale = this.clampScale(this.currentScale * factor);
+        this.currentOffsetX = screenX - before.x * this.currentScale;
+        this.currentOffsetY = screenY - before.y * this.currentScale;
     }
 
     /**
@@ -135,7 +150,11 @@ export class Camera {
 
     /** Start an animated move to `target`. durationMs <= 0 jumps immediately. */
     public flyTo(target: CameraState, durationMs = 400): void {
-        const to = {...target, scale: this.clampScale(target.scale)};
+        const to: CameraState = {
+            scale: this.clampScale(target.scale),
+            offsetX: Camera.finiteOr(target.offsetX, this.currentOffsetX),
+            offsetY: Camera.finiteOr(target.offsetY, this.currentOffsetY)
+        };
 
         if (durationMs <= 0) {
             this.setState(to);
@@ -166,9 +185,9 @@ export class Camera {
         const t = Math.min(1, (nowMs - flight.startMs) / flight.durationMs);
 
         if (t >= 1) {
-            this.scale = flight.to.scale;
-            this.offsetX = flight.to.offsetX;
-            this.offsetY = flight.to.offsetY;
+            this.currentScale = flight.to.scale;
+            this.currentOffsetX = flight.to.offsetX;
+            this.currentOffsetY = flight.to.offsetY;
             this.flight = null;
             return false;
         }
@@ -180,9 +199,9 @@ export class Camera {
         const fromOrigin = Camera.worldAtOrigin(flight.from);
         const toOrigin = Camera.worldAtOrigin(flight.to);
 
-        this.scale = scale;
-        this.offsetX = -(fromOrigin.x + (toOrigin.x - fromOrigin.x) * e) * scale;
-        this.offsetY = -(fromOrigin.y + (toOrigin.y - fromOrigin.y) * e) * scale;
+        this.currentScale = scale;
+        this.currentOffsetX = -(fromOrigin.x + (toOrigin.x - fromOrigin.x) * e) * scale;
+        this.currentOffsetY = -(fromOrigin.y + (toOrigin.y - fromOrigin.y) * e) * scale;
         return true;
     }
 
@@ -190,8 +209,15 @@ export class Camera {
         this.flight = null;
     }
 
+    /** Clamp to the limits; a non-finite scale keeps the current one. */
     private clampScale(scale: number): number {
+        if (!Number.isFinite(scale)) return this.currentScale;
+
         return Math.min(this.maxScale, Math.max(this.minScale, scale));
+    }
+
+    private static finiteOr(value: number, fallback: number): number {
+        return Number.isFinite(value) ? value : fallback;
     }
 
     /** World point that a pose maps to screen (0, 0). */

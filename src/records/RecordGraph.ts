@@ -39,8 +39,6 @@ type Hit =
     | {kind: 'card'; node: string}
     | null;
 
-const CORNER = 4;
-
 /**
  * A record graph on canvas: cards with a header (icon, title, subtitle)
  * and a table of rows; links run row → row, grouped cards sit in
@@ -49,6 +47,8 @@ const CORNER = 4;
  * into alerts. Supply chains, data lineage, schema diagrams. Zero deps.
  */
 export class RecordGraph {
+
+    private static readonly CORNER = 4;
 
     private readonly root: HTMLDivElement;
     private readonly canvas: HTMLCanvasElement;
@@ -117,12 +117,16 @@ export class RecordGraph {
         return this.root;
     }
 
-    public on<K extends keyof RecordGraphEvents>(event: K, listener: (payload: RecordGraphEvents[K]) => void): void {
+    public on<K extends keyof RecordGraphEvents>(event: K, listener: (payload: RecordGraphEvents[K]) => void): this {
         this.events.on(event, listener);
+
+        return this;
     }
 
-    public off<K extends keyof RecordGraphEvents>(event: K, listener: (payload: RecordGraphEvents[K]) => void): void {
+    public off<K extends keyof RecordGraphEvents>(event: K, listener: (payload: RecordGraphEvents[K]) => void): this {
         this.events.off(event, listener);
+
+        return this;
     }
 
     // ---- data ------------------------------------------------------------
@@ -145,12 +149,21 @@ export class RecordGraph {
     }
 
     /** A copy of the current document (values after `produce`, collapse state). */
+    /** A copy of the current data (values changed by `produce`/`setValue` included); icon drawer functions are kept. */
     public getData(): RecordGraphData {
-        return structuredClone({...this.data, nodes: this.data.nodes.map((n) => ({...n, icon: typeof n.icon === 'function' ? undefined : n.icon}))});
+        const copy: RecordGraphData = structuredClone({...this.data, nodes: this.data.nodes.map((n) => ({...n, icon: typeof n.icon === 'function' ? undefined : n.icon}))});
+        this.data.nodes.forEach((n, i) => {
+            if (typeof n.icon === 'function') {
+                copy.nodes[i]!.icon = n.icon;
+            }
+        });
+
+        return copy;
     }
 
+    /** A copy of the last layout (positions, routes, bounds); null before the first layout. */
     public getLayout(): RecordLayoutResult | null {
-        return this.result;
+        return this.result === null ? null : structuredClone(this.result);
     }
 
     /** Change one row's value (no relayout). */
@@ -425,7 +438,7 @@ export class RecordGraph {
 
         this.shadow(ctx, true);
         ctx.beginPath();
-        ctx.roundRect(g.x, g.y, g.w, g.h, CORNER);
+        ctx.roundRect(g.x, g.y, g.w, g.h, RecordGraph.CORNER);
         ctx.fillStyle = t.frame;
         ctx.fill();
         this.shadow(ctx, false);
@@ -529,7 +542,7 @@ export class RecordGraph {
         // body
         this.shadow(ctx, true);
         ctx.beginPath();
-        ctx.roundRect(x, y, w, h, CORNER);
+        ctx.roundRect(x, y, w, h, RecordGraph.CORNER);
         ctx.fillStyle = t.card;
         ctx.fill();
         this.shadow(ctx, false);
@@ -537,7 +550,7 @@ export class RecordGraph {
         // header
         ctx.save();
         ctx.beginPath();
-        ctx.roundRect(x, y, w, h, CORNER);
+        ctx.roundRect(x, y, w, h, RecordGraph.CORNER);
         ctx.clip();
         ctx.fillStyle = Color.lerp(t.card, accent, 0.22);
         ctx.fillRect(x, y, w, head);
@@ -650,7 +663,7 @@ export class RecordGraph {
         ctx.lineWidth = 1;
         ctx.stroke();
         ctx.beginPath();
-        ctx.roundRect(x, y, w, h, CORNER);
+        ctx.roundRect(x, y, w, h, RecordGraph.CORNER);
         ctx.strokeStyle = t.cardBorder;
         ctx.stroke();
     }

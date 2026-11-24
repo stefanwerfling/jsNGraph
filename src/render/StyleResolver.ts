@@ -59,8 +59,6 @@ export interface StyleDefaults {
 export type NodeStyler = (node: GraphNode) => NodeStyle | null | undefined;
 export type EdgeStyler = (edge: GraphEdge) => EdgeStyle | null | undefined;
 
-const DEFAULT_DASH = [6, 4];
-
 /**
  * Built-in edge-kind presets. `knowledge` covers a notes/wiki graph:
  * plain wikilinks, typed (directed) relations, tag and semantic-similarity
@@ -88,6 +86,8 @@ export class EdgeKindPresets {
  */
 export class StyleResolver {
 
+    private static readonly DEFAULT_DASH = [6, 4];
+
     public constructor(
         private theme: ThemeTokens,
         private edgeKinds: Readonly<Record<string, EdgeKindStyle>> = {},
@@ -96,6 +96,7 @@ export class StyleResolver {
         private labelStyle: LabelStyle = 'plain',
         private defaults: StyleDefaults = {nodeGlow: 0, edgeGlow: 0, labelPosition: 'below', edgeColor: 'load'}
     ) {
+        this.edgeKinds = StyleResolver.copyKinds(edgeKinds);
     }
 
     public setDefaults(defaults: Partial<StyleDefaults>): void {
@@ -131,7 +132,17 @@ export class StyleResolver {
     }
 
     public setEdgeKinds(kinds: Readonly<Record<string, EdgeKindStyle>>): void {
-        this.edgeKinds = kinds;
+        this.edgeKinds = StyleResolver.copyKinds(kinds);
+    }
+
+    /** Stored kind tables are copied, so a caller mutating its object later does not restyle behind our back. */
+    private static copyKinds(kinds: Readonly<Record<string, EdgeKindStyle>>): Record<string, EdgeKindStyle> {
+        const copy: Record<string, EdgeKindStyle> = {};
+        for (const [name, style] of Object.entries(kinds)) {
+            copy[name] = {...style};
+        }
+
+        return copy;
     }
 
     public node(node: GraphNode): ResolvedNodeStyle {
@@ -274,7 +285,7 @@ export class StyleResolver {
             return null;
         }
 
-        return dashed === true ? DEFAULT_DASH : dashed;
+        return dashed === true ? StyleResolver.DEFAULT_DASH : dashed;
     }
 
     private static unit(v: number): number {

@@ -56,9 +56,6 @@ type Gesture =
     | {kind: 'lasso'; points: Point[]; additive: boolean}
     | {kind: 'pinch'; distance: number};
 
-/** A pointer that moves less than this (CSS px) between down and up is a click, not a drag. */
-const CLICK_SLOP = 4;
-
 /**
  * Pointer handling for a canvas graph with no per-node DOM: hover, click,
  * double-click and context menu with node/edge hit-testing (delegated to
@@ -66,6 +63,9 @@ const CLICK_SLOP = 4;
  * pan, wheel and two-finger pinch zoom, and shift+drag lasso selection.
  */
 export class InteractionController {
+
+    /** A pointer that moves less than this (CSS px) between down and up is a click, not a drag. */
+    private static readonly CLICK_SLOP = 4;
 
     private hovered: GraphNode | null = null;
     private hoveredEdge: GraphEdge | null = null;
@@ -200,7 +200,7 @@ export class InteractionController {
             this.pointers.set(event.pointerId, p);
         }
 
-        if (this.downPos !== null && Math.hypot(event.clientX - this.downPos.x, event.clientY - this.downPos.y) > CLICK_SLOP) {
+        if (this.downPos !== null && Math.hypot(event.clientX - this.downPos.x, event.clientY - this.downPos.y) > InteractionController.CLICK_SLOP) {
             this.moved = true;
         }
 

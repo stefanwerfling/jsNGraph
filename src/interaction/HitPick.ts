@@ -18,35 +18,46 @@ export interface HitCandidate<T> {
     shape: {kind: 'circle'; radius: number} | {kind: 'box'; w: number; h: number};
 }
 
-/** Default padded target radius in screen px (24 px across). */
-export const MIN_HIT_RADIUS_PX = 12;
+export class HitPick {
 
-export const pickHit = <T>(candidates: Iterable<HitCandidate<T>>, x: number, y: number, minTarget: number): T | null => {
-    let drawn: HitCandidate<T> | null = null;
-    let padded: HitCandidate<T> | null = null;
-    let paddedDist = Infinity;
+    /** Default padded target radius in screen px (24 px across). */
+    public static readonly MIN_RADIUS_PX = 12;
 
-    for (const c of candidates) {
-        const dx = x - c.x;
-        const dy = y - c.y;
+    /** The item under (x, y): the topmost drawn shape, else the nearest padded target within `minTarget`. */
+    public static pick<T>(candidates: Iterable<HitCandidate<T>>, x: number, y: number, minTarget: number): T | null {
+        let drawn: HitCandidate<T> | null = null;
+        let padded: HitCandidate<T> | null = null;
+        let paddedDist = Infinity;
 
-        if (c.shape.kind === 'box') {
-            if (Math.abs(dx) <= c.shape.w / 2 && Math.abs(dy) <= c.shape.h / 2 && (drawn === null || c.order > drawn.order)) {
-                drawn = c;
+        for (const c of candidates) {
+            const dx = x - c.x;
+            const dy = y - c.y;
+
+            if (c.shape.kind === 'box') {
+                if (Math.abs(dx) <= c.shape.w / 2 && Math.abs(dy) <= c.shape.h / 2 && (drawn === null || c.order > drawn.order)) {
+                    drawn = c;
+                }
+                continue;
             }
-            continue;
+
+            const distSq = dx * dx + dy * dy;
+            const r = c.shape.radius;
+
+            if (distSq <= r * r) {
+                if (drawn === null || c.order > drawn.order) drawn = c;
+            } else if (distSq <= minTarget * minTarget && distSq < paddedDist) {
+                padded = c;
+                paddedDist = distSq;
+            }
         }
 
-        const distSq = dx * dx + dy * dy;
-        const r = c.shape.radius;
-
-        if (distSq <= r * r) {
-            if (drawn === null || c.order > drawn.order) drawn = c;
-        } else if (distSq <= minTarget * minTarget && distSq < paddedDist) {
-            padded = c;
-            paddedDist = distSq;
-        }
+        return (drawn ?? padded)?.item ?? null;
     }
 
-    return (drawn ?? padded)?.item ?? null;
-};
+}
+
+/** @deprecated use HitPick.MIN_RADIUS_PX */
+export const MIN_HIT_RADIUS_PX = HitPick.MIN_RADIUS_PX;
+
+/** @deprecated use HitPick.pick */
+export const pickHit = <T>(candidates: Iterable<HitCandidate<T>>, x: number, y: number, minTarget: number): T | null => HitPick.pick(candidates, x, y, minTarget);

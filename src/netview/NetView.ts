@@ -25,7 +25,7 @@ export interface NetViewOptions {
 
 export interface NetViewEvents extends Record<string, unknown> {
     /** A block column was clicked (null: background). */
-    blockClick: {block: number; data: NetTraceBlock | null} | null;
+    blockClick: {block: number; data: Readonly<NetTraceBlock> | null} | null;
     /** Pointer over a part of the view (null: nothing). */
     hover: NetHit | null;
 }
@@ -156,12 +156,13 @@ export class NetView {
         this.fit();
     }
 
-    /** Lay one prompt's trace over the model (null: structure only). */
-    public setTrace(trace: NetTrace | null): void {
+    /** Lay one prompt's trace over the model (null: structure only). The trace is copied. */
+    public setTrace(input: NetTrace | null): void {
         if (this.model === null) {
             throw new Error('NetView: setModel before setTrace');
         }
 
+        const trace = input === null ? null : structuredClone(input);
         this.trace = trace;
         this.blocks.clear();
         this.measurements = null;
@@ -206,8 +207,9 @@ export class NetView {
         return this.model === null ? null : {...this.model};
     }
 
+    /** A copy of the current trace. */
     public getTrace(): NetTrace | null {
-        return this.trace;
+        return this.trace === null ? null : structuredClone(this.trace);
     }
 
     /** Summary numbers of the current trace (null: no trace). */
@@ -293,12 +295,16 @@ export class NetView {
         this.loop.request();
     }
 
-    public on<K extends keyof NetViewEvents>(event: K, listener: (payload: NetViewEvents[K]) => void): void {
+    public on<K extends keyof NetViewEvents>(event: K, listener: (payload: NetViewEvents[K]) => void): this {
         this.events.on(event, listener);
+
+        return this;
     }
 
-    public off<K extends keyof NetViewEvents>(event: K, listener: (payload: NetViewEvents[K]) => void): void {
+    public off<K extends keyof NetViewEvents>(event: K, listener: (payload: NetViewEvents[K]) => void): this {
         this.events.off(event, listener);
+
+        return this;
     }
 
     public destroy(): void {

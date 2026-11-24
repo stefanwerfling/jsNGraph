@@ -4,7 +4,7 @@
  * `jsngraph` itself still exports everything.
  */
 export { ModelView } from './modelview/ModelView';
-export type { ModelViewOptions } from './modelview/ModelView';
+export type { ModelViewOptions, ModelViewEvents } from './modelview/ModelView';
 export type { FlowLayoutOptions } from './modelview/FlowLayout';
 export type {
     ModelGraphData,

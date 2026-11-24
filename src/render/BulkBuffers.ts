@@ -13,14 +13,6 @@ export interface BulkSink {
     disc(x: number, y: number, r: number, fill: string, stroke: string, alpha: number): void;
 }
 
-/** Floats per instance. */
-export const LINE_STRIDE = 9;   // ax ay bx by width r g b a
-export const ARROW_STRIDE = 9;  // tipX tipY dirX dirY size r g b a
-export const DISC_STRIDE = 11;  // x y r  fill rgba  stroke rgba
-
-/** Unparseable colors draw grey rather than vanish. */
-const FALLBACK = {r: 128, g: 128, b: 128, a: 1};
-
 /** A growable Float32Array that is reused frame after frame. */
 class FloatList {
     public data: Float32Array;
@@ -57,22 +49,32 @@ class FloatList {
  */
 export class BulkBuffers implements BulkSink {
 
-    public readonly lines = new FloatList(LINE_STRIDE * 1024);
-    public readonly arrows = new FloatList(ARROW_STRIDE * 256);
-    public readonly discs = new FloatList(DISC_STRIDE * 1024);
+    /** Floats per line instance: ax ay bx by width r g b a. */
+    public static readonly LINE_STRIDE = 9;
+    /** Floats per arrow instance: tipX tipY dirX dirY size r g b a. */
+    public static readonly ARROW_STRIDE = 9;
+    /** Floats per disc instance: x y r  fill rgba  stroke rgba. */
+    public static readonly DISC_STRIDE = 11;
+
+    /** Unparseable colors draw grey rather than vanish. */
+    private static readonly FALLBACK = {r: 128, g: 128, b: 128, a: 1};
+
+    public readonly lines = new FloatList(BulkBuffers.LINE_STRIDE * 1024);
+    public readonly arrows = new FloatList(BulkBuffers.ARROW_STRIDE * 256);
+    public readonly discs = new FloatList(BulkBuffers.DISC_STRIDE * 1024);
     /** Exact-string color cache: a big frame repeats a handful of colors tens of thousands of times. */
     private readonly colors = new Map<string, Rgba>();
 
     public get lineCount(): number {
-        return this.lines.length / LINE_STRIDE;
+        return this.lines.length / BulkBuffers.LINE_STRIDE;
     }
 
     public get arrowCount(): number {
-        return this.arrows.length / ARROW_STRIDE;
+        return this.arrows.length / BulkBuffers.ARROW_STRIDE;
     }
 
     public get discCount(): number {
-        return this.discs.length / DISC_STRIDE;
+        return this.discs.length / BulkBuffers.DISC_STRIDE;
     }
 
     public reset(): void {
@@ -90,7 +92,7 @@ export class BulkBuffers implements BulkSink {
         }
 
         const {from, to} = segment;
-        const d = this.lines.reserve(LINE_STRIDE);
+        const d = this.lines.reserve(BulkBuffers.LINE_STRIDE);
         let i = this.lines.length;
 
         d[i++] = from.x;
@@ -116,7 +118,7 @@ export class BulkBuffers implements BulkSink {
             return;
         }
 
-        const h = this.arrows.reserve(ARROW_STRIDE);
+        const h = this.arrows.reserve(BulkBuffers.ARROW_STRIDE);
         let j = this.arrows.length;
 
         h[j++] = to.x;
@@ -138,7 +140,7 @@ export class BulkBuffers implements BulkSink {
 
         const f = this.rgba(fill);
         const s = this.rgba(stroke);
-        const d = this.discs.reserve(DISC_STRIDE);
+        const d = this.discs.reserve(BulkBuffers.DISC_STRIDE);
         let i = this.discs.length;
 
         d[i++] = x;
@@ -163,7 +165,7 @@ export class BulkBuffers implements BulkSink {
                 this.colors.clear();
             }
 
-            c = Color.parse(css) ?? FALLBACK;
+            c = Color.parse(css) ?? BulkBuffers.FALLBACK;
             this.colors.set(css, c);
         }
 
@@ -171,3 +173,10 @@ export class BulkBuffers implements BulkSink {
     }
 
 }
+
+/** @deprecated use BulkBuffers.LINE_STRIDE */
+export const LINE_STRIDE = BulkBuffers.LINE_STRIDE;
+/** @deprecated use BulkBuffers.ARROW_STRIDE */
+export const ARROW_STRIDE = BulkBuffers.ARROW_STRIDE;
+/** @deprecated use BulkBuffers.DISC_STRIDE */
+export const DISC_STRIDE = BulkBuffers.DISC_STRIDE;
