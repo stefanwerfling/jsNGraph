@@ -29,14 +29,14 @@ export interface ChartNote {
 /** A resolved anchor in chart pixels; null hides the note. */
 export type NoteAnchor = {x: number; y: number} | null;
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
-
 /**
  * DOM note layer for the canvas charts: text boxes over the canvas (crisp,
  * selectable) and their pointer lines in one SVG. The chart resolves each
  * note's anchor to pixels on every frame and calls `place`.
  */
 export class ChartNotes {
+
+    private static readonly SVG_NS = 'http://www.w3.org/2000/svg';
 
     private readonly layer: HTMLDivElement;
     private readonly svg: SVGSVGElement;
@@ -47,18 +47,19 @@ export class ChartNotes {
         this.theme = theme;
         this.layer = document.createElement('div');
         this.layer.style.cssText = 'position:absolute;inset:0;pointer-events:none;overflow:hidden;transition:opacity .15s';
-        this.svg = document.createElementNS(SVG_NS, 'svg');
+        this.svg = document.createElementNS(ChartNotes.SVG_NS, 'svg');
         this.svg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;overflow:visible';
         this.layer.appendChild(this.svg);
         root.appendChild(this.layer);
     }
 
+    /** A copy of the notes. */
     public get list(): ReadonlyArray<ChartNote> {
-        return this.notes;
+        return this.notes.map((n) => ({...n}));
     }
 
     public set(notes: ChartNote[]): void {
-        this.notes = notes.slice();
+        this.notes = notes.map((n) => ({...n}));
         this.build();
     }
 

@@ -1,6 +1,6 @@
 import { Color } from '../util/Color';
 import { ChartRange, ChartRect, ChartScale } from './ChartScale';
-import { CHART_FONT, ChartSurface } from './ChartSurface';
+import { ChartSurface } from './ChartSurface';
 import { ChartThemeTokens } from './ChartTheme';
 import { TimeScale } from './TimeScale';
 
@@ -62,10 +62,6 @@ export interface TimeSeriesChartEvents extends Record<string, unknown> {
     rangeChange: ChartRange;
 }
 
-const PALETTE = ['#a4d007', '#66c0f4', '#f5a623', '#e0565b', '#b48ef5'];
-const ANIM_MS = 380;
-const NAV_H = 40;
-
 /**
  * Time series chart (price history style): lines over a calendar time axis
  * whose ticks follow the zoom (minutes … years), zoom buttons for the last
@@ -75,6 +71,10 @@ const NAV_H = 40;
  * pixel so spikes survive. Canvas, zero dependencies.
  */
 export class TimeSeriesChart extends ChartSurface<TimeSeriesChartEvents> {
+
+    private static readonly PALETTE = ['#a4d007', '#66c0f4', '#f5a623', '#e0565b', '#b48ef5'];
+    private static readonly ANIM_MS = 380;
+    private static readonly NAV_H = 40;
 
     private series: TimeSeries[] = [];
     private volume: TimeVolume | null;
@@ -101,9 +101,9 @@ export class TimeSeriesChart extends ChartSurface<TimeSeriesChartEvents> {
 
     public constructor(container: HTMLElement, options: TimeSeriesChartOptions = {}) {
         super(container, options.theme);
-        this.volume = options.volume ?? null;
+        this.volume = options.volume === undefined ? null : {...options.volume};
         this.title = options.title ?? '';
-        this.presets = options.presets ?? [];
+        this.presets = (options.presets ?? []).map((p) => ({...p}));
         this.format = options.format ?? ((v) => v.toFixed(2));
         this.volumeFormat = options.volumeFormat ?? ((v) => Math.round(v).toLocaleString(options.locale));
         this.locale = options.locale;
@@ -125,6 +125,7 @@ export class TimeSeriesChart extends ChartSurface<TimeSeriesChartEvents> {
         this.canvas.addEventListener('pointerdown', this.onDown);
         this.canvas.addEventListener('pointermove', this.onMove);
         this.canvas.addEventListener('pointerup', this.onUp);
+        this.canvas.addEventListener('pointercancel', this.onUp);
         this.canvas.addEventListener('pointerleave', this.onLeave);
         this.canvas.addEventListener('wheel', this.onWheel, {passive: false});
         this.canvas.addEventListener('dblclick', this.onDblClick);
@@ -146,7 +147,7 @@ export class TimeSeriesChart extends ChartSurface<TimeSeriesChartEvents> {
         const followed = this.view !== null && this.view.max >= before.max - 1;
 
         this.series = series.map((s) => ({...s}));
-        this.volume = volume;
+        this.volume = volume === null ? null : {...volume};
         this.full = this.extent();
         if (this.view !== null) {
             if (followed) {
@@ -163,8 +164,9 @@ export class TimeSeriesChart extends ChartSurface<TimeSeriesChartEvents> {
         this.redraw();
     }
 
+    /** A copy of the series. */
     public getSeries(): ReadonlyArray<TimeSeries> {
-        return this.series;
+        return this.series.map((s) => ({...s, t: s.t.slice(), values: s.values.slice()}));
     }
 
     public setTitle(title: string): void {
@@ -188,7 +190,7 @@ export class TimeSeriesChart extends ChartSurface<TimeSeriesChartEvents> {
     }
 
     public getRange(): ChartRange {
-        return this.currentView(performance.now());
+        return {...this.currentView(performance.now())};
     }
 
     /** Show the last `span` ms ('all' = everything), eased; marks a preset with that span active. */
@@ -200,10 +202,20 @@ export class TimeSeriesChart extends ChartSurface<TimeSeriesChartEvents> {
         this.go(span === 'all' ? null : this.presetRange({label: '', span}), animate);
     }
 
+    /** Show everything again, eased (like a double-click). */
+    public resetView(): void {
+        const all = this.presets.find((p) => p.span === 'all');
+
+        this.activePreset = all?.label ?? null;
+        this.syncPresets();
+        this.go(null, true);
+    }
+
     public override destroy(): void {
         this.canvas.removeEventListener('pointerdown', this.onDown);
         this.canvas.removeEventListener('pointermove', this.onMove);
         this.canvas.removeEventListener('pointerup', this.onUp);
+        this.canvas.removeEventListener('pointercancel', this.onUp);
         this.canvas.removeEventListener('pointerleave', this.onLeave);
         this.canvas.removeEventListener('wheel', this.onWheel);
         this.canvas.removeEventListener('dblclick', this.onDblClick);
@@ -255,7 +267,7 @@ export class TimeSeriesChart extends ChartSurface<TimeSeriesChartEvents> {
             return a === null ? target : a.from;
         }
 
-        const t = Math.min(1, (now - a.start) / ANIM_MS);
+        const t = Math.min(1, (now - a.start) / TimeSeriesChart.ANIM_MS);
 
         if (t >= 1) {
             this.anim = null;
@@ -324,12 +336,12 @@ export class TimeSeriesChart extends ChartSurface<TimeSeriesChartEvents> {
         const yr = this.yShown;
         const yTicks = ChartScale.ticks(yr, Math.max(2, Math.floor(this.height / 55)));
 
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
 
         const left = Math.ceil(Math.max(...yTicks.map((v) => ctx.measureText(this.format(v)).width))) + 14;
         const legend = this.series.filter((s) => s.name !== undefined).length > 1;
         const top = 10 + (this.title !== '' ? 22 : 0) + (legend ? 20 : 0);
-        const bottom = 24 + (this.navigatorOn ? NAV_H + 14 : 0) + (this.presetBar !== null ? 26 : 0);
+        const bottom = 24 + (this.navigatorOn ? TimeSeriesChart.NAV_H + 14 : 0) + (this.presetBar !== null ? 26 : 0);
         const avail = Math.max(40, this.height - top - bottom);
         const volH = this.volume !== null ? Math.round(avail * 0.22) : 0;
         const w = Math.max(10, this.width - left - 14);
@@ -340,7 +352,7 @@ export class TimeSeriesChart extends ChartSurface<TimeSeriesChartEvents> {
         const lowest = this.volRect ?? this.plot;
         const axisY = lowest.y + lowest.h;
 
-        this.navRect = this.navigatorOn ? {x: left, y: axisY + 24, w, h: NAV_H} : null;
+        this.navRect = this.navigatorOn ? {x: left, y: axisY + 24, w, h: TimeSeriesChart.NAV_H} : null;
 
         if (this.title !== '') {
             ctx.fillStyle = theme.title;
@@ -375,14 +387,14 @@ export class TimeSeriesChart extends ChartSurface<TimeSeriesChartEvents> {
     }
 
     private color(s: TimeSeries, i: number): string {
-        return s.color ?? (i === 0 ? this.theme.line : PALETTE[i % PALETTE.length]!);
+        return s.color ?? (i === 0 ? this.theme.line : TimeSeriesChart.PALETTE[i % TimeSeriesChart.PALETTE.length]!);
     }
 
     private drawLegend(ctx: CanvasRenderingContext2D, x0: number, y: number): void {
         let x = x0;
 
         ctx.save();
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'left';
         this.series.forEach((s, i) => {
@@ -422,7 +434,7 @@ export class TimeSeriesChart extends ChartSurface<TimeSeriesChartEvents> {
         ctx.strokeStyle = this.theme.axis;
         ctx.strokeRect(Math.round(p.x) + 0.5, Math.round(p.y) + 0.5, Math.round(p.w), Math.round(p.h));
         ctx.fillStyle = this.theme.text;
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
         for (const v of yTicks) {
@@ -511,7 +523,7 @@ export class TimeSeriesChart extends ChartSurface<TimeSeriesChartEvents> {
         }
         ctx.restore();
         ctx.fillStyle = this.theme.text;
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         ctx.textAlign = 'right';
         ctx.textBaseline = 'top';
         ctx.fillText(this.volumeFormat(top), rect.x - 8, rect.y);
@@ -522,7 +534,7 @@ export class TimeSeriesChart extends ChartSurface<TimeSeriesChartEvents> {
 
         ctx.save();
         ctx.fillStyle = this.theme.text;
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         for (const t of TimeScale.ticks(view, step)) {
@@ -626,7 +638,7 @@ export class TimeSeriesChart extends ChartSurface<TimeSeriesChartEvents> {
         // tooltip
         const head = TimeScale.full(t, this.locale);
 
-        ctx.font = `600 ${CHART_FONT}`;
+        ctx.font = `600 ${ChartSurface.FONT}`;
 
         const w = Math.max(ctx.measureText(head).width, ...rows.map((r) => ctx.measureText(r.label).width)) + 20;
         const h = 22 + rows.length * 16;
@@ -643,9 +655,9 @@ export class TimeSeriesChart extends ChartSurface<TimeSeriesChartEvents> {
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = theme.text;
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         ctx.fillText(head, tx + 10, ty + 12);
-        ctx.font = `600 ${CHART_FONT}`;
+        ctx.font = `600 ${ChartSurface.FONT}`;
         rows.forEach((r, k) => {
             ctx.fillStyle = r.color === theme.text ? theme.title : r.color;
             ctx.fillText(r.label, tx + 10, ty + 28 + k * 16);
@@ -855,11 +867,7 @@ export class TimeSeriesChart extends ChartSurface<TimeSeriesChartEvents> {
 
     private readonly onDblClick = (): void => {
         if (this.zoomOn) {
-            const all = this.presets.find((p) => p.span === 'all');
-
-            this.activePreset = all?.label ?? null;
-            this.syncPresets();
-            this.go(null, true);
+            this.resetView();
         }
     };
 

@@ -69,86 +69,6 @@ export interface VolumeViewEvents extends Record<string, unknown> {
     viewChange: VolumeCamera;
 }
 
-const VERT = `#version 300 es
-in vec2 aPos;
-out vec2 vNdc;
-void main() { vNdc = aPos; gl_Position = vec4(aPos, 0.0, 1.0); }`;
-
-const FRAG = `#version 300 es
-precision highp float;
-precision highp sampler3D;
-uniform sampler3D uVol;
-uniform mat4 uInv;
-uniform vec3 uEye, uMin, uMax, uBoxMin, uBoxSize;
-uniform vec4 uW;
-uniform vec3 uC0, uC1, uC2, uC3;
-uniform float uThr, uDensity, uStep;
-uniform int uMode;
-in vec2 vNdc;
-out vec4 o;
-float field(vec3 t) { return dot(texture(uVol, t), uW); }
-void main() {
-    vec4 f4 = uInv * vec4(vNdc, 1.0, 1.0);
-    vec3 ro = uEye;
-    vec3 rd = normalize(f4.xyz / f4.w - ro);
-    vec3 inv = 1.0 / rd;
-    vec3 a = (uMin - ro) * inv, b = (uMax - ro) * inv;
-    vec3 lo = min(a, b), hi = max(a, b);
-    float t0 = max(max(lo.x, lo.y), lo.z), t1 = min(min(hi.x, hi.y), hi.z);
-    if (t1 < max(t0, 0.0)) { o = vec4(0.0); return; }
-    t0 = max(t0, 0.0);
-    float jit = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
-    int n = int(min(900.0, ceil((t1 - t0) / uStep)));
-    float dt = (t1 - t0) / float(max(n, 1));
-    vec3 acc = vec3(0.0);
-    float al = 0.0;
-    vec4 mx = vec4(0.0);
-    for (int i = 0; i < 900; i++) {
-        if (i >= n) break;
-        vec3 p = ro + rd * (t0 + (float(i) + jit) * dt);
-        vec3 tc = (p - uBoxMin) / uBoxSize;
-        vec4 v = texture(uVol, tc) * uW;
-        if (uMode == 1) { mx = max(mx, v); continue; }
-        if (uMode == 2) {
-            float f = v.x + v.y + v.z + v.w;
-            if (f >= uThr) {
-                vec3 e = 1.0 / vec3(textureSize(uVol, 0));
-                vec3 g = vec3(field(tc + vec3(e.x, 0, 0)) - field(tc - vec3(e.x, 0, 0)),
-                              field(tc + vec3(0, e.y, 0)) - field(tc - vec3(0, e.y, 0)),
-                              field(tc + vec3(0, 0, e.z)) - field(tc - vec3(0, 0, e.z)));
-                vec3 nrm = normalize(-g / uBoxSize + vec3(1e-6));
-                vec3 col = (v.x * uC0 + v.y * uC1 + v.z * uC2 + v.w * uC3) / max(f, 1e-4);
-                vec3 L = normalize(vec3(0.4, -0.5, 0.8));
-                float diff = max(dot(nrm, L), 0.0) * 0.7 + 0.3;
-                float rim = pow(1.0 - abs(dot(nrm, rd)), 2.0) * 0.35;
-                o = vec4(col * diff + rim, 1.0);
-                return;
-            }
-            continue;
-        }
-        vec4 s = max(v - vec4(uThr), 0.0);
-        float f = s.x + s.y + s.z + s.w;
-        if (f <= 0.0) continue;
-        vec3 col = (s.x * uC0 + s.y * uC1 + s.z * uC2 + s.w * uC3) / f;
-        float k = 1.0 - exp(-f * uDensity * dt * 30.0);
-        acc += (1.0 - al) * k * col * (1.0 + 1.5 * f);
-        al += (1.0 - al) * k;
-        if (al > 0.985) break;
-    }
-    if (uMode == 1) {
-        vec3 col = mx.x * uC0 + mx.y * uC1 + mx.z * uC2 + mx.w * uC3;
-        float m = max(max(mx.x, mx.y), max(mx.z, mx.w));
-        float alpha = clamp(m * 1.4, 0.0, 1.0);
-        o = vec4(min(col * 1.2, vec3(alpha)), alpha);
-        return;
-    }
-    if (uMode == 2) { o = vec4(0.0); return; }
-    o = vec4(min(acc, vec3(1.0)), al);
-}`;
-
-const FONT = 'system-ui, -apple-system, sans-serif';
-const HOME: VolumeCamera = {yaw: -28, pitch: 24, distance: 2.6};
-
 /**
  * A density volume rendered on the GPU: a 4-channel 3D texture ray-marched
  * in a WebGL2 fragment shader (glowing emission/absorption, brightest-sample
@@ -157,6 +77,85 @@ const HOME: VolumeCamera = {yaw: -28, pitch: 24, distance: 2.6};
  * tooltip over it. Without WebGL2 it says so instead of drawing.
  */
 export class VolumeView extends ChartSurface<VolumeViewEvents> {
+
+    private static readonly VERT = `#version 300 es
+    in vec2 aPos;
+    out vec2 vNdc;
+    void main() { vNdc = aPos; gl_Position = vec4(aPos, 0.0, 1.0); }`;
+
+    private static readonly FRAG = `#version 300 es
+    precision highp float;
+    precision highp sampler3D;
+    uniform sampler3D uVol;
+    uniform mat4 uInv;
+    uniform vec3 uEye, uMin, uMax, uBoxMin, uBoxSize;
+    uniform vec4 uW;
+    uniform vec3 uC0, uC1, uC2, uC3;
+    uniform float uThr, uDensity, uStep;
+    uniform int uMode;
+    in vec2 vNdc;
+    out vec4 o;
+    float field(vec3 t) { return dot(texture(uVol, t), uW); }
+    void main() {
+        vec4 f4 = uInv * vec4(vNdc, 1.0, 1.0);
+        vec3 ro = uEye;
+        vec3 rd = normalize(f4.xyz / f4.w - ro);
+        vec3 inv = 1.0 / rd;
+        vec3 a = (uMin - ro) * inv, b = (uMax - ro) * inv;
+        vec3 lo = min(a, b), hi = max(a, b);
+        float t0 = max(max(lo.x, lo.y), lo.z), t1 = min(min(hi.x, hi.y), hi.z);
+        if (t1 < max(t0, 0.0)) { o = vec4(0.0); return; }
+        t0 = max(t0, 0.0);
+        float jit = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+        int n = int(min(900.0, ceil((t1 - t0) / uStep)));
+        float dt = (t1 - t0) / float(max(n, 1));
+        vec3 acc = vec3(0.0);
+        float al = 0.0;
+        vec4 mx = vec4(0.0);
+        for (int i = 0; i < 900; i++) {
+            if (i >= n) break;
+            vec3 p = ro + rd * (t0 + (float(i) + jit) * dt);
+            vec3 tc = (p - uBoxMin) / uBoxSize;
+            vec4 v = texture(uVol, tc) * uW;
+            if (uMode == 1) { mx = max(mx, v); continue; }
+            if (uMode == 2) {
+                float f = v.x + v.y + v.z + v.w;
+                if (f >= uThr) {
+                    vec3 e = 1.0 / vec3(textureSize(uVol, 0));
+                    vec3 g = vec3(field(tc + vec3(e.x, 0, 0)) - field(tc - vec3(e.x, 0, 0)),
+                                  field(tc + vec3(0, e.y, 0)) - field(tc - vec3(0, e.y, 0)),
+                                  field(tc + vec3(0, 0, e.z)) - field(tc - vec3(0, 0, e.z)));
+                    vec3 nrm = normalize(-g / uBoxSize + vec3(1e-6));
+                    vec3 col = (v.x * uC0 + v.y * uC1 + v.z * uC2 + v.w * uC3) / max(f, 1e-4);
+                    vec3 L = normalize(vec3(0.4, -0.5, 0.8));
+                    float diff = max(dot(nrm, L), 0.0) * 0.7 + 0.3;
+                    float rim = pow(1.0 - abs(dot(nrm, rd)), 2.0) * 0.35;
+                    o = vec4(col * diff + rim, 1.0);
+                    return;
+                }
+                continue;
+            }
+            vec4 s = max(v - vec4(uThr), 0.0);
+            float f = s.x + s.y + s.z + s.w;
+            if (f <= 0.0) continue;
+            vec3 col = (s.x * uC0 + s.y * uC1 + s.z * uC2 + s.w * uC3) / f;
+            float k = 1.0 - exp(-f * uDensity * dt * 30.0);
+            acc += (1.0 - al) * k * col * (1.0 + 1.5 * f);
+            al += (1.0 - al) * k;
+            if (al > 0.985) break;
+        }
+        if (uMode == 1) {
+            vec3 col = mx.x * uC0 + mx.y * uC1 + mx.z * uC2 + mx.w * uC3;
+            float m = max(max(mx.x, mx.y), max(mx.z, mx.w));
+            float alpha = clamp(m * 1.4, 0.0, 1.0);
+            o = vec4(min(col * 1.2, vec3(alpha)), alpha);
+            return;
+        }
+        if (uMode == 2) { o = vec4(0.0); return; }
+        o = vec4(min(acc, vec3(1.0)), al);
+    }`;
+
+    private static readonly HOME: VolumeCamera = {yaw: -28, pitch: 24, distance: 2.6};
 
     private readonly floorCanvas: HTMLCanvasElement;
     private readonly floorCtx: CanvasRenderingContext2D;
@@ -196,14 +195,14 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
     public constructor(container: HTMLElement, options: VolumeViewOptions = {}) {
         super(container, VolumeView.surfaceTheme(options.theme));
         this.backdrop = VolumeView.backdropOf(options.theme);
-        this.channels = options.channels ?? [{name: 'density', color: '#7cc4ff'}];
+        this.channels = (options.channels ?? [{name: 'density', color: '#7cc4ff'}]).map((c) => ({...c}));
         this.mode = options.mode ?? 'glow';
         this.threshold = options.threshold ?? 0.1;
         this.density = options.density ?? 1;
-        this.clip = options.clip ?? {min: [0, 0, 0], max: [1, 1, 1]};
-        this.axes = options.axes ?? {};
+        this.clip = options.clip === undefined ? {min: [0, 0, 0], max: [1, 1, 1]} : {min: [...options.clip.min], max: [...options.clip.max]};
+        this.axes = VolumeView.copyAxes(options.axes ?? {});
         this.floor = options.floor;
-        this.cam = {...HOME, ...options.camera};
+        this.cam = {...VolumeView.HOME, ...options.camera};
         this.autoRotate = options.autoRotate ?? 0;
         this.quality = options.quality ?? 280;
         this.format = options.format ?? ((h, ch) => ch.map((c, i) => `${c.name}: ${(h.values[i] ?? 0).toFixed(2)}`));
@@ -224,6 +223,7 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
         this.canvas.addEventListener('pointerdown', this.onDown);
         this.canvas.addEventListener('pointermove', this.onMove);
         this.canvas.addEventListener('pointerup', this.onUp);
+        this.canvas.addEventListener('pointercancel', this.onUp);
         this.canvas.addEventListener('pointerleave', this.onLeave);
         this.canvas.addEventListener('wheel', this.onWheel, {passive: false});
         this.canvas.addEventListener('dblclick', this.onDblClick);
@@ -231,18 +231,24 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
     }
 
     /** False when WebGL2 (or 3D textures) is missing or the context was lost. */
-    public isSupported(): boolean {
+    public get supported(): boolean {
         return this.failure === null;
+    }
+
+    /** @deprecated use the `supported` getter */
+    public isSupported(): boolean {
+        return this.supported;
     }
 
     // ---- data & settings ---------------------------------------------------------------------------
 
+    /** The volume; `data` is used as given (not copied — it can be large), so call again after changing it. */
     public setVolume(data: Uint8Array, dims: Vec3, size?: Vec3): void {
         if (data.length < dims[0] * dims[1] * dims[2] * 4) {
             throw new Error('VolumeView: data shorter than dims × 4');
         }
         this.data = data;
-        this.dims = dims;
+        this.dims = [...dims];
 
         const s = size ?? dims;
         const m = Math.max(s[0], s[1], s[2]);
@@ -253,7 +259,7 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
     }
 
     public setChannels(channels: VolumeChannel[]): void {
-        this.channels = channels;
+        this.channels = channels.map((c) => ({...c}));
         this.redraw();
     }
 
@@ -303,8 +309,9 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
         return {...this.cam};
     }
 
+    /** Back to the start camera. */
     public resetView(): void {
-        this.setCamera(HOME);
+        this.setCamera(VolumeView.HOME);
     }
 
     /**
@@ -321,6 +328,7 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
         this.canvas.removeEventListener('pointerdown', this.onDown);
         this.canvas.removeEventListener('pointermove', this.onMove);
         this.canvas.removeEventListener('pointerup', this.onUp);
+        this.canvas.removeEventListener('pointercancel', this.onUp);
         this.canvas.removeEventListener('pointerleave', this.onLeave);
         this.canvas.removeEventListener('wheel', this.onWheel);
         this.canvas.removeEventListener('dblclick', this.onDblClick);
@@ -330,6 +338,19 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
             this.gl.getExtension('WEBGL_lose_context')?.loseContext();
         }
         super.destroy();
+    }
+
+    private static copyAxes(axes: {x?: VolumeAxis; y?: VolumeAxis; z?: VolumeAxis}): {x?: VolumeAxis; y?: VolumeAxis; z?: VolumeAxis} {
+        const out: {x?: VolumeAxis; y?: VolumeAxis; z?: VolumeAxis} = {};
+
+        for (const k of ['x', 'y', 'z'] as const) {
+            const a = axes[k];
+            if (a !== undefined) {
+                out[k] = {...a, ...(a.ticks !== undefined ? {ticks: a.ticks.map((t) => ({...t}))} : {})};
+            }
+        }
+
+        return out;
     }
 
     // ---- webgl ----------------------------------------------------------------------------------------
@@ -352,7 +373,7 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
             }
             return sh;
         };
-        const vs = compile(gl.VERTEX_SHADER, VERT), fs = compile(gl.FRAGMENT_SHADER, FRAG);
+        const vs = compile(gl.VERTEX_SHADER, VolumeView.VERT), fs = compile(gl.FRAGMENT_SHADER, VolumeView.FRAG);
 
         if (vs === null || fs === null) {
             return;
@@ -496,7 +517,7 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
         this.drawBox(ctx);
         this.drawAxes(ctx);
         if (this.failure !== null) {
-            ctx.font = `13px ${FONT}`;
+            ctx.font = `13px ${ChartSurface.FONT_FAMILY}`;
             ctx.fillStyle = this.theme.title;
             ctx.textAlign = 'center';
             ctx.fillText(this.failure, this.width / 2, this.height / 2);
@@ -605,7 +626,7 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
             ctx.fillText(label, b.x + (b.x - a.x) * 0.6, b.y + (b.y - a.y) * 0.6);
         };
 
-        ctx.font = `10px ${FONT}`;
+        ctx.font = `10px ${ChartSurface.FONT_FAMILY}`;
         ctx.fillStyle = this.theme.text;
         ctx.textBaseline = 'middle';
         ctx.lineWidth = 1;
@@ -621,7 +642,7 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
             tickAt(this.world(zEdge.u, zEdge.v, t.at), zOut, t.label, 'right');
         }
 
-        ctx.font = `600 11px ${FONT}`;
+        ctx.font = `600 11px ${ChartSurface.FONT_FAMILY}`;
         ctx.fillStyle = this.theme.title;
         const lab = (p: Vec3, text: string | undefined): void => {
             if (text === undefined) {
@@ -660,8 +681,8 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        const lines = this.format(h, this.channels);
-        ctx.font = `12px ${FONT}`;
+        const lines = this.format(h, this.channels.map((c) => ({...c})));
+        ctx.font = `12px ${ChartSurface.FONT_FAMILY}`;
         const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 20;
         const hh = lines.length * 16 + 12;
         const x = Math.max(4, Math.min(this.width - w - 4, this.pointer.x + 16));
@@ -677,7 +698,7 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
         lines.forEach((l, i) => {
-            ctx.font = i === 0 ? `600 12px ${FONT}` : `12px ${FONT}`;
+            ctx.font = i === 0 ? `600 12px ${ChartSurface.FONT_FAMILY}` : `12px ${ChartSurface.FONT_FAMILY}`;
             ctx.fillStyle = i === 0 ? this.theme.title : this.theme.text;
             ctx.fillText(l, x + 10, y + 7 + i * 16);
         });
@@ -753,7 +774,7 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
             this.canvas.releasePointerCapture(e.pointerId);
         }
         this.canvas.style.cursor = 'grab';
-        if (d !== null && !d.moved) {
+        if (d !== null && !d.moved && e.type === 'pointerup') {
             const p = this.local(e);
             this.pick(p.x, p.y);
             this.events.emit('click', this.hit);
@@ -780,7 +801,6 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
     private readonly onDblClick = (): void => {
         this.resetView();
     };
-
 
     /** Theme tokens for the base canvas: as given, but always with a transparent background. */
     private static surfaceTheme(theme: 'dark' | 'light' | Partial<ChartThemeTokens> | undefined): ChartThemeTokens {

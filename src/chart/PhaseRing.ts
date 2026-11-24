@@ -82,8 +82,6 @@ interface HitPoint {
     bin: number;
 }
 
-const FONT = 'system-ui, -apple-system, sans-serif';
-
 /**
  * A cyclic measurement around an orbit, drawn like an exoplanet phase curve:
  * phase glyphs (e.g. the moon) circle a central body at the top, below each
@@ -127,21 +125,21 @@ export class PhaseRing extends ChartSurface<PhaseRingEvents> {
 
     public constructor(container: HTMLElement, options: PhaseRingOptions = {}) {
         super(container, options.theme ?? 'dark');
-        this.series = options.series ?? [];
+        this.series = PhaseRing.copySeries(options.series ?? []);
         this.layout = options.layout ?? 'single';
         this.active = options.active ?? 0;
         this.baseline = options.baseline ?? 'mean';
         this.scale = options.scale ?? 'shared';
         this.glyphs = options.glyphs ?? 8;
         this.glyph = options.glyph ?? 'moon';
-        this.center = options.center ?? {};
+        this.center = {...options.center};
         this.format = options.format ?? ((v) => String(Math.round(v * 100) / 100));
         this.phaseLabel = options.phaseLabel ?? ((bin, bins) => this.glyph === 'moon'
             ? `${PhaseRingGeometry.moonName(bin / bins)} · day ${Math.round(bin / bins * 29.53)}`
             : `Phase ${bin + 1} / ${bins}`);
-        this.colors = options.colors ?? [...PhaseRingGeometry.SPECTRAL];
-        this.legend = options.legend ?? {};
-        this.notes = options.notes ?? [];
+        this.colors = [...(options.colors ?? PhaseRingGeometry.SPECTRAL)];
+        this.legend = options.legend === false ? false : {...options.legend};
+        this.notes = (options.notes ?? []).map((n) => ({...n}));
         this.cursor = options.cursor ?? null;
         this.cursorLabel = options.cursorLabel ?? 'today';
         this.tilt0 = this.tilt = options.tilt ?? 22;
@@ -154,6 +152,7 @@ export class PhaseRing extends ChartSurface<PhaseRingEvents> {
         this.root.addEventListener('pointerdown', this.onDown);
         this.root.addEventListener('pointermove', this.onMove);
         this.root.addEventListener('pointerup', this.onUp);
+        this.root.addEventListener('pointercancel', this.onUp);
         this.root.addEventListener('pointerleave', this.onLeave);
         this.root.addEventListener('dblclick', this.onDblClick);
         this.redraw();
@@ -167,7 +166,7 @@ export class PhaseRing extends ChartSurface<PhaseRingEvents> {
             const shown = this.shownValues(i, now);
             return shown !== null && shown.length === s.values.length ? shown : s.values.map(() => this.base(s.values));
         });
-        this.series = series;
+        this.series = PhaseRing.copySeries(series);
         this.animStart = options.animate === false ? -1 : now;
         if (this.active >= series.length) {
             this.active = 0;
@@ -175,8 +174,9 @@ export class PhaseRing extends ChartSurface<PhaseRingEvents> {
         this.redraw();
     }
 
+    /** A copy of the series. */
     public getSeries(): ReadonlyArray<PhaseSeries> {
-        return this.series;
+        return PhaseRing.copySeries(this.series);
     }
 
     public setLayout(layout: 'single' | 'stack'): void {
@@ -195,12 +195,12 @@ export class PhaseRing extends ChartSurface<PhaseRingEvents> {
     }
 
     public setNotes(notes: PhaseNote[]): void {
-        this.notes = notes;
+        this.notes = notes.map((n) => ({...n}));
         this.redraw();
     }
 
     public setLegend(legend: PhaseLegend | false): void {
-        this.legend = legend;
+        this.legend = legend === false ? false : {...legend};
         this.redraw();
     }
 
@@ -225,10 +225,16 @@ export class PhaseRing extends ChartSurface<PhaseRingEvents> {
         this.redraw();
     }
 
+    /** Back to the start turn and tilt. */
+    public resetView(): void {
+        this.setView({yaw: this.yaw0, tilt: this.tilt0});
+    }
+
     public override destroy(): void {
         this.root.removeEventListener('pointerdown', this.onDown);
         this.root.removeEventListener('pointermove', this.onMove);
         this.root.removeEventListener('pointerup', this.onUp);
+        this.root.removeEventListener('pointercancel', this.onUp);
         this.root.removeEventListener('pointerleave', this.onLeave);
         this.root.removeEventListener('dblclick', this.onDblClick);
         super.destroy();
@@ -460,7 +466,7 @@ export class PhaseRing extends ChartSurface<PhaseRingEvents> {
             }
         });
 
-        ctx.font = `10px ${FONT}`;
+        ctx.font = `10px ${ChartSurface.FONT_FAMILY}`;
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'left';
         ctx.fillStyle = Color.withAlpha(theme.text, 0.85);
@@ -470,7 +476,7 @@ export class PhaseRing extends ChartSurface<PhaseRingEvents> {
             ctx.fillText(this.format(r.lo), right, view.cy - heightOf(series, r.lo) * view.lift);
         }
         if (labelled) {
-            ctx.font = `600 12px ${FONT}`;
+            ctx.font = `600 12px ${ChartSurface.FONT_FAMILY}`;
             ctx.textAlign = 'right';
             ctx.fillStyle = this.series[series]!.name !== '' ? theme.title : theme.text;
             ctx.fillText(this.series[series]!.name, view.cx - view.rx - 12, view.cy);
@@ -531,7 +537,7 @@ export class PhaseRing extends ChartSurface<PhaseRingEvents> {
             ctx.arc(orbit.cx, orbit.cy, r, 0, Math.PI * 2);
             ctx.fill();
             if (c.label !== undefined) {
-                ctx.font = `600 11px ${FONT}`;
+                ctx.font = `600 11px ${ChartSurface.FONT_FAMILY}`;
                 ctx.fillStyle = theme.title;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'top';
@@ -631,7 +637,7 @@ export class PhaseRing extends ChartSurface<PhaseRingEvents> {
         ctx.lineTo(a.x + 5, a.y - gR - 11);
         ctx.closePath();
         ctx.fill();
-        ctx.font = `600 11px ${FONT}`;
+        ctx.font = `600 11px ${ChartSurface.FONT_FAMILY}`;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
         ctx.fillText(this.cursorLabel, a.x + 8, a.y - gR - 8);
@@ -639,7 +645,7 @@ export class PhaseRing extends ChartSurface<PhaseRingEvents> {
 
     private drawNotes(ctx: CanvasRenderingContext2D, rings: number[], views: RingView[], values: number[][],
         heightOf: (i: number, v: number) => number, bins: number): void {
-        ctx.font = `12px ${FONT}`;
+        ctx.font = `12px ${ChartSurface.FONT_FAMILY}`;
         ctx.textBaseline = 'middle';
         for (const note of this.notes) {
             const k = note.series === undefined ? 0 : rings.indexOf(note.series);
@@ -674,9 +680,9 @@ export class PhaseRing extends ChartSurface<PhaseRingEvents> {
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
         ctx.fillStyle = theme.title;
-        ctx.font = `16px ${FONT}`;
+        ctx.font = `16px ${ChartSurface.FONT_FAMILY}`;
         ctx.fillText(legend.title ?? 'Value', x, y);
-        ctx.font = `11px ${FONT}`;
+        ctx.font = `11px ${ChartSurface.FONT_FAMILY}`;
         ctx.fillStyle = theme.text;
         if (legend.subtitle !== undefined) {
             ctx.fillText(legend.subtitle, x, y + 20);
@@ -724,7 +730,7 @@ export class PhaseRing extends ChartSurface<PhaseRingEvents> {
         }
 
         ctx.save();
-        ctx.font = `12px ${FONT}`;
+        ctx.font = `12px ${ChartSurface.FONT_FAMILY}`;
         const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 18;
         const h = lines.length * 16 + 10;
         const x = Math.max(4, Math.min(this.width - w - 4, this.pointer.x + 14));
@@ -740,7 +746,7 @@ export class PhaseRing extends ChartSurface<PhaseRingEvents> {
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
         lines.forEach((l, i) => {
-            ctx.font = i === 0 ? `600 12px ${FONT}` : `12px ${FONT}`;
+            ctx.font = i === 0 ? `600 12px ${ChartSurface.FONT_FAMILY}` : `12px ${ChartSurface.FONT_FAMILY}`;
             ctx.fillStyle = i === 0 ? this.theme.title : this.theme.text;
             ctx.fillText(l, x + 9, y + 6 + i * 16);
         });
@@ -808,7 +814,7 @@ export class PhaseRing extends ChartSurface<PhaseRingEvents> {
         if (this.root.hasPointerCapture(e.pointerId)) {
             this.root.releasePointerCapture(e.pointerId);
         }
-        if (d !== null && !d.moved && this.hoverBin >= 0) {
+        if (d !== null && !d.moved && e.type === 'pointerup' && this.hoverBin >= 0) {
             this.events.emit('click', this.payload(this.hoverSeries, this.hoverBin));
         }
     };
@@ -824,9 +830,11 @@ export class PhaseRing extends ChartSurface<PhaseRingEvents> {
     };
 
     private readonly onDblClick = (): void => {
-        this.yaw = this.yaw0;
-        this.tilt = this.tilt0;
-        this.redraw();
+        this.resetView();
     };
+
+    private static copySeries(series: readonly PhaseSeries[]): PhaseSeries[] {
+        return series.map((s) => ({...s, values: s.values.slice()}));
+    }
 
 }

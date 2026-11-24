@@ -84,12 +84,6 @@ interface Strand {
     dot: [number, number];
 }
 
-const FONT = 'system-ui, -apple-system, sans-serif';
-const DEFAULT_OUTCOMES: BurstOutcomes = {
-    positive: {name: 'Yes', color: '#ff3d47'},
-    negative: {name: 'No', color: '#2ed3e6'}
-};
-
 /**
  * A burst of strands out of one hub, one per description of the data (an
  * attribute value or rule). Length = how often it occurs (or its probability
@@ -102,6 +96,11 @@ const DEFAULT_OUTCOMES: BurstOutcomes = {
  * shrink away while the rest close up.
  */
 export class OutcomeBurst extends ChartSurface<OutcomeBurstEvents> {
+
+    private static readonly DEFAULT_OUTCOMES: BurstOutcomes = {
+        positive: {name: 'Yes', color: '#ff3d47'},
+        negative: {name: 'No', color: '#2ed3e6'}
+    };
 
     private items: BurstItem[] = [];
     private strands = new Map<string, Strand>();
@@ -127,8 +126,8 @@ export class OutcomeBurst extends ChartSurface<OutcomeBurstEvents> {
     public constructor(container: HTMLElement, options: OutcomeBurstOptions = {}) {
         super(container, options.theme ?? 'dark');
         this.outcomes = {
-            positive: {...DEFAULT_OUTCOMES.positive, ...options.outcomes?.positive},
-            negative: {...DEFAULT_OUTCOMES.negative, ...options.outcomes?.negative}
+            positive: {...OutcomeBurst.DEFAULT_OUTCOMES.positive, ...options.outcomes?.positive},
+            negative: {...OutcomeBurst.DEFAULT_OUTCOMES.negative, ...options.outcomes?.negative}
         };
         this.baseRate = options.baseRate ?? 0.5;
         this.length = options.length ?? 'count';
@@ -149,10 +148,10 @@ export class OutcomeBurst extends ChartSurface<OutcomeBurstEvents> {
 
     /** New items; strands with a known id morph to their new place, new ones grow, gone ones shrink away. */
     public setItems(items: BurstItem[]): void {
-        this.items = items;
-        const keep = new Set(items.map((i) => i.id));
+        this.items = items.map((i) => ({...i}));
+        const keep = new Set(this.items.map((i) => i.id));
 
-        for (const it of items) {
+        for (const it of this.items) {
             const lift = it.lift ?? OutcomeBurst.defaultLift(it.probability, this.baseRate);
             const s = this.strands.get(it.id);
 
@@ -233,7 +232,14 @@ export class OutcomeBurst extends ChartSurface<OutcomeBurstEvents> {
     /** Items that pass the filter, in their drawn order (top half right → left, then bottom half). */
     public getVisible(): BurstItem[] {
         return [...this.strands.values()].filter((s) => s.visible)
-            .sort((a, b) => a.target.angle - b.target.angle).map((s) => s.item);
+            .sort((a, b) => a.target.angle - b.target.angle).map((s) => ({...s.item}));
+    }
+
+    public override destroy(): void {
+        this.canvas.removeEventListener('pointermove', this.onMove);
+        this.canvas.removeEventListener('pointerleave', this.onLeave);
+        this.canvas.removeEventListener('click', this.onClick);
+        super.destroy();
     }
 
     /** Lift of the majority outcome against its base rate. */
@@ -379,7 +385,7 @@ export class OutcomeBurst extends ChartSurface<OutcomeBurstEvents> {
         ctx.lineTo(cx + R + 8, Math.round(cy) + 0.5);
         ctx.stroke();
 
-        ctx.font = `11px ${FONT}`;
+        ctx.font = `11px ${ChartSurface.FONT_FAMILY}`;
         ctx.fillStyle = theme.text;
         ctx.textBaseline = 'top';
         ctx.textAlign = 'left';
@@ -481,7 +487,7 @@ export class OutcomeBurst extends ChartSurface<OutcomeBurstEvents> {
         const {positive, negative} = this.outcomes;
 
         ctx.save();
-        ctx.font = `13px ${FONT}`;
+        ctx.font = `13px ${ChartSurface.FONT_FAMILY}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = theme.title;
@@ -535,7 +541,7 @@ export class OutcomeBurst extends ChartSurface<OutcomeBurstEvents> {
             .map((s) => L.confidence(s.item.probability)));
         const names = [this.outcomes.positive.name, this.outcomes.negative.name];
 
-        ctx.font = `12px ${FONT}`;
+        ctx.font = `12px ${ChartSurface.FONT_FAMILY}`;
         ctx.fillStyle = this.theme.text;
         ctx.textBaseline = 'middle';
         sides.forEach((vals, side) => {
@@ -556,7 +562,7 @@ export class OutcomeBurst extends ChartSurface<OutcomeBurstEvents> {
         const ra = R + 8;
         const focusGroup = (this.hover ?? (this.selected !== null ? this.strands.get(this.selected) : undefined))?.item.group;
 
-        ctx.font = `11px ${FONT}`;
+        ctx.font = `11px ${ChartSurface.FONT_FAMILY}`;
         ctx.textBaseline = 'middle';
         for (const g of this.groups) {
             const a = Math.min(g.from, g.to), b = Math.max(g.from, g.to);
@@ -593,7 +599,7 @@ export class OutcomeBurst extends ChartSurface<OutcomeBurstEvents> {
         const at = this.pointer ?? {x: s.dot[0], y: s.dot[1]};
 
         ctx.save();
-        ctx.font = `12px ${FONT}`;
+        ctx.font = `12px ${ChartSurface.FONT_FAMILY}`;
         const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 22;
         const h = lines.length * 16 + 12;
         const x = Math.max(4, Math.min(this.width - w - 4, at.x + 14));
@@ -610,7 +616,7 @@ export class OutcomeBurst extends ChartSurface<OutcomeBurstEvents> {
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
         lines.forEach((l, i) => {
-            ctx.font = i === 0 ? `600 12px ${FONT}` : `12px ${FONT}`;
+            ctx.font = i === 0 ? `600 12px ${ChartSurface.FONT_FAMILY}` : `12px ${ChartSurface.FONT_FAMILY}`;
             ctx.fillStyle = i === 0 ? this.theme.title : this.theme.text;
             ctx.fillText(l, x + 10, y + 7 + i * 16);
         });
@@ -650,7 +656,7 @@ export class OutcomeBurst extends ChartSurface<OutcomeBurstEvents> {
     }
 
     private info(s: Strand | null): BurstHover | null {
-        return s === null ? null : {item: s.item, lift: s.lift, majority: s.item.probability >= 0.5 ? 'positive' : 'negative'};
+        return s === null ? null : {item: {...s.item}, lift: s.lift, majority: s.item.probability >= 0.5 ? 'positive' : 'negative'};
     }
 
     private readonly onMove = (e: PointerEvent): void => {

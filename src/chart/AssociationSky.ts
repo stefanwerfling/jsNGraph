@@ -74,10 +74,6 @@ interface Star {
     tally: AssociationTally | null;
 }
 
-const FONT = 'system-ui, -apple-system, sans-serif';
-const TAU = Math.PI * 2;
-const DAY = 86400000;
-
 /**
  * A night sky of known individuals: every photo-identified animal is a
  * star (brighter the more often it was resighted), pairs that are often seen
@@ -87,6 +83,9 @@ const DAY = 86400000;
  * animals not seen for long fade. Hover/click a star for its associates.
  */
 export class AssociationSky extends ChartSurface<AssociationSkyEvents> {
+
+    private static readonly TAU = Math.PI * 2;
+    private static readonly DAY = 86400000;
 
     private individuals: SkyIndividual[] = [];
     private categories: SkyCategory[] = [];
@@ -124,8 +123,8 @@ export class AssociationSky extends ChartSurface<AssociationSkyEvents> {
         this.minHwi = options.minHwi ?? 0.25;
         this.unitHwi = options.unitHwi ?? 0.5;
         this.unitName = options.unitName ?? null;
-        this.flare = options.flare ?? 21 * DAY;
-        this.fadeAfter = options.fadeAfter ?? 730 * DAY;
+        this.flare = options.flare ?? 21 * AssociationSky.DAY;
+        this.fadeAfter = options.fadeAfter ?? 730 * AssociationSky.DAY;
         this.formatTime = options.formatTime ?? ((t) => new Date(t).toISOString().slice(0, 10));
         this.twinkle = options.twinkle ?? true;
         this.time = options.time ?? Infinity;
@@ -137,6 +136,7 @@ export class AssociationSky extends ChartSurface<AssociationSkyEvents> {
         this.canvas.addEventListener('pointerdown', this.onDown);
         this.canvas.addEventListener('pointermove', this.onMove);
         this.canvas.addEventListener('pointerup', this.onUp);
+        this.canvas.addEventListener('pointercancel', this.onUp);
         this.canvas.addEventListener('pointerleave', this.onLeave);
         this.canvas.addEventListener('wheel', this.onWheel, {passive: false});
         this.canvas.addEventListener('dblclick', this.onDblClick);
@@ -147,21 +147,23 @@ export class AssociationSky extends ChartSurface<AssociationSkyEvents> {
 
     /** Replace everything; the layout is computed from all encounters, so stars keep their place over time. */
     public setData(individuals: SkyIndividual[], encounters: SkyEncounter[], categories?: SkyCategory[]): void {
-        this.individuals = individuals;
-        this.encounters = [...encounters].sort((a, b) => a.t - b.t);
+        const list = individuals.map((i) => ({...i}));
+
+        this.individuals = list;
+        this.encounters = encounters.map((e) => ({...e, ids: e.ids.slice()})).sort((a, b) => a.t - b.t);
         if (categories !== undefined) {
-            this.categories = categories;
+            this.categories = categories.map((c) => ({...c}));
         }
-        this.byId = new Map(individuals.map((i) => [i.id, i]));
+        this.byId = new Map(list.map((i) => [i.id, i]));
 
         const all = AssociationIndex.pairs(AssociationIndex.tally(this.encounters));
-        const extra: AssociationPair[] = individuals
+        const extra: AssociationPair[] = list
             .filter((i) => i.mother !== undefined && this.byId.has(i.mother))
             .map((i) => ({a: i.id, b: i.mother!, together: 1, onlyA: 0, onlyB: 0, hwi: 1}));
-        const pos = AssociationIndex.layout(individuals.map((i) => i.id), [...all, ...extra], {seed: 11});
+        const pos = AssociationIndex.layout(list.map((i) => i.id), [...all, ...extra], {seed: 11});
         const color = new Map(this.categories.map((c) => [c.id, c.color]));
 
-        this.stars = individuals.map((ind) => {
+        this.stars = list.map((ind) => {
             const p = pos.get(ind.id) ?? {x: 0, y: 0};
             return {ind, color: color.get(ind.category) ?? this.theme.line, wx: p.x, wy: p.y, sx: 0, sy: 0, r: 0, tally: null};
         });
@@ -235,8 +237,8 @@ export class AssociationSky extends ChartSurface<AssociationSkyEvents> {
         const u = this.unitOf.get(id);
 
         return {
-            individual: ind, tally, associates,
-            unit: u === undefined ? [] : this.units[u]!,
+            individual: {...ind}, tally: {...tally}, associates,
+            unit: u === undefined ? [] : this.units[u]!.slice(),
             unitName: u === undefined ? null : this.unitNames[u] ?? null
         };
     }
@@ -245,14 +247,15 @@ export class AssociationSky extends ChartSurface<AssociationSkyEvents> {
     public getUnits(): {members: string[]; name: string | null}[] {
         this.refresh();
 
-        return this.units.map((m, i) => ({members: m, name: this.unitNames[i] ?? null}));
+        return this.units.map((m, i) => ({members: m.slice(), name: this.unitNames[i] ?? null}));
     }
 
     /** Encounters up to the current time. */
     public getEncounters(): SkyEncounter[] {
-        return this.encounters.filter((e) => e.t <= this.time);
+        return this.encounters.filter((e) => e.t <= this.time).map((e) => ({...e, ids: e.ids.slice()}));
     }
 
+    /** Undo zoom and pan. */
     public resetView(): void {
         this.view = {zoom: 1, ox: 0, oy: 0};
         this.redraw();
@@ -262,6 +265,7 @@ export class AssociationSky extends ChartSurface<AssociationSkyEvents> {
         this.canvas.removeEventListener('pointerdown', this.onDown);
         this.canvas.removeEventListener('pointermove', this.onMove);
         this.canvas.removeEventListener('pointerup', this.onUp);
+        this.canvas.removeEventListener('pointercancel', this.onUp);
         this.canvas.removeEventListener('pointerleave', this.onLeave);
         this.canvas.removeEventListener('wheel', this.onWheel);
         this.canvas.removeEventListener('dblclick', this.onDblClick);
@@ -394,7 +398,7 @@ export class AssociationSky extends ChartSurface<AssociationSkyEvents> {
                     x = u * this.width;
                     y = this.height * (0.85 - 0.7 * u + g);
                 }
-                this.dust.push({x, y, r: 0.3 + Math.pow(rnd(), 3) * 1.1, a: 0.12 + rnd() * 0.45, p: rnd() * TAU});
+                this.dust.push({x, y, r: 0.3 + Math.pow(rnd(), 3) * 1.1, a: 0.12 + rnd() * 0.45, p: rnd() * AssociationSky.TAU});
             }
         }
         ctx.fillStyle = '#ffffff';
@@ -402,7 +406,7 @@ export class AssociationSky extends ChartSurface<AssociationSkyEvents> {
             const tw = this.twinkle ? 0.75 + 0.25 * Math.sin(now / 900 + d.p * 7) : 1;
             ctx.globalAlpha = d.a * tw * 0.6;
             ctx.beginPath();
-            ctx.arc(d.x, d.y, d.r, 0, TAU);
+            ctx.arc(d.x, d.y, d.r, 0, AssociationSky.TAU);
             ctx.fill();
         }
         ctx.globalAlpha = 1;
@@ -421,7 +425,7 @@ export class AssociationSky extends ChartSurface<AssociationSkyEvents> {
             const ring: {x: number; y: number}[] = [];
             for (const s of pts) {
                 for (let k = 0; k < 10; k++) {
-                    ring.push({x: s.sx + Math.cos(k / 10 * TAU) * (pad + s.r), y: s.sy + Math.sin(k / 10 * TAU) * (pad + s.r)});
+                    ring.push({x: s.sx + Math.cos(k / 10 * AssociationSky.TAU) * (pad + s.r), y: s.sy + Math.sin(k / 10 * AssociationSky.TAU) * (pad + s.r)});
                 }
             }
             const hull = AssociationIndex.hull(ring);
@@ -500,7 +504,7 @@ export class AssociationSky extends ChartSurface<AssociationSkyEvents> {
                 ctx.strokeStyle = Color.withAlpha(s.color, 0.7 * (1 - age) * (focus === null || focus.has(s.ind.id) ? 1 : 0.15));
                 ctx.lineWidth = 1.5;
                 ctx.beginPath();
-                ctx.arc(s.sx, s.sy, r, 0, TAU);
+                ctx.arc(s.sx, s.sy, r, 0, AssociationSky.TAU);
                 ctx.stroke();
             }
             ctx.restore();
@@ -522,7 +526,7 @@ export class AssociationSky extends ChartSurface<AssociationSkyEvents> {
         g.addColorStop(1, Color.withAlpha(s.color, 0));
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.arc(s.sx, s.sy, r * 2.8, 0, TAU);
+        ctx.arc(s.sx, s.sy, r * 2.8, 0, AssociationSky.TAU);
         ctx.fill();
         // diffraction spikes on bright stars
         if ((s.tally?.sightings ?? 0) >= 8) {
@@ -539,13 +543,13 @@ export class AssociationSky extends ChartSurface<AssociationSkyEvents> {
         ctx.restore();
         ctx.fillStyle = Color.withAlpha(core, Math.min(1, alpha * 1.1));
         ctx.beginPath();
-        ctx.arc(s.sx, s.sy, r * 0.55, 0, TAU);
+        ctx.arc(s.sx, s.sy, r * 0.55, 0, AssociationSky.TAU);
         ctx.fill();
         if (hot) {
             ctx.strokeStyle = Color.withAlpha('#ffffff', 0.9);
             ctx.lineWidth = 1.2;
             ctx.beginPath();
-            ctx.arc(s.sx, s.sy, r + 5, 0, TAU);
+            ctx.arc(s.sx, s.sy, r + 5, 0, AssociationSky.TAU);
             ctx.stroke();
         }
     }
@@ -563,14 +567,14 @@ export class AssociationSky extends ChartSurface<AssociationSkyEvents> {
             const top = hull.reduce((m, p) => (p.y < m.y ? p : m), hull[0]!);
             const xs = hull.map((p) => p.x);
             const on = focus === null || members.some((m) => focus.has(m));
-            ctx.font = `600 11px ${FONT}`;
+            ctx.font = `600 11px ${ChartSurface.FONT_FAMILY}`;
             ctx.letterSpacing = '0.12em';
             ctx.fillStyle = Color.withAlpha(this.theme.title, on ? 0.8 : 0.2);
             ctx.fillText(name.toUpperCase(), (Math.min(...xs) + Math.max(...xs)) / 2, top.y - 4);
             ctx.letterSpacing = '0px';
         });
         // star names when zoomed in or in focus
-        ctx.font = `11px ${FONT}`;
+        ctx.font = `11px ${ChartSurface.FONT_FAMILY}`;
         ctx.textBaseline = 'top';
         for (const s of this.stars) {
             if (!this.visible(s)) {
@@ -594,7 +598,7 @@ export class AssociationSky extends ChartSurface<AssociationSkyEvents> {
         ctx.font = `600 20px ui-monospace, monospace`;
         ctx.fillStyle = this.theme.title;
         ctx.fillText(this.formatTime(this.time), 16, 14);
-        ctx.font = `12px ${FONT}`;
+        ctx.font = `12px ${ChartSurface.FONT_FAMILY}`;
         ctx.fillStyle = this.theme.text;
         ctx.fillText(`${seen} known individuals · ${this.units.length} units · ${enc} encounters`, 16, 40);
     }
@@ -616,7 +620,7 @@ export class AssociationSky extends ChartSurface<AssociationSkyEvents> {
         ];
 
         ctx.save();
-        ctx.font = `12px ${FONT}`;
+        ctx.font = `12px ${ChartSurface.FONT_FAMILY}`;
         const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 20;
         const h = lines.length * 16 + 12;
         const x = Math.max(4, Math.min(this.width - w - 4, s.sx + 14));
@@ -632,7 +636,7 @@ export class AssociationSky extends ChartSurface<AssociationSkyEvents> {
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
         lines.forEach((l, i) => {
-            ctx.font = i === 0 ? `600 12px ${FONT}` : `12px ${FONT}`;
+            ctx.font = i === 0 ? `600 12px ${ChartSurface.FONT_FAMILY}` : `12px ${ChartSurface.FONT_FAMILY}`;
             ctx.fillStyle = i === 0 ? this.theme.title : this.theme.text;
             ctx.fillText(l, x + 10, y + 7 + i * 16);
         });
@@ -726,7 +730,7 @@ export class AssociationSky extends ChartSurface<AssociationSkyEvents> {
             this.canvas.releasePointerCapture(e.pointerId);
         }
         this.canvas.style.cursor = 'grab';
-        if (d !== null && !d.moved) {
+        if (d !== null && !d.moved && e.type === 'pointerup') {
             const p = this.local(e);
             const star = this.pickStar(p.x, p.y);
             this.selected = star === null || star.ind.id === this.selected ? null : star.ind.id;

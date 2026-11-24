@@ -91,17 +91,6 @@ export interface RadarScopeEvents extends Record<string, unknown> {
     clusterClick: {targets: ScopeTarget[]};
 }
 
-const COLORS: ScopeColors = {
-    face: '#0b4256',
-    ring: 'rgba(255,255,255,0.55)',
-    bezel: '#0a2f3e',
-    label: '#ffffff',
-    sweep: 'rgba(120,220,255,0.28)',
-    beam: 'rgba(170,235,255,0.9)',
-    echo: '#58c6f2',
-    cluster: '#f39a2b'
-};
-
 interface Lit {
     /** Last time (ms) the beam passed the target. */
     at: number;
@@ -116,6 +105,17 @@ interface Lit {
  * Canvas, zero dependencies.
  */
 export class RadarScope extends ChartSurface<RadarScopeEvents> {
+
+    private static readonly COLORS: ScopeColors = {
+        face: '#0b4256',
+        ring: 'rgba(255,255,255,0.55)',
+        bezel: '#0a2f3e',
+        label: '#ffffff',
+        sweep: 'rgba(120,220,255,0.28)',
+        beam: 'rgba(170,235,255,0.9)',
+        echo: '#58c6f2',
+        cluster: '#f39a2b'
+    };
 
     private targets: ScopeTarget[] = [];
     private kinds: Record<string, ScopeKind>;
@@ -135,7 +135,7 @@ export class RadarScope extends ChartSurface<RadarScopeEvents> {
     private readonly lit = new Map<string, Lit>();
     private sweep = 0;
     private lastFrame = 0;
-    private paused = false;
+    private pausedState = false;
     private clutterDots: {b: number; r: number; at: number}[] = [];
     private clusters: number[][] = [];
     private highlighted: Set<string> | null = null;
@@ -148,19 +148,19 @@ export class RadarScope extends ChartSurface<RadarScopeEvents> {
 
     public constructor(container: HTMLElement, options: RadarScopeOptions = {}) {
         super(container, options.theme);
-        this.kinds = options.kinds ?? {};
+        this.kinds = RadarScope.copyKinds(options.kinds ?? {});
         this.fixedRange = options.maxRange ?? null;
         this.rings = options.rings ?? 3;
         this.rangeFormat = options.rangeFormat;
         this.bearingStep = options.bearingStep ?? 20;
-        this.sectors = options.sectors ?? [];
-        this.shapes = options.shapes ?? [];
+        this.sectors = (options.sectors ?? []).map((s) => ({...s}));
+        this.shapes = (options.shapes ?? []).map((s) => ({...s}));
         this.sweepSpeed = options.sweepSpeed ?? 72;
         this.trail = options.trail ?? 70;
         this.persistence = options.persistence;
         this.clusterDistance = options.cluster;
         this.clutter = options.clutter ?? 40;
-        this.colors = {...COLORS, ...options.colors};
+        this.colors = {...RadarScope.COLORS, ...options.colors};
         this.root.addEventListener('pointermove', this.onMove);
         this.root.addEventListener('pointerleave', this.onLeave);
         this.root.addEventListener('click', this.onClick);
@@ -169,7 +169,7 @@ export class RadarScope extends ChartSurface<RadarScopeEvents> {
 
     /** New echoes; a target keeps its glow when its id stays. */
     public setTargets(targets: ScopeTarget[]): void {
-        this.targets = targets.slice();
+        this.targets = targets.map((t) => ({...t}));
 
         const ids = new Set(targets.map((t) => t.id));
 
@@ -182,8 +182,9 @@ export class RadarScope extends ChartSurface<RadarScopeEvents> {
         this.redraw();
     }
 
+    /** A copy of the echoes. */
     public getTargets(): ReadonlyArray<ScopeTarget> {
-        return this.targets;
+        return this.targets.map((t) => ({...t}));
     }
 
     /** Current clusters as lists of target ids. */
@@ -192,7 +193,7 @@ export class RadarScope extends ChartSurface<RadarScopeEvents> {
     }
 
     public setKinds(kinds: Record<string, ScopeKind>): void {
-        this.kinds = kinds;
+        this.kinds = RadarScope.copyKinds(kinds);
         this.recluster();
         this.redraw();
     }
@@ -208,13 +209,13 @@ export class RadarScope extends ChartSurface<RadarScopeEvents> {
     }
 
     public setSectors(sectors: ScopeSector[]): void {
-        this.sectors = sectors;
+        this.sectors = sectors.map((s) => ({...s}));
         this.redraw();
     }
 
     /** Fixed outlines such as a coastline (relative to the centre; move them when the centre moves). */
     public setShapes(shapes: ScopeShape[]): void {
-        this.shapes = shapes;
+        this.shapes = shapes.map((s) => ({...s}));
         this.redraw();
     }
 
@@ -226,9 +227,14 @@ export class RadarScope extends ChartSurface<RadarScopeEvents> {
 
     /** Freeze the beam (echoes keep their glow). */
     public setPaused(paused: boolean): void {
-        this.paused = paused;
+        this.pausedState = paused;
         this.lastFrame = 0;
         this.redraw();
+    }
+
+    /** True while the sweep is stopped. */
+    public get paused(): boolean {
+        return this.pausedState;
     }
 
     /** Current beam bearing in degrees. */
@@ -259,6 +265,10 @@ export class RadarScope extends ChartSurface<RadarScopeEvents> {
         this.root.removeEventListener('pointerleave', this.onLeave);
         this.root.removeEventListener('click', this.onClick);
         super.destroy();
+    }
+
+    private static copyKinds(kinds: Record<string, ScopeKind>): Record<string, ScopeKind> {
+        return Object.fromEntries(Object.entries(kinds).map(([id, k]) => [id, {...k}]));
     }
 
     // ---- geometry --------------------------------------------------------
@@ -322,7 +332,7 @@ export class RadarScope extends ChartSurface<RadarScopeEvents> {
         this.center = {x: this.width / 2, y: this.height / 2};
 
         // advance the beam; light echoes it swept over since the last frame
-        const running = this.sweepSpeed > 0 && !this.paused;
+        const running = this.sweepSpeed > 0 && !this.pausedState;
 
         if (running) {
             const dt = this.lastFrame === 0 ? 0 : Math.min(0.25, (timeMs - this.lastFrame) / 1000);

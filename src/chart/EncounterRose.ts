@@ -86,9 +86,6 @@ interface Prepared {
     now: {bearing: number; dist: number; x: number; y: number} | null;
 }
 
-const FONT = 'system-ui, -apple-system, sans-serif';
-const TAU = Math.PI * 2;
-
 /**
  * Every encounter's track moved to one common start in the centre, turned to
  * a shared "up" (north, a per-encounter reference, or the first heading) and
@@ -97,6 +94,8 @@ const TAU = Math.PI * 2;
  * category, and a mean-direction arrow per category in the middle.
  */
 export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
+
+    private static readonly TAU = Math.PI * 2;
 
     private categories: EncounterCategory[];
     private encounters: EncounterData[];
@@ -112,7 +111,7 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
     private looping: boolean;
     private filter: ((e: EncounterData) => boolean) | null;
     private time: number | null = null;
-    private playing = false;
+    private playingState = false;
     private lastNow = -1;
     private maxTime = 0;
     private hover: Prepared | null = null;
@@ -124,8 +123,8 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
 
     public constructor(container: HTMLElement, options: EncounterRoseOptions = {}) {
         super(container, options.theme ?? 'dark');
-        this.categories = options.categories ?? [];
-        this.encounters = options.encounters ?? [];
+        this.categories = (options.categories ?? []).map((c) => ({...c}));
+        this.encounters = EncounterRose.copyEncounters(options.encounters ?? []);
         this.align = options.align ?? 'north';
         this.upLabels = {north: 'N', reference: 'REFERENCE', first: 'FIRST HEADING', ...options.upLabels};
         this.radiusFixed = options.radius ?? null;
@@ -150,9 +149,9 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
     // ---- data -------------------------------------------------------------------------------------------
 
     public setEncounters(encounters: EncounterData[], categories?: EncounterCategory[]): void {
-        this.encounters = encounters;
+        this.encounters = EncounterRose.copyEncounters(encounters);
         if (categories !== undefined) {
-            this.categories = categories;
+            this.categories = categories.map((c) => ({...c}));
         }
         this.prepare();
         this.redraw();
@@ -200,7 +199,13 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
 
     /** Encounters that pass the filter, with their statistics in the current frame. */
     public getVisible(): {encounter: EncounterData; stats: EncounterHover['stats']}[] {
-        return this.prepared.map((p) => ({encounter: p.data, stats: p.stats}));
+        return this.prepared.map((p) => ({encounter: EncounterRose.copyEncounters([p.data])[0]!, stats: {...p.stats}}));
+    }
+
+    /** Back to the automatic radius zoom (like a double-click). */
+    public resetView(): void {
+        this.zoom = 1;
+        this.redraw();
     }
 
     // ---- replay ---------------------------------------------------------------------------------------------
@@ -209,24 +214,30 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
         if (this.time === null || this.time >= this.maxTime) {
             this.time = 0;
         }
-        this.playing = true;
+        this.playingState = true;
         this.lastNow = -1;
         this.redraw();
     }
 
     public pause(): void {
-        this.playing = false;
+        this.playingState = false;
     }
 
+    /** True while the replay runs. */
+    public get playing(): boolean {
+        return this.playingState;
+    }
+
+    /** @deprecated use the `playing` getter */
     public isPlaying(): boolean {
-        return this.playing;
+        return this.playingState;
     }
 
     /** Jump to a time in seconds; null shows the whole tracks. */
     public setTime(t: number | null): void {
         this.time = t === null ? null : Math.max(0, Math.min(this.maxTime, t));
         if (t === null) {
-            this.playing = false;
+            this.playingState = false;
         }
         this.events.emit('time', this.time);
         this.redraw();
@@ -329,7 +340,7 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
                         this.time = 0;
                     } else {
                         this.time = this.maxTime;
-                        this.playing = false;
+                        this.playingState = false;
                     }
                 }
             }
@@ -353,7 +364,7 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
 
         ctx.save();
         ctx.beginPath();
-        ctx.arc(this.geo.cx, this.geo.cy, R, 0, TAU);
+        ctx.arc(this.geo.cx, this.geo.cy, R, 0, EncounterRose.TAU);
         ctx.clip();
 
         // ghosts of the whole tracks while replaying
@@ -393,12 +404,12 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
         bg.addColorStop(1, Color.withAlpha(th.line, 0.015));
         ctx.fillStyle = bg;
         ctx.beginPath();
-        ctx.arc(cx, cy, R, 0, TAU);
+        ctx.arc(cx, cy, R, 0, EncounterRose.TAU);
         ctx.fill();
 
         ctx.lineWidth = 1;
         ctx.strokeStyle = th.grid;
-        ctx.font = `10px ${FONT}`;
+        ctx.font = `10px ${ChartSurface.FONT_FAMILY}`;
         ctx.fillStyle = th.text;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
@@ -406,7 +417,7 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
             const r = this.ringRadius(m);
             ctx.setLineDash([2, 4]);
             ctx.beginPath();
-            ctx.arc(cx, cy, r, 0, TAU);
+            ctx.arc(cx, cy, r, 0, EncounterRose.TAU);
             ctx.stroke();
             ctx.setLineDash([]);
             const lx = cx + r * Math.sin(Math.PI * 0.82), ly = cy - r * Math.cos(Math.PI * 0.82);
@@ -414,7 +425,7 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
         }
         // spokes per sector
         for (let i = 0; i < this.bins; i++) {
-            const a = i / this.bins * TAU;
+            const a = i / this.bins * EncounterRose.TAU;
             ctx.strokeStyle = i % (this.bins / 4) === 0 ? th.axis : th.grid;
             ctx.beginPath();
             ctx.moveTo(cx + Math.sin(a) * 6, cy - Math.cos(a) * 6);
@@ -423,10 +434,10 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
         }
         ctx.strokeStyle = th.axis;
         ctx.beginPath();
-        ctx.arc(cx, cy, R, 0, TAU);
+        ctx.arc(cx, cy, R, 0, EncounterRose.TAU);
         ctx.stroke();
         ctx.beginPath();
-        ctx.arc(cx, cy, R + band, 0, TAU);
+        ctx.arc(cx, cy, R + band, 0, EncounterRose.TAU);
         ctx.strokeStyle = th.grid;
         ctx.stroke();
 
@@ -440,13 +451,13 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
         labels.forEach((l, i) => {
             const a = i * Math.PI / 2;
             const r = R + band + 14;
-            ctx.font = i === 0 ? `700 12px ${FONT}` : `11px ${FONT}`;
+            ctx.font = i === 0 ? `700 12px ${ChartSurface.FONT_FAMILY}` : `11px ${ChartSurface.FONT_FAMILY}`;
             ctx.fillText(l, cx + Math.sin(a) * r, cy - Math.cos(a) * r);
         });
         // start mark
         ctx.fillStyle = th.select;
         ctx.beginPath();
-        ctx.arc(cx, cy, 3, 0, TAU);
+        ctx.arc(cx, cy, 3, 0, EncounterRose.TAU);
         ctx.fill();
     }
 
@@ -549,11 +560,11 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
             g.addColorStop(1, Color.withAlpha(p.color, 0));
             ctx.fillStyle = g;
             ctx.beginPath();
-            ctx.arc(sx, sy, r * 3, 0, TAU);
+            ctx.arc(sx, sy, r * 3, 0, EncounterRose.TAU);
             ctx.fill();
         }
         ctx.beginPath();
-        ctx.arc(sx, sy, r, 0, TAU);
+        ctx.arc(sx, sy, r, 0, EncounterRose.TAU);
         if (under) {
             ctx.strokeStyle = Color.withAlpha(p.color, alpha);
             ctx.lineWidth = 1.2;
@@ -570,7 +581,7 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
                 const d = r + 2.5 + k % 2 * 1.5;
                 ctx.fillStyle = Color.withAlpha('#ffffff', 0.8 * alpha);
                 ctx.beginPath();
-                ctx.arc(sx + Math.sin(a) * d, sy - Math.cos(a) * d, 1.3, 0, TAU);
+                ctx.arc(sx + Math.sin(a) * d, sy - Math.cos(a) * d, 1.3, 0, EncounterRose.TAU);
                 ctx.fill();
             }
         }
@@ -599,7 +610,7 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
         const r0 = R + 4;
 
         rose.forEach((row, i) => {
-            const mid = i / this.bins * TAU;
+            const mid = i / this.bins * EncounterRose.TAU;
             const a0 = mid - half - Math.PI / 2, a1 = mid + half - Math.PI / 2;
             let acc = 0;
             const hot = this.sector === i;
@@ -628,7 +639,7 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
                 ctx.fill();
             });
             if (hot && acc > 0) {
-                ctx.font = `600 11px ${FONT}`;
+                ctx.font = `600 11px ${ChartSurface.FONT_FAMILY}`;
                 ctx.fillStyle = this.theme.title;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
@@ -682,7 +693,7 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
         ctx.fillText(t === null ? 'whole tracks' : EncounterRose.clock(t), 14, 12);
-        ctx.font = `11px ${FONT}`;
+        ctx.font = `11px ${ChartSurface.FONT_FAMILY}`;
         ctx.fillStyle = this.theme.text;
         ctx.fillText(t === null ? `${this.prepared.length} encounters` : `after the first contact · ${running} of ${this.prepared.length} still followed`, 14, 38);
     }
@@ -699,7 +710,7 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
         const last = p.screen.length >= 2 ? [p.screen[p.screen.length - 2]!, p.screen[p.screen.length - 1]!] : [this.geo.cx, this.geo.cy];
 
         ctx.save();
-        ctx.font = `12px ${FONT}`;
+        ctx.font = `12px ${ChartSurface.FONT_FAMILY}`;
         const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 20;
         const h = lines.length * 16 + 12;
         const x = Math.max(4, Math.min(this.width - w - 4, last[0]! + 12));
@@ -715,7 +726,7 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
         lines.forEach((l, i) => {
-            ctx.font = i === 0 ? `600 12px ${FONT}` : `12px ${FONT}`;
+            ctx.font = i === 0 ? `600 12px ${ChartSurface.FONT_FAMILY}` : `12px ${ChartSurface.FONT_FAMILY}`;
             ctx.fillStyle = i === 0 ? this.theme.title : this.theme.text;
             ctx.fillText(l, x + 10, y + 7 + i * 16);
         });
@@ -805,9 +816,12 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
     };
 
     private readonly onDblClick = (): void => {
-        this.zoom = 1;
-        this.redraw();
+        this.resetView();
     };
+
+    private static copyEncounters(encounters: readonly EncounterData[]): EncounterData[] {
+        return encounters.map((e) => ({...e, fixes: e.fixes.map((f) => ({...f}))}));
+    }
 
     private toHover(p: Prepared): EncounterHover {
         return {encounter: p.data, category: this.categories[p.ci], stats: p.stats};

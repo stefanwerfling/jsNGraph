@@ -76,13 +76,6 @@ interface PBar extends RootsBar {
     count: number;
 }
 
-const FONT = 'system-ui, -apple-system, sans-serif';
-const CAP = 7.5;
-const NAME = 9;
-const ROW = 44;
-const UNIT = 3.2;
-const HEAD = 5;
-
 /**
  * Where does something come from: actors on a time axis, each tied by a
  * coloured strand to every category it is rooted in — bars along the bottom
@@ -92,6 +85,12 @@ const HEAD = 5;
  * camera, since the picture is poster sized.
  */
 export class RootsChart extends ChartSurface<RootsChartEvents> {
+
+    private static readonly CAP = 7.5;
+    private static readonly NAME = 9;
+    private static readonly ROW = 44;
+    private static readonly UNIT = 3.2;
+    private static readonly HEAD = 5;
 
     private categories: RootsCategory[] = [];
     private actors: RootsActor[] = [];
@@ -131,6 +130,7 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
         this.canvas.addEventListener('pointerdown', this.onDown);
         this.canvas.addEventListener('pointermove', this.onMove);
         this.canvas.addEventListener('pointerup', this.onUp);
+        this.canvas.addEventListener('pointercancel', this.onUp);
         this.canvas.addEventListener('pointerleave', this.onLeave);
         this.canvas.addEventListener('wheel', this.onWheel, {passive: false});
         this.canvas.addEventListener('dblclick', this.onDblClick);
@@ -140,9 +140,9 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
     // ---- data -----------------------------------------------------------------------------------------------
 
     public setData(actors: RootsActor[], categories?: RootsCategory[]): void {
-        this.actors = actors;
+        this.actors = actors.map((a) => ({...a, categories: a.categories.slice()}));
         if (categories !== undefined) {
-            this.categories = categories;
+            this.categories = categories.map((c) => ({...c}));
         }
         this.prepare();
         this.userMoved = false;
@@ -172,13 +172,13 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
 
     /** Light a part of the web from outside (e.g. a legend); null clears. Hover and click still win. */
     public focus(target: RootsFocus | null): void {
-        this.external = target;
+        this.external = target === null ? null : {...target};
         this.redraw();
     }
 
     /** Pin a focus like a click would (null clears). */
     public select(target: RootsFocus | null): void {
-        this.pinned = target;
+        this.pinned = target === null ? null : {...target};
         this.redraw();
     }
 
@@ -187,6 +187,11 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
         this.userMoved = false;
         this.camera.flyTo(this.fitState(), animate ? 350 : 0);
         this.redraw();
+    }
+
+    /** Frame the whole picture again (same as `fit()`). */
+    public resetView(): void {
+        this.fit(true);
     }
 
     /** Actors per category currently shown. */
@@ -220,9 +225,9 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
             ctx.font = font;
             return ctx.measureText(s).width;
         };
-        const capW = measure(`italic ${CAP}px ${FONT}`);
-        const nameW = measure(`600 ${NAME}px ${FONT}`);
-        const barW = measure(`10px ${FONT}`);
+        const capW = measure(`italic ${RootsChart.CAP}px ${ChartSurface.FONT_FAMILY}`);
+        const nameW = measure(`600 ${RootsChart.NAME}px ${ChartSurface.FONT_FAMILY}`);
+        const barW = measure(`10px ${ChartSurface.FONT_FAMILY}`);
 
         const pre = this.actors.map((a) => {
             const caption = a.caption !== undefined && a.caption !== '' ? L.wrap(a.caption, 118, capW).slice(0, 2) : [];
@@ -240,9 +245,9 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
             return {a, caption, cw, nw, left, right};
         });
         const {placed, rows} = L.place(pre.map((p) => ({id: p.a.id, year: p.a.year, left: p.left, right: p.right})),
-            {from: this.from, to: this.to, x0: this.x0, x1: this.x1, top: 74, rowH: ROW, minRows: 8});
+            {from: this.from, to: this.to, x0: this.x0, x1: this.x1, top: 74, rowH: RootsChart.ROW, minRows: 8});
 
-        this.barsTop = 74 + rows * ROW + 150;
+        this.barsTop = 74 + rows * RootsChart.ROW + 150;
         const bars = L.bars(this.categories.length, this.x0, this.x1);
         const old = new Map(this.bars.map((b, i) => [this.categories[i]?.id, b.count]));
         this.bars = bars.map((b, i) => ({
@@ -271,7 +276,7 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
 
         const maxCount = Math.max(0, ...L.counts(this.pa.map((p) => p.cats), this.categories.length));
         // lowest point of any arc (at its middle) with every bar full: the picture's bottom
-        const anchorMax = this.barsTop + HEAD + maxCount * UNIT + 10 + 3 * 11 + 2;
+        const anchorMax = this.barsTop + RootsChart.HEAD + maxCount * RootsChart.UNIT + 10 + 3 * 11 + 2;
         const span = Math.max(0, ...this.links.map((l) => Math.abs(this.bars[l.b]!.cx - this.bars[l.a]!.cx)));
         this.bottom = anchorMax + (24 + span * 0.12) / 2 + 16;
     }
@@ -284,7 +289,7 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
     private anchorY(i: number): number {
         const b = this.bars[i]!;
 
-        return this.barsTop + HEAD + b.count * UNIT + 10 + b.label.length * 11 + 2;
+        return this.barsTop + RootsChart.HEAD + b.count * RootsChart.UNIT + 10 + b.label.length * 11 + 2;
     }
 
     private fitState(): ReturnType<Camera['fitState']> {
@@ -431,7 +436,7 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
         }
         ctx.stroke();
         ctx.fillStyle = theme.title;
-        ctx.font = `600 11px ${FONT}`;
+        ctx.font = `600 11px ${ChartSurface.FONT_FAMILY}`;
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'center';
         for (let y = Math.ceil(this.from / step) * step; y <= this.to; y += step) {
@@ -498,30 +503,30 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
         this.bars.forEach((b, i) => {
             const cat = this.categories[i]!;
             const a = lit === null ? 1 : lit.bar(i);
-            const h = b.count * UNIT;
+            const h = b.count * RootsChart.UNIT;
             const top = this.barsTop;
 
             ctx.globalAlpha = a;
             ctx.fillStyle = cat.color;
-            ctx.fillRect(b.x + 0.5, top, b.w - 1, HEAD);
+            ctx.fillRect(b.x + 0.5, top, b.w - 1, RootsChart.HEAD);
             ctx.fillStyle = Color.withAlpha(cat.color, 0.55);
-            ctx.fillRect(b.x + 0.5, top + HEAD, b.w - 1, h);
+            ctx.fillRect(b.x + 0.5, top + RootsChart.HEAD, b.w - 1, h);
             // one line per contributor
             ctx.strokeStyle = Color.withAlpha(theme.background, 0.55);
             ctx.lineWidth = 0.6;
             ctx.beginPath();
             for (let k = 1; k < Math.floor(b.count + 1e-6); k++) {
-                const y = top + HEAD + k * UNIT;
+                const y = top + RootsChart.HEAD + k * RootsChart.UNIT;
                 ctx.moveTo(b.x + 0.5, y);
                 ctx.lineTo(b.x + b.w - 0.5, y);
             }
             ctx.stroke();
 
             ctx.fillStyle = Color.lerp(cat.color, '#ffffff', 0.2);
-            ctx.font = `10px ${FONT}`;
+            ctx.font = `10px ${ChartSurface.FONT_FAMILY}`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
-            b.label.forEach((line, k) => ctx.fillText(line, b.cx, top + HEAD + h + 5 + k * 11));
+            b.label.forEach((line, k) => ctx.fillText(line, b.cx, top + RootsChart.HEAD + h + 5 + k * 11));
         });
         ctx.restore();
     }
@@ -560,7 +565,7 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
             ctx.stroke();
             ctx.setLineDash([]);
             const [mx, my] = L.quadAt(q, 0.5);
-            ctx.font = `8px ${FONT}`;
+            ctx.font = `8px ${ChartSurface.FONT_FAMILY}`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'bottom';
             ctx.fillStyle = Color.lerp(ca, cb, 0.5);
@@ -572,8 +577,8 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
     private drawActors(ctx: CanvasRenderingContext2D, lit: ReturnType<RootsChart['lit']>): void {
         const theme = this.theme;
         const sc = this.camera.scale;
-        const showCaption = CAP * sc >= 5.5;
-        const showName = NAME * sc >= 4;
+        const showCaption = RootsChart.CAP * sc >= 5.5;
+        const showName = RootsChart.NAME * sc >= 4;
         const f = this.currentFocus();
 
         ctx.save();
@@ -607,7 +612,7 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
                 ctx.stroke();
                 cross(p.cx, p.y, 3);
                 if (showCaption) {
-                    ctx.font = `italic ${CAP}px ${FONT}`;
+                    ctx.font = `italic ${RootsChart.CAP}px ${ChartSurface.FONT_FAMILY}`;
                     ctx.fillStyle = theme.text;
                     // under its marker, so it never meets the actor's own caption above
                     ctx.textBaseline = 'top';
@@ -615,7 +620,7 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
                 }
             }
             if (showName) {
-                ctx.font = `600 ${NAME}px ${FONT}`;
+                ctx.font = `600 ${RootsChart.NAME}px ${ChartSurface.FONT_FAMILY}`;
                 ctx.textBaseline = 'top';
                 // a dark halo keeps names readable over the strands
                 ctx.lineWidth = 2.5;
@@ -626,7 +631,7 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
                 ctx.fillText(p.data.name, p.x, p.y + 5);
             }
             if (showCaption && p.caption.length > 0) {
-                ctx.font = `italic ${CAP}px ${FONT}`;
+                ctx.font = `italic ${RootsChart.CAP}px ${ChartSurface.FONT_FAMILY}`;
                 ctx.fillStyle = theme.text;
                 ctx.textBaseline = 'bottom';
                 p.caption.forEach((line, k) => ctx.fillText(line, p.x, p.y - 5 - (p.caption.length - 1 - k) * 8.5));
@@ -682,14 +687,14 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
             const names = info.actors.map((a) => a.name);
             lines = [`${info.a.name} ↔ ${info.b.name}`, `${names.length} shared`,
                 ...L.wrap(names.slice(0, 8).join(', ') + (names.length > 8 ? ' …' : ''), 260, (s) => {
-                    ctx.font = `12px ${FONT}`;
+                    ctx.font = `12px ${ChartSurface.FONT_FAMILY}`;
                     return ctx.measureText(s).width;
                 })];
             color = info.a.color;
         }
 
         ctx.save();
-        ctx.font = `12px ${FONT}`;
+        ctx.font = `12px ${ChartSurface.FONT_FAMILY}`;
         const w = Math.min(320, Math.max(...lines.map((l) => ctx.measureText(l).width)) + 22);
         const h = lines.length * 16 + 12;
         const x = Math.max(4, Math.min(this.width - w - 4, this.pointer.x + 14));
@@ -705,7 +710,7 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
         lines.forEach((l, i) => {
-            ctx.font = i === 0 ? `600 12px ${FONT}` : `12px ${FONT}`;
+            ctx.font = i === 0 ? `600 12px ${ChartSurface.FONT_FAMILY}` : `12px ${ChartSurface.FONT_FAMILY}`;
             ctx.fillStyle = i === 0 ? this.theme.title : this.theme.text;
             ctx.fillText(l, x + 10, y + 7 + i * 16, w - 20);
         });
@@ -815,7 +820,7 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
         if (this.canvas.hasPointerCapture(e.pointerId)) {
             this.canvas.releasePointerCapture(e.pointerId);
         }
-        if (d !== null && !d.moved) {
+        if (d !== null && !d.moved && e.type === 'pointerup') {
             const p = this.local(e);
             const hit = this.pick(p.x, p.y);
             this.pinned = hit === null || RootsChart.same(hit, this.pinned) ? null : hit;
@@ -851,6 +856,7 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
         this.canvas.removeEventListener('pointerdown', this.onDown);
         this.canvas.removeEventListener('pointermove', this.onMove);
         this.canvas.removeEventListener('pointerup', this.onUp);
+        this.canvas.removeEventListener('pointercancel', this.onUp);
         this.canvas.removeEventListener('pointerleave', this.onLeave);
         this.canvas.removeEventListener('wheel', this.onWheel);
         this.canvas.removeEventListener('dblclick', this.onDblClick);

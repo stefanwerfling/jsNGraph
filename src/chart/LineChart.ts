@@ -1,5 +1,5 @@
 import { ChartRange, ChartRect, ChartScale } from './ChartScale';
-import { CHART_FONT, ChartSurface } from './ChartSurface';
+import { ChartSurface } from './ChartSurface';
 import { ChartThemeTokens } from './ChartTheme';
 import { ChartSeriesData, WaterfallGeometry } from './WaterfallGeometry';
 
@@ -46,14 +46,14 @@ export interface LineChartEvents extends Record<string, unknown> {
     hover: {x: number | null};
 }
 
-const PAD = {left: 46, right: 14, top: 12, bottom: 26};
-
 /**
  * A plain x/y line (and area) chart with axes, grid, title and legend — the
  * companion of `WaterfallChart` for single traces and slices. Canvas, zero
  * dependencies; redraws only when something changes.
  */
 export class LineChart extends ChartSurface<LineChartEvents> {
+
+    private static readonly PAD = {left: 46, right: 14, top: 12, bottom: 26};
 
     private series: LineSeries[] = [];
     private title: string;
@@ -70,11 +70,11 @@ export class LineChart extends ChartSurface<LineChartEvents> {
     public constructor(container: HTMLElement, options: LineChartOptions = {}) {
         super(container, options.theme);
         this.title = options.title ?? '';
-        this.fixedX = options.xRange ?? null;
-        this.fixedY = options.yRange ?? null;
+        this.fixedX = options.xRange === undefined ? null : {...options.xRange};
+        this.fixedY = options.yRange === undefined ? null : {...options.yRange};
         this.legend = options.legend;
         this.grid = options.grid ?? true;
-        this.xLabels = options.xLabels ?? null;
+        this.xLabels = options.xLabels?.slice() ?? null;
         this.yFormat = options.yFormat;
         this.root.addEventListener('pointermove', this.onMove);
         this.root.addEventListener('pointerleave', this.onLeave);
@@ -82,7 +82,7 @@ export class LineChart extends ChartSurface<LineChartEvents> {
     }
 
     public setSeries(series: LineSeries[]): void {
-        this.series = series.slice();
+        this.series = series.map((s) => ({...s}));
         this.redraw();
     }
 
@@ -91,12 +91,19 @@ export class LineChart extends ChartSurface<LineChartEvents> {
         // Never leave holes: a sparse array breaks every later find/filter over the series.
         const at = Math.min(Math.max(0, Math.floor(index)), this.series.length);
 
-        this.series[at] = series;
+        this.series[at] = {...series};
         this.redraw();
     }
 
+    /** A copy of the series. */
     public getSeries(): ReadonlyArray<LineSeries> {
-        return this.series;
+        return this.series.map((s) => ({
+            ...s,
+            y: Array.from(s.y),
+            ...(s.x !== undefined ? {x: Array.from(s.x)} : {}),
+            ...(s.dash !== undefined ? {dash: s.dash.slice()} : {}),
+            ...(Array.isArray(s.highlight) ? {highlight: s.highlight.slice()} : {})
+        }));
     }
 
     public setTitle(title: string): void {
@@ -105,18 +112,18 @@ export class LineChart extends ChartSurface<LineChartEvents> {
     }
 
     public setXRange(range: ChartRange | null): void {
-        this.fixedX = range;
+        this.fixedX = range === null ? null : {...range};
         this.redraw();
     }
 
     /** Category labels on the x axis (null = numbers again). */
     public setXLabels(labels: string[] | null): void {
-        this.xLabels = labels;
+        this.xLabels = labels === null ? null : labels.slice();
         this.redraw();
     }
 
     public setYRange(range: ChartRange | null): void {
-        this.fixedY = range;
+        this.fixedY = range === null ? null : {...range};
         this.redraw();
     }
 
@@ -127,11 +134,11 @@ export class LineChart extends ChartSurface<LineChartEvents> {
     }
 
     protected draw(ctx: CanvasRenderingContext2D): boolean {
-        const top = PAD.top + (this.title !== '' ? 20 : 0);
+        const top = LineChart.PAD.top + (this.title !== '' ? 20 : 0);
         const plot: ChartRect = {
-            x: PAD.left, y: top,
-            w: Math.max(10, this.width - PAD.left - PAD.right),
-            h: Math.max(10, this.height - top - PAD.bottom)
+            x: LineChart.PAD.left, y: top,
+            w: Math.max(10, this.width - LineChart.PAD.left - LineChart.PAD.right),
+            h: Math.max(10, this.height - top - LineChart.PAD.bottom)
         };
         const visible = this.series.filter((s) => s.y.length > 0);
         const xRange = this.fixedX ?? (this.xLabels !== null && this.xLabels.length > 1
@@ -147,7 +154,7 @@ export class LineChart extends ChartSurface<LineChartEvents> {
             ctx.font = `600 12px system-ui, -apple-system, sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
-            ctx.fillText(this.title, plot.x + plot.w / 2, PAD.top - 2);
+            ctx.fillText(this.title, plot.x + plot.w / 2, LineChart.PAD.top - 2);
         }
 
         if (this.xLabels !== null) {
@@ -292,7 +299,7 @@ export class LineChart extends ChartSurface<LineChartEvents> {
         ctx.lineTo(plot.x + plot.w, Math.round(bottom) + 0.5);
         ctx.stroke();
         ctx.fillStyle = this.theme.text;
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         labels.forEach((label, i) => {
@@ -311,7 +318,7 @@ export class LineChart extends ChartSurface<LineChartEvents> {
         }
 
         ctx.save();
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
 
         const widths = items.map((s) => ctx.measureText(s.name!).width + 18);
         const w = widths.reduce((a, b) => a + b, 0) + 8 * (items.length - 1) + 14;

@@ -2,7 +2,7 @@ import { Color } from '../util/Color';
 import { BarLayout, BarPanel, PlacedBar, BarSeries } from './BarLayout';
 import { ChartNote, ChartNotes, NoteAnchor } from './ChartNotes';
 import { ChartRange, ChartRect, ChartScale } from './ChartScale';
-import { CHART_FONT, ChartSurface } from './ChartSurface';
+import { ChartSurface } from './ChartSurface';
 import { ChartThemeTokens } from './ChartTheme';
 
 export interface BarChartOptions {
@@ -41,9 +41,6 @@ export interface BarChartEvents extends Record<string, unknown> {
     barClick: {panel: number; series: number; category: number; value: number};
 }
 
-const PALETTE = ['#1380a1', '#990000', '#fab418', '#588300', '#6a3d9a', '#e8743b'];
-const MORPH_MS = 650;
-
 /**
  * Bar chart: grouped or stacked bars over categories, optionally as small
  * multiples side by side on one value scale (newsroom style — horizontal grid,
@@ -53,6 +50,9 @@ const MORPH_MS = 650;
  *     new BarChart(el, {categories: ['0-19', '20-29'], panels: [{title: 'A', series: [{values: [3, 9]}]}]});
  */
 export class BarChart extends ChartSurface<BarChartEvents> {
+
+    private static readonly PALETTE = ['#1380a1', '#990000', '#fab418', '#588300', '#6a3d9a', '#e8743b'];
+    private static readonly MORPH_MS = 650;
 
     private categories: string[];
     private panels: BarPanel[] = [];
@@ -77,9 +77,9 @@ export class BarChart extends ChartSurface<BarChartEvents> {
 
     public constructor(container: HTMLElement, options: BarChartOptions = {}) {
         super(container, options.theme);
-        this.categories = options.categories ?? [];
+        this.categories = (options.categories ?? []).slice();
         this.mode = options.mode ?? 'grouped';
-        this.fixedY = options.yRange ?? null;
+        this.fixedY = options.yRange === undefined ? null : {...options.yRange};
         this.yFormat = options.yFormat ?? ((v) => v.toLocaleString('en-US', {maximumFractionDigits: 2}));
         this.format = options.format ?? this.yFormat;
         this.valueLabels = options.valueLabels ?? false;
@@ -99,7 +99,7 @@ export class BarChart extends ChartSurface<BarChartEvents> {
     /** New panels (and categories); bars morph from the old values. */
     public setData(panels: BarPanel[], categories?: string[], animate = this.animate): void {
         this.from = animate ? this.shown(performance.now()) : [];
-        this.panels = panels.map((p) => ({...p, series: p.series.map((s) => ({...s, values: s.values.slice()}))}));
+        this.panels = BarChart.copyPanels(panels);
         if (categories !== undefined) {
             this.categories = categories.slice();
         }
@@ -118,8 +118,9 @@ export class BarChart extends ChartSurface<BarChartEvents> {
         this.setData(next, undefined, animate);
     }
 
+    /** A copy of the categories and panels. */
     public getData(): {categories: string[]; panels: BarPanel[]} {
-        return {categories: this.categories.slice(), panels: this.panels};
+        return {categories: this.categories.slice(), panels: BarChart.copyPanels(this.panels)};
     }
 
     public setMode(mode: 'grouped' | 'stacked'): void {
@@ -133,7 +134,7 @@ export class BarChart extends ChartSurface<BarChartEvents> {
     }
 
     public setYRange(range: ChartRange | null): void {
-        this.fixedY = range;
+        this.fixedY = range === null ? null : {...range};
         this.redraw();
     }
 
@@ -157,13 +158,17 @@ export class BarChart extends ChartSurface<BarChartEvents> {
         super.destroy();
     }
 
+    private static copyPanels(panels: readonly BarPanel[]): BarPanel[] {
+        return panels.map((p) => ({...p, series: p.series.map((s) => ({...s, values: s.values.slice()}))}));
+    }
+
     protected override themeChanged(): void {
         this.notes.setTheme(this.theme);
     }
 
     /** The panels as drawn at `now` (mid-morph values). */
     private shown(now: number): BarPanel[] {
-        const t = this.morphStart < 0 ? 1 : this.morphStart === 0 ? 0 : Math.min(1, (now - this.morphStart) / MORPH_MS);
+        const t = this.morphStart < 0 ? 1 : this.morphStart === 0 ? 0 : Math.min(1, (now - this.morphStart) / BarChart.MORPH_MS);
 
         if (t >= 1) {
             return this.panels;
@@ -184,7 +189,7 @@ export class BarChart extends ChartSurface<BarChartEvents> {
     }
 
     private color(series: BarSeries, i: number): string {
-        return series.color ?? PALETTE[i % PALETTE.length]!;
+        return series.color ?? BarChart.PALETTE[i % BarChart.PALETTE.length]!;
     }
 
     private legendItems(): {name: string; color: string}[] {
@@ -214,7 +219,7 @@ export class BarChart extends ChartSurface<BarChartEvents> {
         const titled = this.panels.some((p) => p.title !== undefined);
         const theme = this.theme;
 
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
 
         const ticks = ChartScale.ticks(range, Math.max(2, Math.floor((this.height - 60) / 40)));
         const left = Math.ceil(Math.max(...ticks.map((v) => ctx.measureText(this.yFormat(v)).width))) + 12;
@@ -287,7 +292,7 @@ export class BarChart extends ChartSurface<BarChartEvents> {
         this.notes.setDimmed(this.hovered !== null);
         this.notes.place((note) => this.anchor(note), {width: this.width, top: 2, bottom: top + ph});
 
-        return this.morphStart > 0 && timeMs - this.morphStart < MORPH_MS;
+        return this.morphStart > 0 && timeMs - this.morphStart < BarChart.MORPH_MS;
     }
 
     private drawGrid(ctx: CanvasRenderingContext2D, rect: ChartRect, range: ChartRange, ticks: number[], labels: boolean): void {
@@ -303,7 +308,7 @@ export class BarChart extends ChartSurface<BarChartEvents> {
         ctx.stroke();
         if (labels) {
             ctx.fillStyle = this.theme.text;
-            ctx.font = CHART_FONT;
+            ctx.font = ChartSurface.FONT;
             ctx.textAlign = 'right';
             ctx.textBaseline = 'middle';
             for (const v of ticks) {
@@ -318,7 +323,7 @@ export class BarChart extends ChartSurface<BarChartEvents> {
 
         ctx.save();
         ctx.fillStyle = this.theme.text;
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         for (let c = 0; c < n; c++) {
             const label = this.categories[c] ?? String(c);
             const band = BarLayout.band(rect, n, c);
@@ -345,7 +350,7 @@ export class BarChart extends ChartSurface<BarChartEvents> {
         let x = left;
 
         ctx.save();
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'left';
         for (const item of items) {
@@ -360,7 +365,7 @@ export class BarChart extends ChartSurface<BarChartEvents> {
 
     private drawValueLabels(ctx: CanvasRenderingContext2D): void {
         ctx.save();
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         ctx.textAlign = 'center';
         for (const b of this.bars) {
             const text = this.format(this.panels[b.panel]?.series[b.series]?.values[b.category] ?? b.value);
@@ -404,7 +409,7 @@ export class BarChart extends ChartSurface<BarChartEvents> {
         const text = `${parts.join(' · ')}: ${this.format(value)}`;
 
         ctx.save();
-        ctx.font = `600 ${CHART_FONT}`;
+        ctx.font = `600 ${ChartSurface.FONT}`;
 
         const w = ctx.measureText(text).width + 22;
         const x = Math.max(4, Math.min(this.width - w - 4, at.x + 12));

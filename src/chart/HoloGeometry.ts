@@ -32,8 +32,6 @@ export interface HoloPoint {
 
 type V3 = [number, number, number];
 
-const D2R = Math.PI / 180;
-
 /**
  * Pure maths of `HoloTable`: perspective camera over a table plane, project,
  * unproject onto the table, fitting, easing between cameras, visible box faces
@@ -41,15 +39,17 @@ const D2R = Math.PI / 180;
  */
 export class HoloGeometry {
 
+    private static readonly D2R = Math.PI / 180;
+
     public static frame(cam: HoloCamera, width: number, height: number, fov = 40): HoloFrame {
-        const yaw = cam.yaw * D2R;
-        const pitch = Math.max(1, Math.min(89.9, cam.pitch)) * D2R;
+        const yaw = cam.yaw * HoloGeometry.D2R;
+        const pitch = Math.max(1, Math.min(89.9, cam.pitch)) * HoloGeometry.D2R;
         const e: V3 = [Math.cos(pitch) * Math.sin(yaw), -Math.cos(pitch) * Math.cos(yaw), Math.sin(pitch)];
         const eye: V3 = [cam.tx + e[0] * cam.distance, cam.ty + e[1] * cam.distance, e[2] * cam.distance];
         const forward: V3 = [-e[0], -e[1], -e[2]];
         const right: V3 = [Math.cos(yaw), Math.sin(yaw), 0];
         const up = HoloGeometry.cross(right, forward);
-        const focal = height / 2 / Math.tan(fov * D2R / 2);
+        const focal = height / 2 / Math.tan(fov * HoloGeometry.D2R / 2);
 
         return {eye, right, up, forward, focal, cx: width / 2, cy: height / 2};
     }
@@ -84,7 +84,7 @@ export class HoloGeometry {
 
     /** Distance at which a w × h area of the table fills the view (looking straight down-ish), with `margin`. */
     public static fitDistance(w: number, h: number, width: number, height: number, fov = 40, margin = 1.1): number {
-        const focal = height / 2 / Math.tan(fov * D2R / 2);
+        const focal = height / 2 / Math.tan(fov * HoloGeometry.D2R / 2);
 
         return Math.max(w * focal / Math.max(1, width), h * focal / Math.max(1, height)) * margin;
     }

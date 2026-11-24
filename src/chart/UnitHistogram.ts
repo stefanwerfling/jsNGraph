@@ -1,7 +1,7 @@
 import { Color } from '../util/Color';
 import { ChartNote, ChartNotes, NoteAnchor } from './ChartNotes';
 import { ChartRange, ChartRect, ChartScale } from './ChartScale';
-import { CHART_FONT, ChartSurface } from './ChartSurface';
+import { ChartSurface } from './ChartSurface';
 import { ChartThemeTokens } from './ChartTheme';
 import { Unit, UnitCategory, UnitCell, UnitLayout, UnitPanel, UnitResult } from './UnitLayout';
 
@@ -46,10 +46,6 @@ export interface UnitHistogramEvents extends Record<string, unknown> {
     unitClick: {unit: Unit; index: number};
 }
 
-const PALETTE = ['#1380a1', '#8ec3dd', '#990000', '#f19b9b', '#588300', '#fab418'];
-const DROP_MS = 320;
-const MAX_DELAY = 750;
-
 interface PanelBox extends ChartRect {
     label?: string;
 }
@@ -62,6 +58,10 @@ interface PanelBox extends ChartRect {
  * in on load. Canvas, zero dependencies.
  */
 export class UnitHistogram extends ChartSurface<UnitHistogramEvents> {
+
+    private static readonly PALETTE = ['#1380a1', '#8ec3dd', '#990000', '#f19b9b', '#588300', '#fab418'];
+    private static readonly DROP_MS = 320;
+    private static readonly MAX_DELAY = 750;
 
     private units: Unit[] = [];
     private categories: UnitCategory[];
@@ -88,14 +88,14 @@ export class UnitHistogram extends ChartSurface<UnitHistogramEvents> {
 
     public constructor(container: HTMLElement, options: UnitHistogramOptions = {}) {
         super(container, options.theme);
-        this.categories = options.categories ?? [{id: 'unit', label: 'Unit'}];
-        this.panels = options.panels ?? [{id: 'main'}];
+        this.categories = (options.categories ?? [{id: 'unit', label: 'Unit'}]).map((c) => ({...c}));
+        this.panels = (options.panels ?? [{id: 'main'}]).map((p) => ({...p}));
         this.binWidth = options.binWidth ?? 1;
         this.origin = options.origin ?? 0;
-        this.fixedX = options.xRange ?? null;
+        this.fixedX = options.xRange === undefined ? null : {...options.xRange};
         this.xFormat = options.xFormat ?? ((x) => String(Math.round(x * 100) / 100));
         this.format = options.format ?? this.xFormat;
-        this.marks = options.marks ?? [];
+        this.marks = (options.marks ?? []).map((m) => ({...m}));
         this.panelGap = options.panelGap ?? 22;
         this.gap = options.gap ?? 1;
         this.legendOpt = options.legend;
@@ -109,7 +109,7 @@ export class UnitHistogram extends ChartSurface<UnitHistogramEvents> {
     }
 
     public setUnits(units: Unit[], animate = this.animate): void {
-        this.units = units.slice();
+        this.units = units.map((u) => ({...u}));
         this.result = UnitLayout.place(this.units, {
             binWidth: this.binWidth, origin: this.origin, categories: this.categories, panels: this.panels
         });
@@ -119,8 +119,9 @@ export class UnitHistogram extends ChartSurface<UnitHistogramEvents> {
         this.redraw();
     }
 
+    /** A copy of the units. */
     public getUnits(): ReadonlyArray<Unit> {
-        return this.units;
+        return this.units.map((u) => ({...u}));
     }
 
     /** Change the bins (width, edge) and re-stack. */
@@ -131,7 +132,7 @@ export class UnitHistogram extends ChartSurface<UnitHistogramEvents> {
     }
 
     public setMarks(marks: UnitMark[]): void {
-        this.marks = marks;
+        this.marks = marks.map((m) => ({...m}));
         this.redraw();
     }
 
@@ -141,7 +142,7 @@ export class UnitHistogram extends ChartSurface<UnitHistogramEvents> {
     }
 
     public setXRange(range: ChartRange | null): void {
-        this.fixedX = range;
+        this.fixedX = range === null ? null : {...range};
         this.redraw();
     }
 
@@ -167,7 +168,7 @@ export class UnitHistogram extends ChartSurface<UnitHistogramEvents> {
         const cat = this.categories[category];
         const own = cat === undefined ? undefined : this.panels[panel]?.colors?.[cat.id];
 
-        return own ?? cat?.color ?? PALETTE[category % PALETTE.length]!;
+        return own ?? cat?.color ?? UnitHistogram.PALETTE[category % UnitHistogram.PALETTE.length]!;
     }
 
     private sx(x: number): number {
@@ -203,7 +204,7 @@ export class UnitHistogram extends ChartSurface<UnitHistogramEvents> {
             counts.push(counts[counts.length - 1]! + step);
         }
 
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
 
         const left = Math.ceil(Math.max(...counts.map((v) => ctx.measureText(String(v)).width))) + 12;
         const markLines = Math.max(0, ...this.marks.map((m) => m.label === undefined ? 0 : m.label.split('\n').length));
@@ -245,7 +246,7 @@ export class UnitHistogram extends ChartSurface<UnitHistogramEvents> {
             }
             ctx.stroke();
             ctx.fillStyle = theme.text;
-            ctx.font = CHART_FONT;
+            ctx.font = ChartSurface.FONT;
             ctx.textAlign = 'right';
             ctx.textBaseline = 'middle';
             for (const v of counts) {
@@ -260,8 +261,8 @@ export class UnitHistogram extends ChartSurface<UnitHistogramEvents> {
 
         for (const c of r.cells) {
             const rect = this.cellRect(c);
-            const delay = Math.min(MAX_DELAY, c.stack * 16 + (c.bin - r.minBin) * 9);
-            const p = Math.max(0, Math.min(1, (t - delay) / DROP_MS));
+            const delay = Math.min(UnitHistogram.MAX_DELAY, c.stack * 16 + (c.bin - r.minBin) * 9);
+            const p = Math.max(0, Math.min(1, (t - delay) / UnitHistogram.DROP_MS));
 
             if (p < 1) {
                 busy = true;
@@ -308,7 +309,7 @@ export class UnitHistogram extends ChartSurface<UnitHistogramEvents> {
         let x = left;
 
         ctx.save();
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'left';
         this.categories.forEach((cat, ci) => {
@@ -354,7 +355,7 @@ export class UnitHistogram extends ChartSurface<UnitHistogramEvents> {
             ctx.setLineDash([]);
             if (m.label !== undefined) {
                 ctx.fillStyle = this.theme.title;
-                ctx.font = CHART_FONT;
+                ctx.font = ChartSurface.FONT;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'top';
                 m.label.split('\n').forEach((line, i) => {
@@ -379,7 +380,7 @@ export class UnitHistogram extends ChartSurface<UnitHistogramEvents> {
         ctx.save();
         ctx.fillStyle = this.theme.text;
         ctx.strokeStyle = this.theme.axis;
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         for (const v of ticks) {
@@ -406,7 +407,7 @@ export class UnitHistogram extends ChartSurface<UnitHistogramEvents> {
         const text = [u.label, this.format(u.value), cat?.label].filter((s) => s !== undefined && s !== '').join(' · ');
 
         ctx.save();
-        ctx.font = `600 ${CHART_FONT}`;
+        ctx.font = `600 ${ChartSurface.FONT}`;
 
         const w = ctx.measureText(text).width + 22;
         const x = Math.max(4, Math.min(this.width - w - 4, at.x + 12));

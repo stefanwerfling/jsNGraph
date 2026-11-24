@@ -1,6 +1,6 @@
 import { Color } from '../util/Color';
 import { Camera } from '../view/Camera';
-import { CHART_FONT, ChartSurface } from './ChartSurface';
+import { ChartSurface } from './ChartSurface';
 import { ChartThemeTokens } from './ChartTheme';
 import { LineageBand, LineageLayout as L, LineageNode, LineagePlaced, LineagePoint, LineageResult, LineageScale } from './LineageLayout';
 
@@ -39,9 +39,6 @@ export interface LineageChartEvents extends Record<string, unknown> {
     click: LineageHover | null;
 }
 
-const COLORS = ['#3ddc84', '#22c5ee', '#7d6cf2'];
-const R = 6;
-
 interface PNode extends LineagePlaced {
     color: string;
     vis: number;
@@ -56,6 +53,9 @@ interface PNode extends LineagePlaced {
  * `setTime` replays how the tree grew. Pan/zoom like a poster.
  */
 export class LineageChart extends ChartSurface<LineageChartEvents> {
+
+    private static readonly COLORS = ['#3ddc84', '#22c5ee', '#7d6cf2'];
+    private static readonly R = 6;
 
     private nodes: LineageNode[] = [];
     private bands: LineageBand[] = [];
@@ -91,7 +91,7 @@ export class LineageChart extends ChartSurface<LineageChartEvents> {
         this.fixedFrom = options.from;
         this.fixedTo = options.to;
         this.scale = options.scale ?? 'compressed';
-        this.colors = options.colors ?? COLORS;
+        this.colors = (options.colors ?? LineageChart.COLORS).slice();
         this.markLabel = options.markLabel ?? 'Marked';
         this.worldW = options.width ?? 1400;
         this.rowH = options.rowHeight ?? 40;
@@ -101,6 +101,7 @@ export class LineageChart extends ChartSurface<LineageChartEvents> {
         this.canvas.addEventListener('pointerdown', this.onDown);
         this.canvas.addEventListener('pointermove', this.onMove);
         this.canvas.addEventListener('pointerup', this.onUp);
+        this.canvas.addEventListener('pointercancel', this.onUp);
         this.canvas.addEventListener('pointerleave', this.onLeave);
         this.canvas.addEventListener('wheel', this.onWheel, {passive: false});
         this.canvas.addEventListener('dblclick', this.onDblClick);
@@ -110,9 +111,9 @@ export class LineageChart extends ChartSurface<LineageChartEvents> {
     // ---- public API ------------------------------------------------------------------------------------------
 
     public setData(nodes: LineageNode[], bands?: LineageBand[]): void {
-        this.nodes = nodes;
+        this.nodes = nodes.map((n) => ({...n}));
         if (bands !== undefined) {
-            this.bands = bands;
+            this.bands = bands.map((b) => ({...b}));
         }
         this.prepare();
         this.shownTime = this.time ?? this.to;
@@ -168,16 +169,23 @@ export class LineageChart extends ChartSurface<LineageChartEvents> {
         this.redraw();
     }
 
+    /** Frame the whole tree (animated by default). */
     public fit(animate = true): void {
         this.userMoved = false;
         this.camera.flyTo(this.fitState(), animate ? 350 : 0);
         this.redraw();
     }
 
+    /** Frame the whole tree again (same as `fit()`). */
+    public resetView(): void {
+        this.fit(true);
+    }
+
     public override destroy(): void {
         this.canvas.removeEventListener('pointerdown', this.onDown);
         this.canvas.removeEventListener('pointermove', this.onMove);
         this.canvas.removeEventListener('pointerup', this.onUp);
+        this.canvas.removeEventListener('pointercancel', this.onUp);
         this.canvas.removeEventListener('pointerleave', this.onLeave);
         this.canvas.removeEventListener('wheel', this.onWheel);
         this.canvas.removeEventListener('dblclick', this.onDblClick);
@@ -465,7 +473,7 @@ export class LineageChart extends ChartSurface<LineageChartEvents> {
             const on = lit === null || lit.has(p.node.id);
             const pop = 0.6 + 0.4 * p.vis;
             ctx.globalAlpha = p.vis * (on ? 1 : 0.25);
-            const r = R * pop * (p.node.id === sel ? 1.25 : 1);
+            const r = LineageChart.R * pop * (p.node.id === sel ? 1.25 : 1);
             ctx.fillStyle = Color.withAlpha(p.color, 0.3);
             ctx.beginPath();
             ctx.arc(p.x, p.y, r + 3.5, 0, Math.PI * 2);
@@ -524,7 +532,7 @@ export class LineageChart extends ChartSurface<LineageChartEvents> {
         const w = 128, h = showMark ? 82 : 62;
         const x = 10, y = this.height - h - 10;
 
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         ctx.fillStyle = this.dark ? '#ffffff' : '#f6f8fc';
         ctx.globalAlpha = this.dark ? 0.96 : 1;
         ctx.beginPath();
@@ -570,7 +578,7 @@ export class LineageChart extends ChartSurface<LineageChartEvents> {
             ...(info.parent !== null ? [`from ${info.parent.label.replace(/\n/g, ' ')}`] : []),
             ...(info.descendants > 0 ? [`${info.descendants} descendant${info.descendants === 1 ? '' : 's'}`] : [])
         ];
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         const w = Math.max(...lines.map((t, i) => ctx.measureText(t).width + (i === 0 ? 14 : 0))) + 20;
         const h = lines.length * 16 + 10;
         let x = this.pointer.x + 14, y = this.pointer.y + 14;
@@ -591,7 +599,7 @@ export class LineageChart extends ChartSurface<LineageChartEvents> {
         ctx.textBaseline = 'middle';
         lines.forEach((t, i) => {
             ctx.fillStyle = i === 0 ? this.theme.title : this.theme.text;
-            ctx.font = i === 0 ? `600 12px system-ui, sans-serif` : CHART_FONT;
+            ctx.font = i === 0 ? `600 12px system-ui, sans-serif` : ChartSurface.FONT;
             ctx.fillText(t, x + 10, y + 13 + i * 16);
         });
     }
@@ -601,7 +609,7 @@ export class LineageChart extends ChartSurface<LineageChartEvents> {
     private pick(sx: number, sy: number): string | null {
         const {x, y} = this.camera.toWorld(sx, sy);
         const tol = 5 / this.camera.scale;
-        let best: string | null = null, bd = R + tol;
+        let best: string | null = null, bd = LineageChart.R + tol;
         for (const p of this.pn) {
             if (p.vis < 0.5) {
                 continue;
@@ -669,7 +677,7 @@ export class LineageChart extends ChartSurface<LineageChartEvents> {
         if (this.canvas.hasPointerCapture(e.pointerId)) {
             this.canvas.releasePointerCapture(e.pointerId);
         }
-        if (d !== null && !d.moved) {
+        if (d !== null && !d.moved && e.type === 'pointerup') {
             const p = this.local(e);
             const hit = this.pick(p.x, p.y);
             this.pinned = hit === null || hit === this.pinned ? null : hit;

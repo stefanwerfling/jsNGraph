@@ -1,5 +1,5 @@
 import { ChartRange, ChartRect, ChartScale } from './ChartScale';
-import { CHART_FONT, ChartSurface } from './ChartSurface';
+import { ChartSurface } from './ChartSurface';
 import { ChartThemeTokens } from './ChartTheme';
 import { ChartSeriesData, WaterfallGeometry, WaterfallLayout } from './WaterfallGeometry';
 
@@ -43,8 +43,6 @@ export interface WaterfallChartEvents extends Record<string, unknown> {
     rangeChange: ChartRange;
 }
 
-const PAD = {left: 52, right: 16, top: 16, bottom: 30};
-
 /**
  * A waterfall (stacked spectra) chart: traces drawn one behind another,
  * each shifted right and up, so a series of spectra over time reads as a
@@ -54,6 +52,8 @@ const PAD = {left: 52, right: 16, top: 16, bottom: 30};
  * Canvas, zero dependencies.
  */
 export class WaterfallChart extends ChartSurface<WaterfallChartEvents> {
+
+    private static readonly PAD = {left: 52, right: 16, top: 16, bottom: 30};
 
     private series: WaterfallSeries[] = [];
     private readonly options: Required<Omit<WaterfallChartOptions, 'series' | 'theme' | 'yRange' | 'marker' | 'selected'>>;
@@ -77,7 +77,7 @@ export class WaterfallChart extends ChartSurface<WaterfallChartEvents> {
             markerLabel: options.markerLabel ?? 'Drag me!',
             lineWidth: options.lineWidth ?? 1
         };
-        this.fixedY = options.yRange ?? null;
+        this.fixedY = options.yRange === undefined ? null : {...options.yRange};
         this.markerX = options.marker ?? null;
         this.selectedIndex = options.selected === undefined ? 0 : options.selected;
 
@@ -99,7 +99,7 @@ export class WaterfallChart extends ChartSurface<WaterfallChartEvents> {
     public setSeries(series: WaterfallSeries[]): void {
         const prev = this.dataX;
 
-        this.series = series.slice();
+        this.series = series.map((s) => ({...s}));
         this.dataX = ChartScale.extent(this.series.flatMap((s) => s.y.length === 0
             ? []
             : [WaterfallGeometry.xAt(s, 0), WaterfallGeometry.xAt(s, s.y.length - 1)]));
@@ -117,8 +117,9 @@ export class WaterfallChart extends ChartSurface<WaterfallChartEvents> {
         this.redraw();
     }
 
+    /** A copy of the traces. */
     public getSeries(): ReadonlyArray<WaterfallSeries> {
-        return this.series;
+        return this.series.map((s) => ({...s, y: Array.from(s.y), ...(s.x !== undefined ? {x: Array.from(s.x)} : {})}));
     }
 
     public get selected(): number | null {
@@ -172,8 +173,13 @@ export class WaterfallChart extends ChartSurface<WaterfallChartEvents> {
     }
 
     public setYRange(range: ChartRange | null): void {
-        this.fixedY = range;
+        this.fixedY = range === null ? null : {...range};
         this.redraw();
+    }
+
+    /** Show the whole x extent again. */
+    public resetView(): void {
+        this.setXRange(null);
     }
 
     public override destroy(): void {
@@ -191,9 +197,9 @@ export class WaterfallChart extends ChartSurface<WaterfallChartEvents> {
 
     protected draw(ctx: CanvasRenderingContext2D): boolean {
         const area: ChartRect = {
-            x: PAD.left, y: PAD.top,
-            w: Math.max(10, this.width - PAD.left - PAD.right),
-            h: Math.max(10, this.height - PAD.top - PAD.bottom)
+            x: WaterfallChart.PAD.left, y: WaterfallChart.PAD.top,
+            w: Math.max(10, this.width - WaterfallChart.PAD.left - WaterfallChart.PAD.right),
+            h: Math.max(10, this.height - WaterfallChart.PAD.top - WaterfallChart.PAD.bottom)
         };
         const layout = WaterfallGeometry.layout(area, this.series.length, this.options.depthX, this.options.depthY);
         const yRange = this.yRange();
@@ -361,7 +367,7 @@ export class WaterfallChart extends ChartSurface<WaterfallChartEvents> {
         const {ctx, theme} = this;
 
         ctx.save();
-        ctx.font = `600 ${CHART_FONT}`;
+        ctx.font = `600 ${ChartSurface.FONT}`;
 
         const handle = this.handleBox(layout, yRange);
 
@@ -407,7 +413,7 @@ export class WaterfallChart extends ChartSurface<WaterfallChartEvents> {
             return false;
         }
 
-        this.ctx.font = `600 ${CHART_FONT}`;
+        this.ctx.font = `600 ${ChartSurface.FONT}`;
 
         const h = this.handleBox(this.layout, this.yRange());
 
@@ -542,7 +548,7 @@ export class WaterfallChart extends ChartSurface<WaterfallChartEvents> {
 
     private readonly onDblClick = (): void => {
         if (this.options.zoom) {
-            this.setXRange(null);
+            this.resetView();
         }
     };
 

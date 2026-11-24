@@ -31,8 +31,6 @@ interface Fan {
     years: number[];
 }
 
-const FONT = 'system-ui, -apple-system, sans-serif';
-
 /**
  * Small multiples for `RootsChart`: per category one dial over the time
  * axis — the earliest year just left of the top, counter-clockwise down to
@@ -55,9 +53,9 @@ export class RootsFans extends ChartSurface<RootsFansEvents> {
 
     public constructor(container: HTMLElement, options: RootsFansOptions = {}) {
         super(container, options.theme ?? 'dark');
-        this.categories = options.categories ?? [];
-        this.actors = options.actors ?? [];
-        this.fanSpec = options.fans;
+        this.categories = (options.categories ?? []).map((c) => ({...c}));
+        this.actors = RootsFans.copyActors(options.actors ?? []);
+        this.fanSpec = options.fans?.map((f) => (typeof f === 'string' ? f : {...f, ids: f.ids.slice()}));
         const ys = this.actors.map((a) => a.year);
         this.from = options.from ?? (ys.length > 0 ? Math.floor(Math.min(...ys) / 10) * 10 : 0);
         this.to = options.to ?? (ys.length > 0 ? Math.ceil((Math.max(...ys) + 1) / 10) * 10 : 10);
@@ -71,9 +69,9 @@ export class RootsFans extends ChartSurface<RootsFansEvents> {
     }
 
     public setData(actors: RootsActor[], categories?: RootsCategory[]): void {
-        this.actors = actors;
+        this.actors = RootsFans.copyActors(actors);
         if (categories !== undefined) {
-            this.categories = categories;
+            this.categories = categories.map((c) => ({...c}));
         }
         this.build();
         this.redraw();
@@ -88,6 +86,17 @@ export class RootsFans extends ChartSurface<RootsFansEvents> {
     public focus(ids: string[] | null): void {
         this.focusIds = ids === null ? null : new Set(ids);
         this.redraw();
+    }
+
+    public override destroy(): void {
+        this.canvas.removeEventListener('pointermove', this.onMove);
+        this.canvas.removeEventListener('pointerleave', this.onLeave);
+        this.canvas.removeEventListener('click', this.onClick);
+        super.destroy();
+    }
+
+    private static copyActors(actors: readonly RootsActor[]): RootsActor[] {
+        return actors.map((a) => ({...a, categories: a.categories.slice()}));
     }
 
     private build(): void {
@@ -128,7 +137,7 @@ export class RootsFans extends ChartSurface<RootsFansEvents> {
             // year ticks round the dial
             ctx.strokeStyle = this.theme.grid;
             ctx.lineWidth = 1;
-            ctx.font = `9px ${FONT}`;
+            ctx.font = `9px ${ChartSurface.FONT_FAMILY}`;
             ctx.fillStyle = this.theme.text;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -166,7 +175,7 @@ export class RootsFans extends ChartSurface<RootsFansEvents> {
             ctx.fill();
 
             ctx.textAlign = 'center';
-            ctx.font = `${lit ? 600 : 400} 11px ${FONT}`;
+            ctx.font = `${lit ? 600 : 400} 11px ${ChartSurface.FONT_FAMILY}`;
             ctx.fillStyle = Color.lerp(fan.color, '#ffffff', 0.15);
             ctx.textBaseline = 'top';
             const label = fan.label.length > 30 ? `${fan.label.slice(0, 29)}…` : fan.label;
