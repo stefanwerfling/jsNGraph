@@ -1,5 +1,6 @@
 import { GraphNode } from '../model/GraphNode';
 import { ThemeTokens } from '../render/Theme';
+import { ElementPoint } from '../util/ElementPoint';
 
 /**
  * DOM-overlay detail panel shown on node click: name, IP, status badge and a
@@ -11,6 +12,10 @@ export class NodePanel {
     private readonly el: HTMLDivElement;
     private theme: ThemeTokens;
     private onCloseCb: (() => void) | null = null;
+    /** The node shown and where (container px), for refresh/setTheme. */
+    private node: GraphNode | null = null;
+    private left = 0;
+    private top = 0;
 
     public constructor(private readonly container: HTMLElement, theme: ThemeTokens) {
         this.theme = theme;
@@ -25,18 +30,39 @@ export class NodePanel {
 
     public setTheme(theme: ThemeTokens): void {
         this.theme = theme;
+
+        if (this.node !== null && this.isOpen) {
+            this.render(this.node);
+        }
     }
 
-    public show(node: GraphNode, x: number, y: number): void {
-        const t = this.theme;
-        const containerRect = this.container.getBoundingClientRect();
-        const left = x - containerRect.left + 16;
-        const top = y - containerRect.top - 10;
+    public get isOpen(): boolean {
+        return this.el.style.display !== 'none';
+    }
 
+    public show(node: GraphNode, clientX: number, clientY: number): void {
+        const local = ElementPoint.local(this.container, clientX, clientY);
+
+        this.left = local.x + 16;
+        this.top = local.y - 10;
+        this.render(node);
+    }
+
+    /** Redraw with the node's current data, if the panel is open on it (live updates). */
+    public refresh(node: GraphNode): void {
+        if (this.isOpen && this.node !== null && this.node.id === node.id) {
+            this.render(node);
+        }
+    }
+
+    private render(node: GraphNode): void {
+        const t = this.theme;
+
+        this.node = node;
         this.el.style.cssText = `
             position: absolute;
-            left: ${left}px;
-            top: ${top}px;
+            left: ${this.left}px;
+            top: ${this.top}px;
             min-width: 200px;
             padding: 12px 14px;
             border-radius: 10px;
@@ -63,7 +89,7 @@ export class NodePanel {
                     display:inline-flex; align-items:center; gap:6px;
                     border:1px solid ${t.panelBorder}; border-radius:999px; padding:2px 10px;
                     font-size:11px; color:${statusColor};
-                "><span style="width:6px;height:6px;border-radius:50%;background:${statusColor};"></span>${node.status}</span>
+                "><span style="width:6px;height:6px;border-radius:50%;background:${statusColor};"></span>${NodePanel.escape(node.status)}</span>
                 <span style="font-size:11px; color:${t.panelSubtext};">${NodePanel.escape(node.kind)}</span>
             </div>
             ${node.sublabel !== null ? `
@@ -76,12 +102,14 @@ export class NodePanel {
         this.el.style.display = 'block';
     }
 
+
     public hide(): void {
         if (this.el.style.display === 'none') {
             return;
         }
 
         this.el.style.display = 'none';
+        this.node = null;
         this.onCloseCb?.();
     }
 

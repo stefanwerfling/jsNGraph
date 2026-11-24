@@ -25,6 +25,7 @@ import { Hull } from './util/Hull';
 import { Quadtree } from './util/Quadtree';
 import { Camera, CameraState } from './view/Camera';
 import { RenderLoop } from './view/RenderLoop';
+import { ElementPoint } from './util/ElementPoint';
 
 export interface NGraphOptions {
     /** 'dark' (default) | 'light' | a custom palette (see Theme.fromCssVars). */
@@ -248,6 +249,10 @@ export class NGraph {
     /** Hull polygons for the current positions; null = recompute on next use. */
     private hullCache: Array<{hull: NGraphHull; render: RenderHull}> | null = null;
     private layoutActive = true;
+    /** The layout was (re)heated since it last settled — only then does `layoutSettle` fire. */
+    private layoutHeated = true;
+    /** The host called pause(); only its resume() ends that. */
+    private hostPaused = false;
     private clusters: NGraphCluster[] = [];
     private clusterEdges: NGraphClusterEdge[] = [];
     /** Resolved cluster discs for the current positions; null = recompute on next use. */
@@ -350,7 +355,12 @@ export class NGraph {
                     this.loop.request();
                 },
                 onDragEnd: (node) => this.events.emit('nodeDragEnd', node),
-                onViewportChange: () => this.events.emit('viewportChange', this.camera.getState()),
+                onViewportChange: () => {
+                    // Only the camera moved: the spatial index is in world
+                    // coordinates, so a frame is enough — no layout reheat.
+                    this.events.emit('viewportChange', this.camera.getState());
+                    this.loop.request();
+                },
                 onNeedsFrame: () => this.invalidatePositions(0.3)
             },
             {
@@ -379,6 +389,10 @@ export class NGraph {
             this.interaction.forget(node);
         }
 
+        for (const edge of this.edges.values()) {
+            this.interaction.forgetEdge(edge);
+        }
+
         this.nodes.clear();
         this.edges.clear();
 
@@ -391,6 +405,7 @@ export class NGraph {
         }
 
         this.pruneSelection();
+        this.dropStaleState();
         this.invalidateStructure();
     }
 
@@ -399,17 +414,47 @@ export class NGraph {
         this.invalidatePositions(1);
     }
 
+    /**
+     * Add a node. An id that already exists is replaced: the new node keeps
+     * the old position (unless the data sets x/y) and the old node's edges
+     * are moved over to it.
+     */
     public addNode(data: NGraphNodeData): void {
-        const center = this.camera.toWorld(this.width / 2, this.height / 2);
-        const angle = Math.random() * Math.PI * 2;
-        const radius = Math.random() * (Math.min(this.width, this.height) / this.camera.scale) * 0.25;
+        const previous = this.nodes.get(data.id);
+        let node: GraphNode;
 
-        this.nodes.set(data.id, new GraphNode(data, center.x + Math.cos(angle) * radius, center.y + Math.sin(angle) * radius));
+        if (previous === undefined) {
+            const center = this.camera.toWorld(this.width / 2, this.height / 2);
+            const angle = Math.random() * Math.PI * 2;
+            const radius = Math.random() * (Math.min(this.width, this.height) / this.camera.scale) * 0.25;
+
+            node = new GraphNode(data, center.x + Math.cos(angle) * radius, center.y + Math.sin(angle) * radius);
+        } else {
+            node = new GraphNode(data, previous.x, previous.y);
+            this.interaction.forget(previous);
+
+            for (const edge of this.edges.values()) {
+                if (edge.source === previous) {
+                    edge.source = node;
+                }
+
+                if (edge.target === previous) {
+                    edge.target = node;
+                }
+            }
+        }
+
+        this.nodes.set(data.id, node);
         this.invalidateStructure();
     }
 
     public updateNode(id: string, patch: Partial<NGraphNodeData>): void {
-        this.nodes.get(id)?.updateFrom(patch);
+        const node = this.nodes.get(id);
+
+        if (node !== undefined) {
+            node.updateFrom(patch);
+            this.panel.refresh(node);     // an open detail panel follows live status/load
+        }
 
         // Status/load/label patches (live monitoring) only need a redraw; only
         // geometry changes wake the layout, so a jittering load feed does not
@@ -439,21 +484,13 @@ export class NGraph {
 
         for (const [edgeId, edge] of this.edges) {
             if (edge.source.id === id || edge.target.id === id) {
+                this.interaction.forgetEdge(edge);
                 this.edges.delete(edgeId);
             }
         }
 
-        if (this.hoveredId === id) {
-            this.hoveredId = null;
-            this.tooltip.hide();
-        }
-
-        if (this.selectedId === id) {
-            this.selectedId = null;
-            this.panel.hide();
-        }
-
         this.pruneSelection();
+        this.dropStaleState();
         this.invalidateStructure();
     }
 
@@ -478,7 +515,15 @@ export class NGraph {
     }
 
     public removeEdge(id: string): void {
+        const edge = this.edges.get(id);
+
+        if (edge === undefined) {
+            return;
+        }
+
+        this.interaction.forgetEdge(edge);
         this.edges.delete(id);
+        this.dropStaleState();
         this.invalidateStructure();
     }
 
@@ -842,10 +887,13 @@ export class NGraph {
 
     /** Stop rendering (e.g. the host hid this view). Changes made meanwhile show on resume. */
     public pause(): void {
+        this.hostPaused = true;
         this.loop.pause();
     }
 
     public resume(): void {
+        this.hostPaused = false;
+
         if (!(this.pauseWhenHidden && document.hidden)) {
             this.loop.resume();
         }
@@ -963,6 +1011,7 @@ export class NGraph {
 
         if (heat > 0) {
             this.layout.reheat(heat);
+            this.layoutHeated = true;
         }
 
         this.loop.request();
@@ -1131,6 +1180,32 @@ export class NGraph {
         this.loop.request();
     }
 
+    /**
+     * Hover, selection and the detail panel may still name nodes/edges that
+     * were removed or replaced (setData, removeNode, removeEdge): forget those,
+     * point the panel at the replacement node, and redo the tooltip.
+     */
+    private dropStaleState(): void {
+        if (this.hoveredId !== null && !this.nodes.has(this.hoveredId)) {
+            this.hoveredId = null;
+        }
+
+        if (this.hoveredEdgeId !== null && !this.edges.has(this.hoveredEdgeId)) {
+            this.hoveredEdgeId = null;
+        }
+
+        const selected = this.selectedId !== null ? this.nodes.get(this.selectedId) : undefined;
+
+        if (selected === undefined) {
+            this.selectedId = null;
+            this.panel.hide();
+        } else {
+            this.panel.refresh(selected);
+        }
+
+        this.updateTooltip();
+    }
+
     private handleHover(node: GraphNode | null): void {
         this.hoveredId = node?.id ?? null;
         this.events.emit('nodeHover', node);
@@ -1177,8 +1252,8 @@ export class NGraph {
     private handleClick(node: GraphNode | null, edge: GraphEdge | null, clientX: number, clientY: number,
         modifiers: ClickModifiers): void {
         if (node === null && this.isClustered()) {
-            const rect = this.canvas.getBoundingClientRect();
-            const cluster = this.clusterAt(clientX - rect.left, clientY - rect.top);
+            const local = ElementPoint.local(this.canvas, clientX, clientY);
+            const cluster = this.clusterAt(local.x, local.y);
 
             if (cluster !== null) {
                 this.events.emit('clusterClick', cluster);
@@ -1216,8 +1291,8 @@ export class NGraph {
             return false;
         }
 
-        const rect = this.canvas.getBoundingClientRect();
-        const world = this.camera.toWorld(clientX - rect.left, clientY - rect.top);
+        const local = ElementPoint.local(this.canvas, clientX, clientY);
+        const world = this.camera.toWorld(local.x, local.y);
 
         this.events.emit('contextMenu', {node: node, edge: edge, clientX: clientX, clientY: clientY, world: world});
         return true;
@@ -1230,7 +1305,7 @@ export class NGraph {
 
         if (document.hidden) {
             this.loop.pause();
-        } else {
+        } else if (!this.hostPaused) {     // a host pause() outlasts tab switches
             this.loop.resume();
         }
     };
@@ -1306,7 +1381,11 @@ export class NGraph {
 
             if (!layoutMoving) {
                 this.layoutActive = false;
-                this.events.emit('layoutSettle', null);
+
+                if (this.layoutHeated) {
+                    this.layoutHeated = false;
+                    this.events.emit('layoutSettle', null);
+                }
             }
         }
 

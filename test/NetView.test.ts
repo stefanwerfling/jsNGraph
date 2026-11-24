@@ -1,8 +1,9 @@
-import { readFileSync } from 'node:fs';
+/// <reference types="vite/client" />
 import { describe, expect, it } from 'vitest';
 import { NetCompress } from '../src/netview/NetCompress';
 import { NetHugin } from '../src/netview/NetHugin';
 import { NetLayout } from '../src/netview/NetLayout';
+import kolibriTrace from '../examples/data/hugin-trace-kolibri1.js?raw';
 import { NetTrace } from '../src/netview/NetTypes';
 
 describe('NetCompress.bins', () => {
@@ -179,7 +180,7 @@ describe('NetHugin', () => {
 
 describe('NetHugin on a real trace (examples/data/hugin-trace-kolibri1.js)', () => {
     const win: {HUGIN_SAMPLES?: {id: string; prompt: string; outputs: never}[]} = {};
-    new Function('window', readFileSync(new URL('../examples/data/hugin-trace-kolibri1.js', import.meta.url), 'utf8'))(win);
+    new Function('window', kolibriTrace)(win);
     const samples = win.HUGIN_SAMPLES ?? [];
 
     it('holds the German and the English Kolibri-1 trace', () => {

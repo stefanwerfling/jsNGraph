@@ -149,6 +149,8 @@ export class WorkflowEditor {
     private readonly styleVars = new Map<string, string>();
     /** Frame handle of a running tidy-up animation; input waits for it. */
     private tween: number | null = null;
+    /** Ends the running tidy-up at once: jump to the end and commit it as one move. */
+    private tweenFinish: (() => void) | null = null;
     private hoveredConn: string | null = null;
     /** Last pointer position (root-local px) while the pointer is over the editor. */
     private lastPointer: RectPoint | null = null;
@@ -283,6 +285,7 @@ export class WorkflowEditor {
 
     /** Replace the whole document; clears undo history and selection. */
     public setDocument(doc: WorkflowDocument, fit = this.fitOnLoad): void {
+        this.dropTween();
         this.cancelGesture();
         this.finishConnEdit(false);
         this.finishNoteEdit(false);
@@ -382,6 +385,7 @@ export class WorkflowEditor {
      * predecessor gets wired to its successors.
      */
     public removeNodes(ids: Iterable<string>, reconnect = this.reconnectOnDelete): void {
+        this.settleTween();
         const list = [...ids].filter((id) => this.model.node(id) !== undefined);
 
         if (list.length === 0) {
@@ -593,6 +597,7 @@ export class WorkflowEditor {
      * step; nodes re-link chains like `removeNodes`.
      */
     public remove(ids: Iterable<string>, reconnect = this.reconnectOnDelete): void {
+        this.settleTween();
         const list = this.model.expandGroups(ids);
         const nodes = list.filter((id) => this.model.node(id) !== undefined);
         const notes = list.filter((id) => this.model.note(id) !== undefined);
@@ -1172,11 +1177,17 @@ export class WorkflowEditor {
         const apply = (t: number): void => {
             for (const [id, p] of target) {
                 const o = from.get(id)!;
+                if (this.model.node(id) === undefined) {
+                    continue;
+                }
                 this.model.moveNode(id, lerp(o.x, p.x, t), lerp(o.y, p.y, t));
                 this.positionNode(id);
             }
             for (const [id, to] of noteTo) {
                 const o = noteFrom.get(id)!;
+                if (this.model.note(id) === undefined) {
+                    continue;
+                }
                 this.model.updateNote(id, {x: lerp(o.x, to.x, t), y: lerp(o.y, to.y, t), w: lerp(o.w, to.w, t), h: lerp(o.h, to.h, t)});
                 this.positionNote(id);
             }
@@ -1184,6 +1195,7 @@ export class WorkflowEditor {
         };
         const finish = (): void => {
             this.tween = null;
+            this.tweenFinish = null;
             apply(1);
             this.commit('move', moved, [], [...noteTo.keys()]);
             this.userMoved = false;
@@ -1209,6 +1221,32 @@ export class WorkflowEditor {
         };
 
         this.tween = requestAnimationFrame(frame);
+        this.tweenFinish = finish;
+    }
+
+    /**
+     * A tidy-up still animating is completed right now (committed as its one
+     * move), so a following undo, delete or mode switch sees the final state —
+     * undo then takes the tidy-up back instead of being overwritten by it.
+     */
+    private settleTween(): void {
+        const finish = this.tweenFinish;
+
+        if (this.tween !== null) {
+            cancelAnimationFrame(this.tween);
+        }
+        if (finish !== null) {
+            finish();
+        }
+    }
+
+    /** Stop a running tidy-up without committing (the document is being replaced). */
+    private dropTween(): void {
+        if (this.tween !== null) {
+            cancelAnimationFrame(this.tween);
+        }
+        this.tween = null;
+        this.tweenFinish = null;
     }
 
     /** Show or hide the overview map in the bottom-right corner. */
@@ -1394,10 +1432,12 @@ export class WorkflowEditor {
     }
 
     public undo(): boolean {
+        this.settleTween();
         return this.restore(this.history.undo(), 'undo');
     }
 
     public redo(): boolean {
+        this.settleTween();
         return this.restore(this.history.redo(), 'redo');
     }
 
@@ -1433,6 +1473,7 @@ export class WorkflowEditor {
 
     /** Switch between editor and viewer at runtime. */
     public setReadOnly(readOnly: boolean): void {
+        this.settleTween();
         this.cancelGesture();
         this.paletteDrag?.();
         this.finishNoteEdit(true);
@@ -1538,9 +1579,7 @@ export class WorkflowEditor {
         this.finishConnEdit(false);
         this.finishGroupEdit(false);
         this.setMinimap(false);
-        if (this.tween !== null) {
-            cancelAnimationFrame(this.tween);
-        }
+        this.dropTween();
         if (this.flightFrame !== null) {
             cancelAnimationFrame(this.flightFrame);
         }

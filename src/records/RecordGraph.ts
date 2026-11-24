@@ -138,6 +138,7 @@ export class RecordGraph {
         this.nodeById = new Map(this.data.nodes.map((n) => [n.id, n]));
         this.colorOf = new Map(this.data.nodes.map((n, i) => [n.id, n.color ?? this.theme.palette[i % this.theme.palette.length]!]));
         this.lineage = null;
+        this.lineageStart = null;     // else the next click on that row would only "clear"
         this.hovered = null;
         this.userView = false;
         this.relayout();
@@ -191,9 +192,10 @@ export class RecordGraph {
     }
 
     public clearHighlight(): void {
+        this.lineageStart = null;
+
         if (this.lineage !== null) {
             this.lineage = null;
-            this.lineageStart = null;
             this.highlightChanged();
         }
     }

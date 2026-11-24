@@ -108,11 +108,13 @@ export class BarChart extends ChartSurface<BarChartEvents> {
         this.redraw();
     }
 
-    /** Replace the series of one panel. */
+    /** Replace the series of one panel; a panel index at or past the end appends a panel. */
     public setSeries(series: BarSeries[], panel = 0, animate = this.animate): void {
         const next = this.panels.slice();
+        // Never leave holes: draw and hit-test iterate every panel.
+        const at = Math.min(Math.max(0, Math.floor(panel)), next.length);
 
-        next[panel] = {...(next[panel] ?? {}), series};
+        next[at] = {...(next[at] ?? {}), series};
         this.setData(next, undefined, animate);
     }
 

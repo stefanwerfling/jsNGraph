@@ -17,6 +17,7 @@ export class RenderLoop {
     private handle: number | null = null;
     private paused = false;
     private pending = false;
+    private destroyed = false;
 
     public constructor(
         private readonly onFrame: (timeMs: number) => boolean,
@@ -56,7 +57,7 @@ export class RenderLoop {
 
     /** Leave the paused state and draw one catch-up frame (more if the scene is still animating). */
     public resume(): void {
-        if (!this.paused) {
+        if (!this.paused || this.destroyed) {
             return;
         }
 
@@ -87,6 +88,7 @@ export class RenderLoop {
 
         this.paused = true;
         this.pending = false;
+        this.destroyed = true;
     }
 
     private readonly tick = (timeMs: number): void => {

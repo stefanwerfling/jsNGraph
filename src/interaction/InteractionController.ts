@@ -1,5 +1,6 @@
 import { GraphEdge } from '../model/GraphEdge';
 import { GraphNode } from '../model/GraphNode';
+import { ElementPoint } from '../util/ElementPoint';
 import { Point } from '../util/Geometry';
 import { Camera } from '../view/Camera';
 
@@ -41,8 +42,9 @@ export interface InteractionCallbacks {
     /** Live lasso outline (screen px) while drawing, null when done. */
     onLassoChange(points: ReadonlyArray<Point> | null): void;
     onDragEnd(node: GraphNode): void;
+    /** The camera moved (pan, wheel, pinch); node positions did not. */
     onViewportChange(): void;
-    /** Something visible changed (drag, pan, hover) — draw a frame. */
+    /** A node was dragged: positions changed — draw a frame and let the layout react. */
     onNeedsFrame(): void;
 }
 
@@ -117,6 +119,13 @@ export class InteractionController {
         }
     }
 
+    /** Forget an edge that was removed from the graph (it may be the hovered one). */
+    public forgetEdge(edge: GraphEdge): void {
+        if (this.hoveredEdge === edge) {
+            this.hoveredEdge = null;
+        }
+    }
+
     /** Pan/zoom owns touch gestures; otherwise leave page scrolling alone. */
     private applyTouchAction(): void {
         this.canvas.style.touchAction = this.options.panZoom || this.options.draggable ? 'none' : 'auto';
@@ -128,11 +137,7 @@ export class InteractionController {
      * board) does not skew the hit-test.
      */
     private toLocal(event: MouseEvent): Point {
-        const rect = this.canvas.getBoundingClientRect();
-        const sx = rect.width > 0 ? this.canvas.clientWidth / rect.width : 1;
-        const sy = rect.height > 0 ? this.canvas.clientHeight / rect.height : 1;
-
-        return {x: (event.clientX - rect.left) * (sx || 1), y: (event.clientY - rect.top) * (sy || 1)};
+        return ElementPoint.local(this.canvas, event.clientX, event.clientY);
     }
 
     private static additive(event: MouseEvent): ClickModifiers {
@@ -210,7 +215,6 @@ export class InteractionController {
                     this.host.camera.zoomAt(mid.x, mid.y, distance / gesture.distance);
                     gesture.distance = distance;
                     this.callbacks.onViewportChange();
-                    this.callbacks.onNeedsFrame();
                 }
 
                 return;
@@ -244,7 +248,6 @@ export class InteractionController {
                     this.host.camera.panBy(p.x - gesture.lastX, p.y - gesture.lastY);
                     this.canvas.style.cursor = 'grabbing';
                     this.callbacks.onViewportChange();
-                    this.callbacks.onNeedsFrame();
                 }
 
                 gesture.lastX = p.x;
@@ -360,7 +363,6 @@ export class InteractionController {
 
         this.host.camera.zoomAt(p.x, p.y, Math.exp(-delta * 0.0015));
         this.callbacks.onViewportChange();
-        this.callbacks.onNeedsFrame();
     };
 
     private readonly onDoubleClick = (event: MouseEvent): void => {

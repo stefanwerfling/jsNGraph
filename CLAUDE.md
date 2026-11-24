@@ -440,6 +440,9 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
 - `npm run dev` — `tsup --watch`. `npm run build` — `dist/index.{js,cjs,d.ts}` (npm) +
   `dist/jsngraph.global.js` (IIFE, `window.JSNGraph`).
 - `npm run typecheck` — `tsc --noEmit`. `npm test` — Vitest (`test/**/*.test.ts`).
+  Tests of DOM classes opt in per file with `// @vitest-environment happy-dom` (devDependency) and call
+  `FakeCanvas.install()` (`test/support/FakeCanvas.ts`: no-op 2d context + `Path2D`, enough to construct and draw,
+  no pixels). happy-dom has no pointer capture; stub `hasPointerCapture` where a handler calls it.
 - `examples/` — open any page directly in a browser after `npm run build` (each references
   `../dist/jsngraph.global.js`, no bundler needed; shared chrome in `shared.css`).
   Card thumbnails live in `examples/shots/*.webp`; `node scripts/shots.mjs [page …]` regenerates them (headless

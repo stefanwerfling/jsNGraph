@@ -428,9 +428,9 @@ export class ModelView {
             return;
         }
 
-        const rect = this.canvas.getBoundingClientRect();
-        const screenX = node.x * this.camera.scale + this.camera.offsetX + rect.left;
-        const screenY = (node.y - node.h / 2) * this.camera.scale + this.camera.offsetY + rect.top;
+        // The tooltip lives inside `root` (position:relative): local px, like the camera's screen space.
+        const screenX = node.x * this.camera.scale + this.camera.offsetX;
+        const screenY = (node.y - node.h / 2) * this.camera.scale + this.camera.offsetY;
         const detail = node.sublabel ?? node.kind;
 
         this.tooltip.show(`${node.label} · ${detail}`, screenX, screenY);

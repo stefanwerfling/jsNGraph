@@ -1,5 +1,6 @@
 import { Camera } from '../view/Camera';
 import { ModelNode } from './ModelNode';
+import { ElementPoint } from '../util/ElementPoint';
 
 export interface ModelInteractionCallbacks {
     onHover(node: ModelNode | null): void;
@@ -61,10 +62,8 @@ export class ModelInteraction {
         return null;
     }
 
-    private toLocal(event: PointerEvent): {x: number; y: number} {
-        const rect = this.canvas.getBoundingClientRect();
-
-        return {x: event.clientX - rect.left, y: event.clientY - rect.top};
+    private toLocal(event: MouseEvent): {x: number; y: number} {
+        return ElementPoint.local(this.canvas, event.clientX, event.clientY);
     }
 
     private readonly onPointerMove = (event: PointerEvent): void => {
@@ -132,10 +131,10 @@ export class ModelInteraction {
     private readonly onWheel = (event: WheelEvent): void => {
         event.preventDefault();
 
-        const rect = this.canvas.getBoundingClientRect();
+        const {x, y} = this.toLocal(event);
         const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
 
-        this.camera.zoomAt(event.clientX - rect.left, event.clientY - rect.top, factor);
+        this.camera.zoomAt(x, y, factor);
         this.callbacks.onCameraChange();
     };
 

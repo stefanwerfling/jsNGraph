@@ -1,5 +1,6 @@
 import { ModelNode } from './ModelNode';
 import { ThemeTokens } from '../render/Theme';
+import { ElementPoint } from '../util/ElementPoint';
 
 /**
  * DOM-overlay detail panel shown on module click: label, class sublabel, a
@@ -30,9 +31,9 @@ export class ModelPanel {
 
     public show(node: ModelNode, accent: string, clientX: number, clientY: number): void {
         const t = this.theme;
-        const containerRect = this.container.getBoundingClientRect();
-        const left = clientX - containerRect.left + 16;
-        const top = clientY - containerRect.top - 10;
+        const local = ElementPoint.local(this.container, clientX, clientY);
+        const left = local.x + 16;
+        const top = local.y - 10;
 
         this.el.style.cssText = `
             position: absolute;

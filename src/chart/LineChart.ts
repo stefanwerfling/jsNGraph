@@ -64,6 +64,8 @@ export class LineChart extends ChartSurface<LineChartEvents> {
     private xLabels: string[] | null;
     private readonly yFormat: ((value: number) => string) | undefined;
     private plot: ChartRect | null = null;
+    /** The x range the last frame was drawn with (hover maps the pointer through it). */
+    private xRange: {min: number; max: number} | null = null;
 
     public constructor(container: HTMLElement, options: LineChartOptions = {}) {
         super(container, options.theme);
@@ -84,9 +86,12 @@ export class LineChart extends ChartSurface<LineChartEvents> {
         this.redraw();
     }
 
-    /** Replace one series' data/style by position (adds it when missing). */
+    /** Replace one series' data/style by position; an index at or past the end appends it. */
     public setSeriesAt(index: number, series: LineSeries): void {
-        this.series[index] = series;
+        // Never leave holes: a sparse array breaks every later find/filter over the series.
+        const at = Math.min(Math.max(0, Math.floor(index)), this.series.length);
+
+        this.series[at] = series;
         this.redraw();
     }
 
@@ -135,6 +140,7 @@ export class LineChart extends ChartSurface<LineChartEvents> {
         const yRange = this.fixedY ?? ChartScale.pad(ChartScale.extent(visible.flatMap((s) => Array.from(s.y))), 0.05);
 
         this.plot = plot;
+        this.xRange = xRange;
 
         if (this.title !== '') {
             ctx.fillStyle = this.theme.title;
@@ -336,9 +342,15 @@ export class LineChart extends ChartSurface<LineChartEvents> {
 
     private readonly onMove = (e: PointerEvent): void => {
         const plot = this.plot;
-        const first = this.series.find((s) => s.y.length > 0);
+        const xRange = this.xRange;
 
-        if (plot === null || first === undefined || !this.events.has('hover')) {
+        if (plot === null || xRange === null || !this.events.has('hover')) {
+            return;
+        }
+
+        const visible = this.series.filter((s) => s.y.length > 0);
+
+        if (visible.length === 0) {
             return;
         }
 
@@ -349,10 +361,19 @@ export class LineChart extends ChartSurface<LineChartEvents> {
             return;
         }
 
-        const xRange = this.fixedX ?? ChartScale.extent([WaterfallGeometry.xAt(first, 0), WaterfallGeometry.xAt(first, first.y.length - 1)]);
+        // Same x range as the frame on screen; snap to the nearest sample of any visible series.
         const x = ChartScale.fromPx(p.x, xRange, plot.x, plot.x + plot.w);
+        let best = Number.NaN;
 
-        this.events.emit('hover', {x: WaterfallGeometry.xAt(first, WaterfallGeometry.nearestIndex(first, x))});
+        for (const s of visible) {
+            const sx = WaterfallGeometry.xAt(s, WaterfallGeometry.nearestIndex(s, x));
+
+            if (Number.isNaN(best) || Math.abs(sx - x) < Math.abs(best - x)) {
+                best = sx;
+            }
+        }
+
+        this.events.emit('hover', {x: best});
     };
 
     private readonly onLeave = (): void => {

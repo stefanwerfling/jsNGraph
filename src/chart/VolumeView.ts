@@ -1,6 +1,6 @@
 import { Color } from '../util/Color';
 import { ChartSurface } from './ChartSurface';
-import { ChartThemeTokens } from './ChartTheme';
+import { ChartTheme, ChartThemeTokens } from './ChartTheme';
 import { Mat4, Vec3, VolumeMath } from './VolumeMath';
 
 /** One channel of the volume (up to four: R, G, B, A of the 3D texture). */
@@ -190,8 +190,12 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
     private hit: VolumeHit | null = null;
     private dirtyTexture = true;
 
+    /** Backdrop on the floor canvas (null = the default night-blue gradient). */
+    private backdrop: string | null = null;
+
     public constructor(container: HTMLElement, options: VolumeViewOptions = {}) {
-        super(container, options.theme ?? {background: 'rgba(0,0,0,0)', text: '#8b97b5', title: '#dfe6ff'});
+        super(container, VolumeView.surfaceTheme(options.theme));
+        this.backdrop = VolumeView.backdropOf(options.theme);
         this.channels = options.channels ?? [{name: 'density', color: '#7cc4ff'}];
         this.mode = options.mode ?? 'glow';
         this.threshold = options.threshold ?? 0.1;
@@ -301,6 +305,16 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
 
     public resetView(): void {
         this.setCamera(HOME);
+    }
+
+    /**
+     * The base canvas lies over the WebGL volume, so it must stay transparent
+     * whatever theme is given; the theme's background goes to the floor canvas
+     * at the very bottom instead.
+     */
+    public override setTheme(theme: 'dark' | 'light' | Partial<ChartThemeTokens>): void {
+        this.backdrop = VolumeView.backdropOf(theme);
+        super.setTheme(VolumeView.surfaceTheme(theme));
     }
 
     public override destroy(): void {
@@ -511,10 +525,17 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
             c.height = h;
         }
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        const bg = ctx.createRadialGradient(this.width / 2, this.height * 0.55, 0, this.width / 2, this.height / 2, Math.hypot(this.width, this.height) * 0.6);
-        bg.addColorStop(0, '#141b33');
-        bg.addColorStop(1, '#070a14');
-        ctx.fillStyle = bg;
+        ctx.clearRect(0, 0, this.width, this.height);
+
+        if (this.backdrop === null) {
+            const bg = ctx.createRadialGradient(this.width / 2, this.height * 0.55, 0, this.width / 2, this.height / 2,
+                Math.hypot(this.width, this.height) * 0.6);
+            bg.addColorStop(0, '#141b33');
+            bg.addColorStop(1, '#070a14');
+            ctx.fillStyle = bg;
+        } else {
+            ctx.fillStyle = this.backdrop;
+        }
         ctx.fillRect(0, 0, this.width, this.height);
 
         const at = (u: number, v: number): {x: number; y: number} => this.toScreen(this.world(u, v, 0));
@@ -759,5 +780,25 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
     private readonly onDblClick = (): void => {
         this.resetView();
     };
+
+
+    /** Theme tokens for the base canvas: as given, but always with a transparent background. */
+    private static surfaceTheme(theme: 'dark' | 'light' | Partial<ChartThemeTokens> | undefined): ChartThemeTokens {
+        const resolved = theme === undefined
+            ? ChartTheme.resolve({text: '#8b97b5', title: '#dfe6ff'})
+            : ChartTheme.resolve(theme);
+
+        return {...resolved, background: 'rgba(0,0,0,0)'};
+    }
+
+    /** Floor backdrop for a theme: null (default gradient) for no theme / 'dark', else its background. */
+    private static backdropOf(theme: 'dark' | 'light' | Partial<ChartThemeTokens> | undefined): string | null {
+        if (theme === undefined || theme === 'dark') {
+            return null;
+        }
+
+        const background = ChartTheme.resolve(theme).background;
+        return typeof theme === 'object' && theme.background === undefined ? null : background;
+    }
 
 }
