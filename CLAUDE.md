@@ -426,7 +426,7 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   Shift lasso, region corner / connector end, waypoint and midpoint handles (own SVG above all labels), inline label
   editor (dblclick/F2), arrows/Delete/Ctrl+Z/Y/A/D, system-clipboard fragments, palette `beginDrag`/`dropAt`, `add*`/
   `update*`/`remove`, undo via `RectHistory`, one `change` per gesture. Pure `IsoModel` (move/canMove/remove/fragment/
-  paste/freeTileNear/resizeRegion; `test/IsoModel.test.ts`). Live view (part of I5): `setItemStatus` (floor ring + status
+  paste/freeTileNear/resizeRegion; `test/IsoModel.test.ts`). `IsoEditor` is a façade (document, history, selection, camera, events) over internal parts reached through `IsoHost`: `IsoScene` (drawing + routing statics), `IsoOverlay` (handles/cursor/draft), `IsoLive` (status/actors), `IsoGestures` (pointer), `IsoKeyboard` (keys/clipboard), `IsoLabelEditor`; DOM behaviour in `test/IsoEditor.test.ts`. Live view (part of I5): `setItemStatus` (floor ring + status
   line + progress bar in the label), `setConnectorStatus` (active/colour), `clearStatus`, `setActors` (moving things at any
   floor point, elements kept per id — fine every frame); depth for all upright things = `IsoProjection.zOf(u, v)`; regions
   with `wall` (back edges, per-tile pieces, `doors` gaps, `IsoProjection.walls`); items `scale`/`flip`. Pure parts tested in
