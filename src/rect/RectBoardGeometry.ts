@@ -30,11 +30,13 @@ export interface RectCurveShape {
     max: number;
 }
 
-export const DEFAULT_CURVE: RectCurveShape = {factor: 0.4, min: 40, max: Infinity};
-
-export const RECT_SIDES: readonly RectSide[] = ['top', 'right', 'bottom', 'left'];
-
 export class RectBoardGeometry {
+
+    /** Default connector curve: control arm = factor × distance, clamped to [min, max]. */
+    public static readonly DEFAULT_CURVE: Readonly<RectCurveShape> = {factor: 0.4, min: 40, max: Infinity};
+
+    /** The four box sides in clockwise order from the top. */
+    public static readonly SIDES: readonly RectSide[] = ['top', 'right', 'bottom', 'left'];
 
     public static center(r: RectArea): RectPoint {
         return {x: r.x + r.w / 2, y: r.y + r.h / 2};
@@ -94,7 +96,7 @@ export class RectBoardGeometry {
     }
 
     /** Cubic control points; a free end points at the other end. */
-    public static curveControls(a: RectAnchorPoint, b: RectAnchorPoint, shape: RectCurveShape = DEFAULT_CURVE): [RectPoint, RectPoint] {
+    public static curveControls(a: RectAnchorPoint, b: RectAnchorPoint, shape: RectCurveShape = RectBoardGeometry.DEFAULT_CURVE): [RectPoint, RectPoint] {
         const dist = Math.hypot(b.x - a.x, b.y - a.y);
         const k = Math.min(Math.max(dist * shape.factor, shape.min), shape.max);
         const ux = dist === 0 ? 0 : (b.x - a.x) / dist;
@@ -105,14 +107,14 @@ export class RectBoardGeometry {
         return [{x: a.x + na.x * k, y: a.y + na.y * k}, {x: b.x + nb.x * k, y: b.y + nb.y * k}];
     }
 
-    public static curvePath(a: RectAnchorPoint, b: RectAnchorPoint, shape: RectCurveShape = DEFAULT_CURVE): string {
+    public static curvePath(a: RectAnchorPoint, b: RectAnchorPoint, shape: RectCurveShape = RectBoardGeometry.DEFAULT_CURVE): string {
         const [c1, c2] = RectBoardGeometry.curveControls(a, b, shape);
 
         return `M ${a.x} ${a.y} C ${c1.x} ${c1.y} ${c2.x} ${c2.y} ${b.x} ${b.y}`;
     }
 
     /** Point at t = 0.5 of the curve — where a label sits. */
-    public static curveMidpoint(a: RectAnchorPoint, b: RectAnchorPoint, shape: RectCurveShape = DEFAULT_CURVE): RectPoint {
+    public static curveMidpoint(a: RectAnchorPoint, b: RectAnchorPoint, shape: RectCurveShape = RectBoardGeometry.DEFAULT_CURVE): RectPoint {
         const [c1, c2] = RectBoardGeometry.curveControls(a, b, shape);
 
         return {
@@ -179,3 +181,9 @@ export class RectBoardGeometry {
     }
 
 }
+
+/** @deprecated use RectBoardGeometry.DEFAULT_CURVE */
+export const DEFAULT_CURVE: Readonly<RectCurveShape> = RectBoardGeometry.DEFAULT_CURVE;
+
+/** @deprecated use RectBoardGeometry.SIDES */
+export const RECT_SIDES: readonly RectSide[] = RectBoardGeometry.SIDES;

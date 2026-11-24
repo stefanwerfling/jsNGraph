@@ -41,13 +41,13 @@ export class GraphNode {
         this.status = data.status ?? 'ok';
         this.load = GraphNode.clamp01(data.load ?? 0);
         this.ip = data.ip ?? null;
-        this.meta = data.meta ?? null;
+        this.meta = data.meta === undefined || data.meta === null ? null : {...data.meta};
         this.sublabel = data.sublabel ?? null;
         this.pulse = data.pulse ?? false;
         this.image = data.image !== undefined && data.image !== '' ? data.image : null;
         this.badge = GraphNode.badgeText(data.badge);
         this.badgeColor = data.badgeColor ?? null;
-        this.badges = data.badges ?? null;
+        this.badges = !Array.isArray(data.badges) ? null : data.badges.map((badge) => ({...badge}));
         this.fill = data.fill ?? null;
         this.iconColor = data.iconColor ?? null;
         this.ring = data.ring ?? 1;
@@ -86,7 +86,7 @@ export class GraphNode {
         }
 
         if (patch.meta !== undefined) {
-            this.meta = patch.meta;
+            this.meta = patch.meta === null ? null : {...patch.meta};
         }
 
         if (patch.sublabel !== undefined) {
@@ -110,7 +110,7 @@ export class GraphNode {
         }
 
         if (patch.badges !== undefined) {
-            this.badges = patch.badges;
+            this.badges = Array.isArray(patch.badges) ? patch.badges.map((badge) => ({...badge})) : null;
         }
 
         if (patch.fill !== undefined) {

@@ -58,8 +58,6 @@ interface Effect {
     endRadius: number;
 }
 
-const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
-
 /**
  * Short-lived activity animations anchored to nodes: a pulse ring on a
  * node, a fading arc travelling between two nodes, ripples spreading from
@@ -156,7 +154,7 @@ export class Effects implements NGraphOverlay {
         }
 
         const r = info.nodeRadius(id) ?? 6;
-        const grow = easeOutCubic(t);
+        const grow = Effects.easeOutCubic(t);
 
         ctx.fillStyle = effect.color;
         ctx.globalAlpha = 0.45 * (1 - t);
@@ -206,7 +204,7 @@ export class Effects implements NGraphOverlay {
         ctx.shadowColor = effect.color;
         ctx.shadowBlur = 8;
         ctx.beginPath();
-        ctx.arc(at.x, at.y, start + (end - start) * easeOutCubic(t), 0, Math.PI * 2);
+        ctx.arc(at.x, at.y, start + (end - start) * Effects.easeOutCubic(t), 0, Math.PI * 2);
         ctx.stroke();
     }
 
@@ -227,6 +225,10 @@ export class Effects implements NGraphOverlay {
 
     private static make(kind: Effect['kind'], ids: [string, string?], color: string, durationMs: number): Effect {
         return {kind: kind, ids: ids, color: color, durationMs: durationMs, delayMs: 0, startedAt: null, curve: 0, endRadius: 0};
+    }
+
+    private static easeOutCubic(t: number): number {
+        return 1 - Math.pow(1 - t, 3);
     }
 
 }

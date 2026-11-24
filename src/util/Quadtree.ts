@@ -15,9 +15,6 @@ interface QuadNode<T> {
     children: [QuadNode<T>, QuadNode<T>, QuadNode<T>, QuadNode<T>] | null;
 }
 
-const MAX_POINTS_PER_NODE = 16;
-const MAX_DEPTH = 12;
-
 /**
  * Region quadtree over (x, y, payload) points: O(log n) nearest-point,
  * radius and rectangle queries. Used for hit-testing and viewport culling
@@ -29,6 +26,10 @@ const MAX_DEPTH = 12;
  * dropped by `add`, so prefer `build`, which sizes the root to fit.
  */
 export class Quadtree<T> {
+
+    private static readonly MAX_POINTS_PER_NODE = 16;
+
+    private static readonly MAX_DEPTH = 12;
 
     private readonly root: QuadNode<T>;
     private count = 0;
@@ -193,7 +194,7 @@ export class Quadtree<T> {
 
         current.points.push(point);
 
-        if (current.points.length > MAX_POINTS_PER_NODE && current.depth < MAX_DEPTH) {
+        if (current.points.length > Quadtree.MAX_POINTS_PER_NODE && current.depth < Quadtree.MAX_DEPTH) {
             Quadtree.split(current);
         }
     }

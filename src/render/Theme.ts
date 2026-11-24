@@ -48,67 +48,67 @@ export interface CssVarThemeOptions {
     map?: Partial<Record<keyof ThemeTokens, string | string[]>>;
 }
 
-const DEFAULT_PALETTE = [
-    '#5b8def', '#e8a33d', '#4bb38a', '#d9617a', '#9a7be0',
-    '#3fb5c9', '#c9a227', '#e07b4f', '#6f9d3a', '#b565b0'
-];
-
-const DARK: ThemeTokens = {
-    background: '#0f1420',
-    gridDot: '#1c2436',
-    nodeFill: '#1a2236',
-    nodeStroke: '#3a4a68',
-    nodeIcon: '#c9d6ec',
-    nodeLabel: '#aab6cc',
-    nodeHoverStroke: '#7aa2ff',
-    nodeSelectedStroke: '#9fc0ff',
-    edgeLow: '#2ecc71',
-    edgeMid: '#f1c40f',
-    edgeHigh: '#e74c3c',
-    trafficDot: '#eaf2ff',
-    statusOk: '#2ecc71',
-    statusWarning: '#f1c40f',
-    statusCritical: '#e74c3c',
-    statusDown: '#5b6478',
-    panelBackground: '#161d2e',
-    panelBorder: '#2c3750',
-    panelText: '#e7edf8',
-    panelSubtext: '#8b96ad',
-    panelBar: '#4d7dff'
-};
-
-const LIGHT: ThemeTokens = {
-    background: '#f4f6fb',
-    gridDot: '#e2e7f2',
-    nodeFill: '#ffffff',
-    nodeStroke: '#c4cde0',
-    nodeIcon: '#33405c',
-    nodeLabel: '#4b5570',
-    nodeHoverStroke: '#3a6df0',
-    nodeSelectedStroke: '#1f4fd6',
-    edgeLow: '#27ae60',
-    edgeMid: '#e1ad01',
-    edgeHigh: '#d63031',
-    trafficDot: '#1f2937',
-    statusOk: '#27ae60',
-    statusWarning: '#e1ad01',
-    statusCritical: '#d63031',
-    statusDown: '#98a2b3',
-    panelBackground: '#ffffff',
-    panelBorder: '#d7deec',
-    panelText: '#1f2937',
-    panelSubtext: '#667085',
-    panelBar: '#3a6df0'
-};
-
 /**
  * Built-in dark/light palettes. Pass a custom ThemeTokens object to NGraph
  * for full control instead.
  */
 export class Theme {
-    public static readonly dark: ThemeTokens = DARK;
-    public static readonly light: ThemeTokens = LIGHT;
-    public static readonly palette: ReadonlyArray<string> = DEFAULT_PALETTE;
+
+    private static readonly DEFAULT_PALETTE = [
+        '#5b8def', '#e8a33d', '#4bb38a', '#d9617a', '#9a7be0',
+        '#3fb5c9', '#c9a227', '#e07b4f', '#6f9d3a', '#b565b0'
+    ];
+
+    private static readonly DARK: ThemeTokens = {
+        background: '#0f1420',
+        gridDot: '#1c2436',
+        nodeFill: '#1a2236',
+        nodeStroke: '#3a4a68',
+        nodeIcon: '#c9d6ec',
+        nodeLabel: '#aab6cc',
+        nodeHoverStroke: '#7aa2ff',
+        nodeSelectedStroke: '#9fc0ff',
+        edgeLow: '#2ecc71',
+        edgeMid: '#f1c40f',
+        edgeHigh: '#e74c3c',
+        trafficDot: '#eaf2ff',
+        statusOk: '#2ecc71',
+        statusWarning: '#f1c40f',
+        statusCritical: '#e74c3c',
+        statusDown: '#5b6478',
+        panelBackground: '#161d2e',
+        panelBorder: '#2c3750',
+        panelText: '#e7edf8',
+        panelSubtext: '#8b96ad',
+        panelBar: '#4d7dff'
+    };
+
+    private static readonly LIGHT: ThemeTokens = {
+        background: '#f4f6fb',
+        gridDot: '#e2e7f2',
+        nodeFill: '#ffffff',
+        nodeStroke: '#c4cde0',
+        nodeIcon: '#33405c',
+        nodeLabel: '#4b5570',
+        nodeHoverStroke: '#3a6df0',
+        nodeSelectedStroke: '#1f4fd6',
+        edgeLow: '#27ae60',
+        edgeMid: '#e1ad01',
+        edgeHigh: '#d63031',
+        trafficDot: '#1f2937',
+        statusOk: '#27ae60',
+        statusWarning: '#e1ad01',
+        statusCritical: '#d63031',
+        statusDown: '#98a2b3',
+        panelBackground: '#ffffff',
+        panelBorder: '#d7deec',
+        panelText: '#1f2937',
+        panelSubtext: '#667085',
+        panelBar: '#3a6df0'
+    };
+    public static readonly dark: ThemeTokens = Theme.DARK;
+    public static readonly light: ThemeTokens = Theme.LIGHT;
+    public static readonly palette: ReadonlyArray<string> = Theme.DEFAULT_PALETTE;
 
     /**
      * Build tokens from CSS custom properties, so a graph follows the host's
@@ -123,7 +123,7 @@ export class Theme {
     public static fromCssVars(source: Element | CssVarSource, options: CssVarThemeOptions = {}): ThemeTokens {
         const style: CssVarSource = 'getPropertyValue' in source ? source : getComputedStyle(source);
         const prefix = options.prefix ?? '--jsng-';
-        const base = options.base ?? DARK;
+        const base = options.base ?? Theme.DARK;
         const out: ThemeTokens = {...base};
         const read = (name: string): string | null => {
             const value = style.getPropertyValue(name).trim();
@@ -131,7 +131,7 @@ export class Theme {
             return value.length > 0 ? value : null;
         };
         const keys = new Set<keyof ThemeTokens>([
-            ...(Object.keys(DARK) as (keyof ThemeTokens)[]),
+            ...(Object.keys(Theme.DARK) as (keyof ThemeTokens)[]),
             'edgeNeutral', 'edgeLabel', 'highlightStroke', 'dimOpacity'
         ]);
 

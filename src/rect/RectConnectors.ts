@@ -1,64 +1,6 @@
-import { RectAnim } from './RectAnim';
 import { RectColor } from './RectColor';
-import { RectBranchOptions, RectDirection, RectElbowOptions, RectLoopOptions, RectSide } from './RectKitTypes';
-
-const NS = 'http://www.w3.org/2000/svg';
-
-function svgEl(name: string, attrs: Record<string, string | number>): SVGElement {
-    const node = document.createElementNS(NS, name);
-
-    for (const key of Object.keys(attrs)) {
-        node.setAttribute(key, String(attrs[key]));
-    }
-
-    return node;
-}
-
-function svgRoot(width: number, height: number): SVGSVGElement {
-    const svg = document.createElementNS(NS, 'svg') as SVGSVGElement;
-    svg.setAttribute('width', String(width));
-    svg.setAttribute('height', String(height));
-    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    svg.style.display = 'block';
-
-    return svg;
-}
-
-/** Apply dash / flowing-dash animation to a stroked SVG element. */
-function applyDash(el: SVGElement, dashed: boolean | undefined, animated: boolean | undefined): void {
-    if (animated) {
-        RectAnim.ensure();
-        el.setAttribute('stroke-dasharray', '5 4');
-        (el as unknown as HTMLElement).style.animation = `${RectAnim.FLOW} 0.7s linear infinite`;
-    } else if (dashed) {
-        el.setAttribute('stroke-dasharray', '3 3');
-    }
-}
-
-/** A tiny arrowhead polygon with its tip at (x, y), pointing the given way. */
-function head(x: number, y: number, dir: RectDirection, fill: string): SVGElement {
-    const s = 4.5;
-    let points: string;
-
-    switch (dir) {
-        case 'right': points = `${x - 7},${y - s} ${x - 7},${y + s} ${x},${y}`; break;
-        case 'left':  points = `${x + 7},${y - s} ${x + 7},${y + s} ${x},${y}`; break;
-        case 'down':  points = `${x - s},${y - 7} ${x + s},${y - 7} ${x},${y}`; break;
-        default:      points = `${x - s},${y + 7} ${x + s},${y + 7} ${x},${y}`; break;
-    }
-
-    return svgEl('polygon', {points: points, fill: fill});
-}
-
-/** The arrowhead direction that points out of a given box edge. */
-function sideToDir(side: RectSide): RectDirection {
-    switch (side) {
-        case 'left': return 'left';
-        case 'right': return 'right';
-        case 'top': return 'up';
-        default: return 'down';
-    }
-}
+import { RectBranchOptions, RectElbowOptions, RectLoopOptions, RectSide } from './RectKitTypes';
+import { RectSvg } from './RectSvg';
 
 /**
  * An L-shaped (right-angle) connector between two perpendicular edges — the
@@ -99,17 +41,17 @@ export class RectElbow {
 
         const wrap = document.createElement('div');
         wrap.style.cssText = 'flex:0 0 auto; display:flex;';
-        const svg = svgRoot(w, h);
+        const svg = RectSvg.root(w, h);
 
-        const path = svgEl('path', {
+        const path = RectSvg.el('path', {
             d: `M${sx} ${sy} L${corner[0]} ${corner[1]} L${ex} ${ey}`,
             fill: 'none', stroke: stroke, 'stroke-width': 1.6
         });
-        applyDash(path, o.dashed, o.animated);
+        RectSvg.applyDash(path, o.dashed, o.animated);
         svg.appendChild(path);
 
         if (o.arrow !== false) {
-            svg.appendChild(head(ex, ey, sideToDir(to), stroke));
+            svg.appendChild(RectSvg.head(ex, ey, RectSvg.sideToDir(to), stroke));
         }
 
         wrap.appendChild(svg);
@@ -117,24 +59,6 @@ export class RectElbow {
         return wrap;
     }
 
-}
-
-/** Send travelling dots along an arbitrary SVG path (visible flow/recurrence). */
-function travelDots(svg: SVGSVGElement, d: string, fill: string, count = 3): void {
-    RectAnim.ensure();
-
-    for (let i = 0; i < count; i++) {
-        const dot = document.createElementNS(NS, 'circle');
-        dot.setAttribute('r', '2');
-        dot.setAttribute('cx', '0');
-        dot.setAttribute('cy', '0');
-        dot.setAttribute('fill', fill);
-        dot.style.offsetPath = `path("${d}")`;
-        dot.style.offsetRotate = '0deg';
-        dot.style.animation = `${RectAnim.TRAVEL} 1.3s linear infinite`;
-        dot.style.animationDelay = `${(i * 0.43).toFixed(2)}s`;
-        svg.appendChild(dot);
-    }
 }
 
 /**
@@ -156,7 +80,7 @@ export class RectLoop {
 
         const wrap = document.createElement('div');
         wrap.style.cssText = 'flex:0 0 auto; display:flex;';
-        const svg = svgRoot(w, h);
+        const svg = RectSvg.root(w, h);
 
         const baseY = below ? 1 : h - 1;
         const topY = below ? h - 1 : 1;
@@ -177,17 +101,17 @@ export class RectLoop {
             d = `M ${startX} ${baseY} C ${startX} ${topY} ${endX} ${topY} ${endX} ${baseY}`;
         }
 
-        const path = svgEl('path', {d: d, fill: 'none', stroke: stroke, 'stroke-width': 1.6});
-        applyDash(path, o.dashed, o.animated);
+        const path = RectSvg.el('path', {d: d, fill: 'none', stroke: stroke, 'stroke-width': 1.6});
+        RectSvg.applyDash(path, o.dashed, o.animated);
         svg.appendChild(path);
-        svg.appendChild(head(endX, baseY, below ? 'up' : 'down', stroke));
+        svg.appendChild(RectSvg.head(endX, baseY, below ? 'up' : 'down', stroke));
 
         if (o.dots) {
-            travelDots(svg, d, stroke);
+            RectSvg.travelDots(svg, d, stroke);
         }
 
         if (o.label !== undefined) {
-            const text = svgEl('text', {
+            const text = RectSvg.el('text', {
                 x: w / 2, y: below ? h - 3 : 9, 'text-anchor': 'middle',
                 fill: '#8595b5', 'font-size': 9.5, 'font-family': 'system-ui, sans-serif'
             });
@@ -222,11 +146,11 @@ export class RectBranch {
 
         const wrap = document.createElement('div');
         wrap.style.cssText = 'flex:0 0 auto; display:flex;';
-        const svg = svgRoot(w, h);
+        const svg = RectSvg.root(w, h);
 
         const line = (x1: number, y1: number, x2: number, y2: number): void => {
-            const el = svgEl('line', {x1: x1, y1: y1, x2: x2, y2: y2, stroke: stroke, 'stroke-width': 1.6});
-            applyDash(el, o.dashed, o.animated);
+            const el = RectSvg.el('line', {x1: x1, y1: y1, x2: x2, y2: y2, stroke: stroke, 'stroke-width': 1.6});
+            RectSvg.applyDash(el, o.dashed, o.animated);
             svg.appendChild(el);
         };
 
@@ -245,7 +169,7 @@ export class RectBranch {
             line(spineX, ys[0] as number, spineX, ys[count - 1] as number); // spine
             for (const y of ys) {
                 line(spineX, y, endX, y);                             // branch
-                svg.appendChild(head(endX, y, direction, stroke));
+                svg.appendChild(RectSvg.head(endX, y, direction, stroke));
             }
         } else {
             const forward = direction === 'down';
@@ -257,7 +181,7 @@ export class RectBranch {
             line(xs[0] as number, spineY, xs[count - 1] as number, spineY);
             for (const x of xs) {
                 line(x, spineY, x, endY);
-                svg.appendChild(head(x, endY, direction, stroke));
+                svg.appendChild(RectSvg.head(x, endY, direction, stroke));
             }
         }
 

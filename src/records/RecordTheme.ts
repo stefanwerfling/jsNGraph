@@ -26,10 +26,10 @@ export interface RecordThemeTokens {
     palette: string[];
 }
 
-const PALETTE = ['#7d93c4', '#6e6aa6', '#7aa6a2', '#8fb08c', '#83b3d6', '#b48ead', '#c9a36a', '#6f9fb5'];
-
 /** Built-in looks of the record graph (`'light'` mirrors a clean dashboard, `'dark'` its night mode). */
 export class RecordTheme {
+
+    private static readonly PALETTE = ['#7d93c4', '#6e6aa6', '#7aa6a2', '#8fb08c', '#83b3d6', '#b48ead', '#c9a36a', '#6f9fb5'];
 
     public static readonly light: RecordThemeTokens = {
         background: '#f6f8fa',
@@ -49,7 +49,7 @@ export class RecordTheme {
         alert: '#e8175d',
         alertText: '#ffffff',
         shadow: 'rgba(25,45,70,0.16)',
-        palette: PALETTE
+        palette: RecordTheme.PALETTE
     };
 
     public static readonly dark: RecordThemeTokens = {
@@ -70,7 +70,7 @@ export class RecordTheme {
         alert: '#ff3b7a',
         alertText: '#ffffff',
         shadow: 'rgba(0,0,0,0.45)',
-        palette: PALETTE
+        palette: RecordTheme.PALETTE
     };
 
     public static resolve(theme: 'light' | 'dark' | Partial<RecordThemeTokens> | undefined): RecordThemeTokens {

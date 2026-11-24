@@ -81,22 +81,6 @@ interface Block {
     index: number;
 }
 
-const DEFAULTS: Required<RecordLayoutOptions> = {
-    nodeWidth: 170,
-    headerHeight: 50,
-    rowHeight: 19,
-    rowPad: 6,
-    columnGap: 120,
-    nodeGap: 22,
-    groupPad: 12,
-    groupHeader: 22,
-    collapsedWidth: 170,
-    collapsedHeight: 46,
-    laneGap: 7,
-    passes: 8,
-    align: 60
-};
-
 /**
  * Layout of a record graph (cards with rows, links row → row), left to
  * right. Columns are the longest path from the sources after breaking
@@ -109,10 +93,26 @@ const DEFAULTS: Required<RecordLayoutOptions> = {
  */
 export class RecordLayout {
 
+    private static readonly DEFAULTS: Required<RecordLayoutOptions> = {
+        nodeWidth: 170,
+        headerHeight: 50,
+        rowHeight: 19,
+        rowPad: 6,
+        columnGap: 120,
+        nodeGap: 22,
+        groupPad: 12,
+        groupHeader: 22,
+        collapsedWidth: 170,
+        collapsedHeight: 46,
+        laneGap: 7,
+        passes: 8,
+        align: 60
+    };
+
     private readonly o: Required<RecordLayoutOptions>;
 
     public constructor(options: RecordLayoutOptions = {}) {
-        this.o = {...DEFAULTS, ...options};
+        this.o = {...RecordLayout.DEFAULTS, ...options};
     }
 
     public get options(): Readonly<Required<RecordLayoutOptions>> {

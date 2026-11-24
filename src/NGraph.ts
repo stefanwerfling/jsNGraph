@@ -15,7 +15,7 @@ import { Effects, NGraphOverlay, OverlayContext, PulseOptions, RippleOptions, Tr
 import { EdgeColorMode, EdgeStyler, LabelStyle, NodeStyler, StyleResolver } from './render/StyleResolver';
 import { Theme, ThemeTokens } from './render/Theme';
 import { ClickModifiers, InteractionController } from './interaction/InteractionController';
-import { HitCandidate, MIN_HIT_RADIUS_PX, pickHit } from './interaction/HitPick';
+import { HitCandidate, HitPick } from './interaction/HitPick';
 import { Tooltip } from './ui/Tooltip';
 import { NodePanel } from './ui/NodePanel';
 import { EventEmitter } from './util/EventEmitter';
@@ -41,11 +41,11 @@ export interface NGraphOptions {
     detailPanel?: boolean;
     /** Hover tooltip: true (default, "label · sublabel/load"), false, or a
      *  function returning the text (null = no tooltip for that node). */
-    tooltip?: boolean | ((node: GraphNode) => string | null);
+    tooltip?: boolean | ((node: Readonly<GraphNode>) => string | null);
     /** Edge hover tooltip: true (default, "A ↔ B · label/load"), false, or a
      *  function returning the text (null = no tooltip for that edge). The
      *  hovered edge is drawn a little wider. */
-    edgeTooltip?: boolean | ((edge: GraphEdge) => string | null);
+    edgeTooltip?: boolean | ((edge: Readonly<GraphEdge>) => string | null);
     /** 'force' (default): springy self-organizing. 'radial': hub-and-ring via
      *  node.ring. 'layered': Sugiyama-style columns via node.ring (0 = left).
      *  'static': no simulation, nodes stay at the x/y the host gives them
@@ -107,22 +107,23 @@ export interface NGraphOptions {
 }
 
 export interface NGraphContextEvent {
-    node: GraphNode | null;
-    edge: GraphEdge | null;
+    node: Readonly<GraphNode> | null;
+    edge: Readonly<GraphEdge> | null;
     clientX: number;
     clientY: number;
     /** World position under the pointer (e.g. "add node here"). */
     world: Point;
 }
 
+/** Node/edge payloads are the live runtime objects, typed read-only: read them, change them via updateNode/updateEdge. */
 export interface NGraphEvents {
-    nodeHover: GraphNode | null;
+    nodeHover: Readonly<GraphNode> | null;
     /** Pointer entered an edge (no node under it), or null when it left. */
-    edgeHover: GraphEdge | null;
+    edgeHover: Readonly<GraphEdge> | null;
     /** null = click on empty background. */
-    nodeClick: GraphNode | null;
-    nodeDblClick: GraphNode;
-    edgeClick: GraphEdge;
+    nodeClick: Readonly<GraphNode> | null;
+    nodeDblClick: Readonly<GraphNode>;
+    edgeClick: Readonly<GraphEdge>;
     /** Right click / long press. Registering a listener suppresses the browser menu. */
     contextMenu: NGraphContextEvent;
     /** Selected node ids after any change (click, lasso, select()). */
@@ -132,7 +133,7 @@ export interface NGraphEvents {
     /** Click on a cluster disc while zoomed out (see setClusters); payload is its id. */
     clusterClick: string;
     /** A node drag ended — persist positions here. */
-    nodeDragEnd: GraphNode;
+    nodeDragEnd: Readonly<GraphNode>;
     /** The layout stopped moving (after setData, a drag, a resize, …). */
     layoutSettle: null;
     [key: string]: unknown;
@@ -168,15 +169,6 @@ export interface HighlightOptions {
     dimOthers?: boolean;
 }
 
-/** Below this per-frame movement (world px) the layout counts as settled. */
-const SETTLE_EPSILON = 0.05;
-
-/** From this many visible nodes on, a frame only visits the nodes in view (quadtree). */
-const CULL_MIN_NODES = 2000;
-
-/** focusCluster zooms in at least this far past clusterZoom, so the members show. */
-const CLUSTER_FOCUS_MARGIN = 1.15;
-
 /**
  * Public entry point: an interactive graph rendered on a canvas inside
  * `container`. Feed it nodes/edges, it lays them out and handles hover,
@@ -188,6 +180,15 @@ const CLUSTER_FOCUS_MARGIN = 1.15;
  * size (a hidden tab), so an embedded graph costs nothing in the background.
  */
 export class NGraph {
+
+    /** Below this per-frame movement (world px) the layout counts as settled. */
+    private static readonly SETTLE_EPSILON = 0.05;
+
+    /** From this many visible nodes on, a frame only visits the nodes in view (quadtree). */
+    private static readonly CULL_MIN_NODES = 2000;
+
+    /** focusCluster zooms in at least this far past clusterZoom, so the members show. */
+    private static readonly CLUSTER_FOCUS_MARGIN = 1.15;
 
     private readonly root: HTMLDivElement;
     private readonly canvas: HTMLCanvasElement;
@@ -574,7 +575,7 @@ export class NGraph {
 
     /** Replace the cluster outlines (J6). An empty list removes them. */
     public setHulls(hulls: ReadonlyArray<NGraphHull>): void {
-        this.hulls = [...hulls];
+        this.hulls = hulls.map((hull) => ({...hull, nodeIds: [...hull.nodeIds]}));
         this.hullCache = null;
         this.loop.request();
     }
@@ -597,20 +598,25 @@ export class NGraph {
      * edges come back when zooming in. An empty list turns aggregation off.
      */
     public setClusters(clusters: ReadonlyArray<NGraphCluster>, edges: ReadonlyArray<NGraphClusterEdge> = []): void {
-        this.clusters = [...clusters];
-        this.clusterEdges = [...edges];
+        this.clusters = clusters.map((cluster) => ({...cluster}));
+        this.clusterEdges = edges.map((edge) => ({...edge}));
         this.clusterCache = null;
         this.loop.request();
     }
 
     /** True while the clusters are drawn instead of the nodes. */
-    public isClustered(): boolean {
+    public get clustered(): boolean {
         return this.clusters.length > 0 && this.camera.scale < this.clusterZoom;
+    }
+
+    /** @deprecated use the `clustered` getter */
+    public isClustered(): boolean {
+        return this.clustered;
     }
 
     /** Id of the cluster disc under a point in container coordinates (only while clustered). */
     public clusterAt(x: number, y: number): string | null {
-        if (!this.isClustered()) {
+        if (!this.clustered) {
             return null;
         }
 
@@ -647,7 +653,7 @@ export class NGraph {
             }
         }
 
-        const minScale = this.clusterZoom * CLUSTER_FOCUS_MARGIN;
+        const minScale = this.clusterZoom * NGraph.CLUSTER_FOCUS_MARGIN;
         const fitted = this.fitTarget(members, options.padding ?? 40, Infinity);
         const bounds = Geometry.boundsOfPoints(members);
         const disc = this.clusterScene().discs.find((c) => c.id === id);
@@ -811,7 +817,7 @@ export class NGraph {
      * Show only nodes matching the predicate (their edges follow); hidden
      * nodes are neither drawn, hit-tested nor laid out. null shows all.
      */
-    public filter(predicate: ((node: GraphNode) => boolean) | null): void {
+    public filter(predicate: ((node: Readonly<GraphNode>) => boolean) | null): void {
         this.filterFn = predicate;
         this.invalidateStructure();
     }
@@ -877,12 +883,21 @@ export class NGraph {
 
     // ---- events & lifecycle ----------------------------------------------------
 
-    public on<K extends keyof NGraphEvents>(event: K, listener: (payload: NGraphEvents[K]) => void): void {
+    public on<K extends keyof NGraphEvents>(event: K, listener: (payload: NGraphEvents[K]) => void): this {
         this.events.on(event, listener);
+
+        return this;
     }
 
-    public off<K extends keyof NGraphEvents>(event: K, listener: (payload: NGraphEvents[K]) => void): void {
+    public off<K extends keyof NGraphEvents>(event: K, listener: (payload: NGraphEvents[K]) => void): this {
         this.events.off(event, listener);
+
+        return this;
+    }
+
+    /** True between pause() and resume(). */
+    public get paused(): boolean {
+        return this.hostPaused;
     }
 
     /** Stop rendering (e.g. the host hid this view). Changes made meanwhile show on resume. */
@@ -979,7 +994,7 @@ export class NGraph {
      * moves the index would be rebuilt every frame, so then all are drawn.
      */
     private nodesInView(): GraphNode[] {
-        if (this.visibleNodes.length < CULL_MIN_NODES || this.layoutActive) {
+        if (this.visibleNodes.length < NGraph.CULL_MIN_NODES || this.layoutActive) {
             return this.visibleNodes;
         }
 
@@ -1063,15 +1078,15 @@ export class NGraph {
         return this.spatial;
     }
 
-    /** The node under a screen point; small dots get a padded target (pickHit). */
+    /** The node under a screen point; small dots get a padded target (HitPick.pick). */
     private hitNode(screenX: number, screenY: number): GraphNode | null {
-        if (this.isClustered()) {
+        if (this.clustered) {
             return null;
         }
 
         const index = this.spatialIndex();
         const world = this.camera.toWorld(screenX, screenY);
-        const minTarget = MIN_HIT_RADIUS_PX / this.camera.scale;
+        const minTarget = HitPick.MIN_RADIUS_PX / this.camera.scale;
         const candidates: HitCandidate<GraphNode>[] = [];
 
         for (const candidate of index.queryRadius(world.x, world.y, Math.max(this.spatialExtent, minTarget) + 1)) {
@@ -1084,12 +1099,12 @@ export class NGraph {
             });
         }
 
-        return pickHit(candidates, world.x, world.y, minTarget);
+        return HitPick.pick(candidates, world.x, world.y, minTarget);
     }
 
     /** Nearest edge within ~6 screen px of the point. */
     private hitEdge(screenX: number, screenY: number): GraphEdge | null {
-        if (this.isClustered() || this.camera.scale < this.edgeMinZoom) {
+        if (this.clustered || this.camera.scale < this.edgeMinZoom) {
             return null;
         }
 
@@ -1251,7 +1266,7 @@ export class NGraph {
 
     private handleClick(node: GraphNode | null, edge: GraphEdge | null, clientX: number, clientY: number,
         modifiers: ClickModifiers): void {
-        if (node === null && this.isClustered()) {
+        if (node === null && this.clustered) {
             const local = ElementPoint.local(this.canvas, clientX, clientY);
             const cluster = this.clusterAt(local.x, local.y);
 
@@ -1377,7 +1392,7 @@ export class NGraph {
                 this.clusterCache = null;
             }
 
-            layoutMoving = moved > SETTLE_EPSILON;
+            layoutMoving = moved > NGraph.SETTLE_EPSILON;
 
             if (!layoutMoving) {
                 this.layoutActive = false;
@@ -1392,7 +1407,7 @@ export class NGraph {
         this.overlayContext.timeMs = timeMs;
         this.overlayContext.scale = this.camera.scale;
 
-        const clustered = this.isClustered();
+        const clustered = this.clustered;
         const gl = this.glLayer();
         const animating = this.renderer.draw({
             nodes: clustered ? [] : this.nodesInView(),
@@ -1528,7 +1543,7 @@ export class NGraph {
     }
 
     /** "Router ↔ Server · 63% load" (→ for directed edges; the edge label replaces the load). */
-    public static defaultEdgeTooltip(edge: GraphEdge, directed = edge.directed === true): string {
+    public static defaultEdgeTooltip(edge: Readonly<GraphEdge>, directed = edge.directed === true): string {
         const arrow = directed ? '→' : '↔';
         const detail = edge.label ?? `${Math.round(edge.load * 100)}% load`;
 

@@ -1,6 +1,6 @@
 import { RectAnim } from './RectAnim';
 import { RectColor } from './RectColor';
-import { DEFAULT_CURVE, RECT_SIDES, RectAnchorPoint, RectBoardGeometry as G, RectArea, RectCurveShape, RectPoint } from './RectBoardGeometry';
+import { RectAnchorPoint, RectBoardGeometry as G, RectArea, RectCurveShape, RectPoint } from './RectBoardGeometry';
 import {
     RectBoardEvents,
     RectBoardOptions,
@@ -10,11 +10,6 @@ import {
     RectSide,
     RectStoryHandlers
 } from './RectKitTypes';
-
-const SVG_NS = 'http://www.w3.org/2000/svg';
-
-/** Elements inside an item that keep their own pointer handling. */
-const INTERACTIVE = 'input, textarea, select, button, a, [contenteditable="true"], [data-rb-ignore]';
 
 interface Item {
     id: string | null;
@@ -66,6 +61,11 @@ type Handlers = {[K in keyof RectBoardEvents]: Array<RectBoardEvents[K]>};
  * `setEdges` or `clear` + `add` after an undo. Pure DOM, zero deps.
  */
 export class RectBoard {
+
+    private static readonly SVG_NS = 'http://www.w3.org/2000/svg';
+
+    /** Elements inside an item that keep their own pointer handling. */
+    private static readonly INTERACTIVE = 'input, textarea, select, button, a, [contenteditable="true"], [data-rb-ignore]';
 
     private readonly viewport: HTMLElement;
     private readonly board: HTMLDivElement;
@@ -122,7 +122,7 @@ export class RectBoard {
         this.grid = options.grid ?? 0;
         this.minSize = options.minItemSize ?? {w: 40, h: 30};
         this.zoomStep = options.zoomStep ?? 1.12;
-        this.curve = {...DEFAULT_CURVE, ...options.curve};
+        this.curve = {...G.DEFAULT_CURVE, ...options.curve};
         this.selectedClass = options.selectedClass ?? 'rb-selected';
         this.bandEnabled = options.band ?? this.editable;
         this.pillLabels = options.edgeLabels === 'pill';
@@ -336,6 +336,15 @@ export class RectBoard {
         return this;
     }
 
+    /** Remove a handler added with `on`. */
+    public off<K extends keyof RectBoardEvents>(event: K, handler: RectBoardEvents[K]): this {
+        const list = this.handlers[event] as Array<RectBoardEvents[K]>;
+        const index = list.indexOf(handler);
+        if (index >= 0) list.splice(index, 1);
+
+        return this;
+    }
+
     // ---- camera ----
 
     /** The transformed stage (world coordinates); hosts can place overlays (editors, ghosts) in it. */
@@ -364,7 +373,7 @@ export class RectBoard {
     /** Enable the scroll/arrow-driven camera story over the given item ids. */
     public story(ids: string[], handlers: RectStoryHandlers = {}): this {
         this.storyIds = ids.slice();
-        this.storyHandlers = handlers;
+        this.storyHandlers = {...handlers};
         this.step = -1;
 
         return this;
@@ -447,6 +456,9 @@ export class RectBoard {
             this.gesture.el.remove();
         }
         this.gesture = null;
+        for (const key of Object.keys(this.handlers) as Array<keyof RectBoardEvents>) {
+            this.handlers[key].length = 0;
+        }
         this.board.remove();
         this.viewport.classList.remove('rb-viewport', 'rb-panning', 'rb-drafting');
     }
@@ -484,7 +496,7 @@ export class RectBoard {
             item.el.appendChild(grip);
         }
         if (item.connectable && item.el.querySelector('[data-rb="anchor"]') === null) {
-            for (const side of RECT_SIDES) {
+            for (const side of G.SIDES) {
                 const dot = document.createElement('div');
                 dot.className = `rb-anchor rb-anchor-${side}`;
                 dot.dataset.rb = 'anchor';
@@ -507,7 +519,7 @@ export class RectBoard {
 
     private ensureOverlay(): SVGSVGElement {
         if (this.overlay === null) {
-            const svg = document.createElementNS(SVG_NS, 'svg') as SVGSVGElement;
+            const svg = document.createElementNS(RectBoard.SVG_NS, 'svg') as SVGSVGElement;
             svg.classList.add('rb-edges');
             svg.style.cssText = 'position:absolute; left:0; top:0; overflow:visible; pointer-events:none;';
             this.board.insertBefore(svg, this.frontLayer); // over frames, under the boxes
@@ -692,7 +704,7 @@ export class RectBoard {
     }
 
     private static svgEl(name: string, attrs: Record<string, string | number>): SVGElement {
-        const node = document.createElementNS(SVG_NS, name) as SVGElement;
+        const node = document.createElementNS(RectBoard.SVG_NS, name) as SVGElement;
         for (const key of Object.keys(attrs)) {
             node.setAttribute(key, String(attrs[key]));
         }
@@ -731,7 +743,7 @@ export class RectBoard {
     // ---- internals: input ----
 
     private emit<K extends keyof RectBoardEvents>(event: K, ...args: Parameters<RectBoardEvents[K]>): void {
-        for (const handler of this.handlers[event]) {
+        for (const handler of [...this.handlers[event]]) {
             (handler as (...a: Parameters<RectBoardEvents[K]>) => void)(...args);
         }
     }
@@ -786,7 +798,7 @@ export class RectBoard {
         if (target === null) return;
 
         // Host controls in the viewport (toolbars, editors) and inside items keep their clicks.
-        if (target.closest(INTERACTIVE) !== null) return;
+        if (target.closest(RectBoard.INTERACTIVE) !== null) return;
         const itemEl = target.closest<HTMLElement>('[data-rb-item]');
         if (itemEl === null && !this.board.contains(target) && target !== this.viewport) return;
 
@@ -1053,7 +1065,7 @@ export class RectBoard {
         // Pointer capture retargets the dblclick to the viewport: hit-test the position instead.
         const hit = document.elementFromPoint(e.clientX, e.clientY);
         const target = hit instanceof Element && this.viewport.contains(hit) ? hit : (e.target instanceof Element ? e.target : null);
-        if (target === null || target.closest(INTERACTIVE) !== null) return;
+        if (target === null || target.closest(RectBoard.INTERACTIVE) !== null) return;
 
         const edgeId = target.closest<SVGGElement>('.rb-edge')?.dataset.rbEdge;
         if (edgeId !== undefined) {

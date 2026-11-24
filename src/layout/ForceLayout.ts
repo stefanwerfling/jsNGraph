@@ -19,27 +19,6 @@ export interface ForceLayoutOptions {
     alphaMin?: number;
 }
 
-const DEFAULTS: Required<ForceLayoutOptions> = {
-    repulsion: 5000,
-    springStrength: 0.06,
-    springLength: 140,
-    centerStrength: 0.01,
-    damping: 0.85,
-    alphaDecay: 0.02,
-    alphaMin: 0.005
-};
-
-/** Minimum gap enforced between node edges on top of the repulsion force. */
-const COLLISION_PADDING = 10;
-
-/** Floor on distance² used for repulsion — avoids a 1/d² blow-up when two
- *  nodes start out (near-)coincident, e.g. from random initial placement. */
-const MIN_REPULSION_DIST_SQ = 900;
-
-/** Hard cap on per-tick velocity so a single spike (e.g. sudden overlap)
- *  can't fling a node off-canvas before damping has a chance to act. */
-const MAX_SPEED = 40;
-
 /**
  * A small O(n²) force-directed layout: node-node repulsion, edge springs,
  * and gentle centering. O(n²) is fine at network-monitoring scale (a few
@@ -48,11 +27,32 @@ const MAX_SPEED = 40;
  */
 export class ForceLayout {
 
+    private static readonly DEFAULTS: Required<ForceLayoutOptions> = {
+        repulsion: 5000,
+        springStrength: 0.06,
+        springLength: 140,
+        centerStrength: 0.01,
+        damping: 0.85,
+        alphaDecay: 0.02,
+        alphaMin: 0.005
+    };
+
+    /** Minimum gap enforced between node edges on top of the repulsion force. */
+    private static readonly COLLISION_PADDING = 10;
+
+    /** Floor on distance² used for repulsion — avoids a 1/d² blow-up when two
+     *  nodes start out (near-)coincident, e.g. from random initial placement. */
+    private static readonly MIN_REPULSION_DIST_SQ = 900;
+
+    /** Hard cap on per-tick velocity so a single spike (e.g. sudden overlap)
+     *  can't fling a node off-canvas before damping has a chance to act. */
+    private static readonly MAX_SPEED = 40;
+
     private readonly options: Required<ForceLayoutOptions>;
     private alpha = 1;
 
     public constructor(options: ForceLayoutOptions = {}) {
-        this.options = {...DEFAULTS, ...options};
+        this.options = {...ForceLayout.DEFAULTS, ...options};
     }
 
     /** Current temperature, 1 = hot, below alphaMin = settled. */
@@ -118,7 +118,7 @@ export class ForceLayout {
                 }
 
                 const dist = Math.sqrt(distSq);
-                const force = repulsion / Math.max(distSq, MIN_REPULSION_DIST_SQ);
+                const force = repulsion / Math.max(distSq, ForceLayout.MIN_REPULSION_DIST_SQ);
 
                 fx += (dx / dist) * force;
                 fy += (dy / dist) * force;
@@ -179,7 +179,7 @@ export class ForceLayout {
     }
 
     private static clampSpeed(v: number): number {
-        return Math.max(-MAX_SPEED, Math.min(MAX_SPEED, v));
+        return Math.max(-ForceLayout.MAX_SPEED, Math.min(ForceLayout.MAX_SPEED, v));
     }
 
     /**
@@ -204,7 +204,7 @@ export class ForceLayout {
 
                 const dx = b.x - a.x;
                 const dy = b.y - a.y;
-                const minDist = a.radius + b.radius + COLLISION_PADDING;
+                const minDist = a.radius + b.radius + ForceLayout.COLLISION_PADDING;
                 let dist = Math.sqrt(dx * dx + dy * dy);
 
                 if (dist >= minDist) {

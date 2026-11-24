@@ -1,5 +1,5 @@
 import { Color } from '../util/Color';
-import { ARROW_STRIDE, BulkBuffers, DISC_STRIDE, LINE_STRIDE } from './BulkBuffers';
+import { BulkBuffers } from './BulkBuffers';
 
 /** Screen = world · scale + offset, all in CSS pixels. */
 export interface GlView {
@@ -7,109 +7,6 @@ export interface GlView {
     offsetX: number;
     offsetY: number;
 }
-
-const HEADER = `#version 300 es
-uniform vec3 u_view;
-uniform vec2 u_size;
-vec4 clip(vec2 p) { return vec4(p.x / u_size.x * 2.0 - 1.0, 1.0 - p.y / u_size.y * 2.0, 0.0, 1.0); }
-`;
-
-/** Edge quad: 1 CSS px wider than the stroke on each side for antialiasing; hairlines fade instead of thinning. */
-const LINE_VS = `${HEADER}
-layout(location = 0) in vec2 a_corner;
-layout(location = 1) in vec4 i_seg;
-layout(location = 2) in float i_width;
-layout(location = 3) in vec4 i_color;
-out vec4 v_color;
-out float v_dist;
-out float v_half;
-void main() {
-    vec2 a = i_seg.xy * u_view.x + u_view.yz;
-    vec2 b = i_seg.zw * u_view.x + u_view.yz;
-    vec2 d = b - a;
-    float len = length(d);
-    vec2 dir = len > 0.0 ? d / len : vec2(1.0, 0.0);
-    vec2 n = vec2(-dir.y, dir.x);
-    float w = i_width * u_view.x;
-    float drawW = max(w, 1.0);
-    v_half = drawW * 0.5;
-    v_dist = a_corner.y * (drawW + 2.0);
-    v_color = vec4(i_color.rgb, i_color.a * min(w, 1.0));
-    gl_Position = clip(a + dir * (a_corner.x * len) + n * v_dist);
-}`;
-
-const LINE_FS = `#version 300 es
-precision mediump float;
-in vec4 v_color;
-in float v_dist;
-in float v_half;
-out vec4 o;
-void main() {
-    float a = v_color.a * clamp(v_half + 0.5 - abs(v_dist), 0.0, 1.0);
-    o = vec4(v_color.rgb * a, a);
-}`;
-
-const ARROW_VS = `${HEADER}
-layout(location = 0) in vec2 a_corner;
-layout(location = 1) in vec4 i_arrow;
-layout(location = 2) in float i_size;
-layout(location = 3) in vec4 i_color;
-out vec4 v_color;
-void main() {
-    vec2 tip = i_arrow.xy * u_view.x + u_view.yz;
-    vec2 dir = i_arrow.zw;
-    vec2 n = vec2(-dir.y, dir.x);
-    float s = i_size * u_view.x;
-    v_color = i_color;
-    gl_Position = clip(tip + dir * (a_corner.x * s) + n * (a_corner.y * s));
-}`;
-
-const FLAT_FS = `#version 300 es
-precision mediump float;
-in vec4 v_color;
-out vec4 o;
-void main() { o = vec4(v_color.rgb * v_color.a, v_color.a); }`;
-
-/** Dot: signed-distance disc with a 1 world-px rim (dropped below 2 px radius, like the 2d LOD squares). */
-const DISC_VS = `${HEADER}
-layout(location = 0) in vec2 a_corner;
-layout(location = 1) in vec3 i_disc;
-layout(location = 2) in vec4 i_fill;
-layout(location = 3) in vec4 i_stroke;
-out vec2 v_local;
-out float v_r;
-out float v_sw;
-out vec4 v_fill;
-out vec4 v_stroke;
-void main() {
-    vec2 c = i_disc.xy * u_view.x + u_view.yz;
-    float r = max(i_disc.z * u_view.x, 0.6);
-    float sw = r < 2.0 ? 0.0 : u_view.x;
-    v_local = a_corner * (r + sw * 0.5 + 1.0);
-    v_r = r;
-    v_sw = sw;
-    v_fill = i_fill;
-    v_stroke = i_stroke;
-    gl_Position = clip(c + v_local);
-}`;
-
-const DISC_FS = `#version 300 es
-precision mediump float;
-in vec2 v_local;
-in float v_r;
-in float v_sw;
-in vec4 v_fill;
-in vec4 v_stroke;
-out vec4 o;
-void main() {
-    float d = length(v_local);
-    float cov = clamp(v_r + v_sw * 0.5 + 0.5 - d, 0.0, 1.0);
-    float inner = v_sw > 0.0 ? clamp(v_r - v_sw * 0.5 + 0.5 - d, 0.0, 1.0) : 1.0;
-    vec4 col = mix(v_stroke, v_fill, inner);
-    float a = col.a * cov;
-    if (a <= 0.0) discard;
-    o = vec4(col.rgb * a, a);
-}`;
 
 interface Pass {
     program: WebGLProgram;
@@ -131,6 +28,109 @@ type Layout = ReadonlyArray<readonly [number, number]>;
  * clusters) stays on the 2d canvas above it.
  */
 export class WebGLLayer {
+
+    private static readonly HEADER = `#version 300 es
+    uniform vec3 u_view;
+    uniform vec2 u_size;
+    vec4 clip(vec2 p) { return vec4(p.x / u_size.x * 2.0 - 1.0, 1.0 - p.y / u_size.y * 2.0, 0.0, 1.0); }
+    `;
+
+    /** Edge quad: 1 CSS px wider than the stroke on each side for antialiasing; hairlines fade instead of thinning. */
+    private static readonly LINE_VS = `${WebGLLayer.HEADER}
+    layout(location = 0) in vec2 a_corner;
+    layout(location = 1) in vec4 i_seg;
+    layout(location = 2) in float i_width;
+    layout(location = 3) in vec4 i_color;
+    out vec4 v_color;
+    out float v_dist;
+    out float v_half;
+    void main() {
+        vec2 a = i_seg.xy * u_view.x + u_view.yz;
+        vec2 b = i_seg.zw * u_view.x + u_view.yz;
+        vec2 d = b - a;
+        float len = length(d);
+        vec2 dir = len > 0.0 ? d / len : vec2(1.0, 0.0);
+        vec2 n = vec2(-dir.y, dir.x);
+        float w = i_width * u_view.x;
+        float drawW = max(w, 1.0);
+        v_half = drawW * 0.5;
+        v_dist = a_corner.y * (drawW + 2.0);
+        v_color = vec4(i_color.rgb, i_color.a * min(w, 1.0));
+        gl_Position = clip(a + dir * (a_corner.x * len) + n * v_dist);
+    }`;
+
+    private static readonly LINE_FS = `#version 300 es
+    precision mediump float;
+    in vec4 v_color;
+    in float v_dist;
+    in float v_half;
+    out vec4 o;
+    void main() {
+        float a = v_color.a * clamp(v_half + 0.5 - abs(v_dist), 0.0, 1.0);
+        o = vec4(v_color.rgb * a, a);
+    }`;
+
+    private static readonly ARROW_VS = `${WebGLLayer.HEADER}
+    layout(location = 0) in vec2 a_corner;
+    layout(location = 1) in vec4 i_arrow;
+    layout(location = 2) in float i_size;
+    layout(location = 3) in vec4 i_color;
+    out vec4 v_color;
+    void main() {
+        vec2 tip = i_arrow.xy * u_view.x + u_view.yz;
+        vec2 dir = i_arrow.zw;
+        vec2 n = vec2(-dir.y, dir.x);
+        float s = i_size * u_view.x;
+        v_color = i_color;
+        gl_Position = clip(tip + dir * (a_corner.x * s) + n * (a_corner.y * s));
+    }`;
+
+    private static readonly FLAT_FS = `#version 300 es
+    precision mediump float;
+    in vec4 v_color;
+    out vec4 o;
+    void main() { o = vec4(v_color.rgb * v_color.a, v_color.a); }`;
+
+    /** Dot: signed-distance disc with a 1 world-px rim (dropped below 2 px radius, like the 2d LOD squares). */
+    private static readonly DISC_VS = `${WebGLLayer.HEADER}
+    layout(location = 0) in vec2 a_corner;
+    layout(location = 1) in vec3 i_disc;
+    layout(location = 2) in vec4 i_fill;
+    layout(location = 3) in vec4 i_stroke;
+    out vec2 v_local;
+    out float v_r;
+    out float v_sw;
+    out vec4 v_fill;
+    out vec4 v_stroke;
+    void main() {
+        vec2 c = i_disc.xy * u_view.x + u_view.yz;
+        float r = max(i_disc.z * u_view.x, 0.6);
+        float sw = r < 2.0 ? 0.0 : u_view.x;
+        v_local = a_corner * (r + sw * 0.5 + 1.0);
+        v_r = r;
+        v_sw = sw;
+        v_fill = i_fill;
+        v_stroke = i_stroke;
+        gl_Position = clip(c + v_local);
+    }`;
+
+    private static readonly DISC_FS = `#version 300 es
+    precision mediump float;
+    in vec2 v_local;
+    in float v_r;
+    in float v_sw;
+    in vec4 v_fill;
+    in vec4 v_stroke;
+    out vec4 o;
+    void main() {
+        float d = length(v_local);
+        float cov = clamp(v_r + v_sw * 0.5 + 0.5 - d, 0.0, 1.0);
+        float inner = v_sw > 0.0 ? clamp(v_r - v_sw * 0.5 + 0.5 - d, 0.0, 1.0) : 1.0;
+        vec4 col = mix(v_stroke, v_fill, inner);
+        float a = col.a * cov;
+        if (a <= 0.0) discard;
+        o = vec4(col.rgb * a, a);
+    }`;
 
     /** A WebGL2 layer on `canvas`, or null when WebGL2 is unavailable or a shader fails. */
     public static create(canvas: HTMLCanvasElement): WebGLLayer | null {
@@ -158,12 +158,12 @@ export class WebGLLayer {
         const cos = Math.cos(0.42);
         const sin = Math.sin(0.42);
 
-        this.lines = this.pass(LINE_VS, LINE_FS, [0, -0.5, 1, -0.5, 1, 0.5, 0, -0.5, 1, 0.5, 0, 0.5],
-            [[1, 4], [2, 1], [3, 4]], LINE_STRIDE);
-        this.arrows = this.pass(ARROW_VS, FLAT_FS, [0, 0, -cos, sin, -cos, -sin],
-            [[1, 4], [2, 1], [3, 4]], ARROW_STRIDE);
-        this.discs = this.pass(DISC_VS, DISC_FS, [-1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1],
-            [[1, 3], [2, 4], [3, 4]], DISC_STRIDE);
+        this.lines = this.pass(WebGLLayer.LINE_VS, WebGLLayer.LINE_FS, [0, -0.5, 1, -0.5, 1, 0.5, 0, -0.5, 1, 0.5, 0, 0.5],
+            [[1, 4], [2, 1], [3, 4]], BulkBuffers.LINE_STRIDE);
+        this.arrows = this.pass(WebGLLayer.ARROW_VS, WebGLLayer.FLAT_FS, [0, 0, -cos, sin, -cos, -sin],
+            [[1, 4], [2, 1], [3, 4]], BulkBuffers.ARROW_STRIDE);
+        this.discs = this.pass(WebGLLayer.DISC_VS, WebGLLayer.DISC_FS, [-1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1],
+            [[1, 3], [2, 4], [3, 4]], BulkBuffers.DISC_STRIDE);
 
         canvas.addEventListener('webglcontextlost', this.onLost);
     }

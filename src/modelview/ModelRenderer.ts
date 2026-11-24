@@ -27,30 +27,30 @@ export interface GroupFrame {
 type Point = {x: number; y: number};
 
 /**
- * Accent color per module kind — the OUTLINE/text color of a chip (hfviewer
- * draws outlined pills, not solid blocks), bright enough to read as a border
- * and a light-tinted label on a dark background, grouped by subsystem.
- */
-const KIND_ACCENT: Record<ModuleKind, string> = {
-    input: '#22d3ee',
-    embedding: '#a78bfa',
-    attention: '#818cf8',
-    mlp: '#34d399',
-    norm: '#38bdf8',
-    head: '#fb7185',
-    output: '#f472b6',
-    block: '#fbbf24',
-    op: '#94a3b8',
-    generic: '#9ca3af'
-};
-
-/**
  * Draws the model flow graph hfviewer-style: a dark background, compact
  * OUTLINED pill chips (accent border, dark tinted fill, light-tinted accent
  * label), thin orthogonal right-angle edges with rounded corners, and a
  * stacked "×N" for collapsed repeats. All world-space through the Camera.
  */
 export class ModelRenderer {
+
+    /**
+     * Accent color per module kind — the OUTLINE/text color of a chip (hfviewer
+     * draws outlined pills, not solid blocks), bright enough to read as a border
+     * and a light-tinted label on a dark background, grouped by subsystem.
+     */
+    private static readonly KIND_ACCENT: Record<ModuleKind, string> = {
+        input: '#22d3ee',
+        embedding: '#a78bfa',
+        attention: '#818cf8',
+        mlp: '#34d399',
+        norm: '#38bdf8',
+        head: '#fb7185',
+        output: '#f472b6',
+        block: '#fbbf24',
+        op: '#94a3b8',
+        generic: '#9ca3af'
+    };
 
     private readonly ctx: CanvasRenderingContext2D;
     private theme: ThemeTokens;
@@ -71,7 +71,7 @@ export class ModelRenderer {
     }
 
     public accentFor(node: ModelNode): string {
-        return node.accent ?? KIND_ACCENT[node.kind];
+        return node.accent ?? ModelRenderer.KIND_ACCENT[node.kind];
     }
 
     /** The canvas backdrop: a dark theme is pushed toward near-black (hfviewer's
