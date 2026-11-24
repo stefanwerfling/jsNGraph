@@ -145,6 +145,10 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   `WorkflowReplay` (own file) plays them back through the status API with an optional control bar (scrubber, steps,
   speed); pure state-at-time in `WorkflowRun.ts` (`test/WorkflowRun.test.ts`).
   Plan + milestones W1–W6: `docs/workflow-editor.md`.
+  `WorkflowEditor` is the façade (model, history, selection, events) over internal collaborators: `WorkflowRenderer`
+  (stage + node/note/group DOM), `WorkflowConnections` (SVG wires, labels, tools), `WorkflowGestures` (pointer),
+  `WorkflowKeyboard` (keys + clipboard), `WorkflowPalette`, `WorkflowInlineEdit`, `WorkflowArrange` (tidy tween, make-room),
+  `WorkflowViewport` (camera/fit), `WorkflowRunState` (status + recording); DOM behaviour in `test/WorkflowEditorDom.test.ts`.
   Example: `examples/workflow.html`.
   Parameter nodes (W7, for the audio patcher): `render(node, body, ctx)` gets a `WorkflowNodeContext` — `ctx.update(patch,
   {live})` writes back without rebuilding the body (`live` = no undo step/`change`; the release call commits), plus
