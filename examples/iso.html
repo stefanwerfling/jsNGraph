@@ -198,7 +198,7 @@
     const refresh = () => {
         $('undo').disabled = !iso.canUndo;
         $('redo').disabled = !iso.canRedo;
-        const none = iso.getSelection().length === 0 || iso.isReadOnly();
+        const none = iso.getSelection().length === 0 || iso.readOnly;
         $('dup').disabled = none;
         $('del').disabled = none;
     };
@@ -254,7 +254,7 @@
             return;
         }
         const id = ids[0], kind = iso.kindOf(id), x = iso.get(id);
-        const ro = iso.isReadOnly();
+        const ro = iso.readOnly;
         let rows = '';
         if (kind === 'item') {
             const icons = iso.getIconTypes().map((t) => t.id).join(',');

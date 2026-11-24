@@ -195,7 +195,7 @@
         }
     });
     window.view = view;
-    if (!view.isSupported()) document.getElementById('readout').textContent = 'This browser has no WebGL2 — the cloud needs it.';
+    if (!view.supported) document.getElementById('readout').textContent = 'This browser has no WebGL2 — the cloud needs it.';
 
     // ---- controls ------------------------------------------------------------------------------------------------------
     const $ = (id) => document.getElementById(id);

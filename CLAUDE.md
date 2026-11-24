@@ -349,7 +349,7 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   line). `setClip(min, max)` in texture coords (the ray is intersected with the clip box), orbit drag / wheel distance /
   double-click reset, `autoRotate` (°/s, keeps the loop running). Hover picks on the CPU: the strongest weighted sample
   along the pointer ray (`VolumeMath.strongest`, trilinear like GL LINEAR). No WebGL2 / lost context → a message,
-  `isSupported()` false. Pure `VolumeMath` (perspective/lookAt/multiply/invert/transform, `orbit`, `rayBox`, `sample`,
+  `supported` false. Pure `VolumeMath` (perspective/lookAt/multiply/invert/transform, `orbit`, `rayBox`, `sample`,
   `strongest`, `splat` = Gaussian splatting of points into the RGBA volume, per-channel peak → 255, optional `wrapZ` for
   cyclic axes; `test/Volume.test.ts`). Example: `examples/sightingcloud.html` (invented island + canyon on the floor, four
   species with their own season/place patterns over ten years, mode/threshold/density, season and west-edge cuts, presets).
@@ -468,6 +468,17 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
 - TypeScript, 4-space indent, single quotes, semicolons, `strict` (+ `noUncheckedIndexedAccess`).
 - OOP-only, per house style — see the root of this file's author's other projects (e.g. Loki)
   for the same conventions in full.
+- Public API conventions (applied across all components, 2026-11): no module-level functions or logic
+  constants — helpers are (private) static methods; `on`/`off` return `this` and every component with `on` has
+  `off`; boolean state is a getter (`readOnly`, `playing`, `supported`, `paused`, `clustered`); `getX()` returns
+  copies (or deep-`Readonly` types) and stored inputs are copied on the way in (huge typed arrays excepted, e.g.
+  `VolumeView.setVolume`); no mutable public fields on components (`Camera.scale/offsetX/offsetY` are getters,
+  writes via `setState`/`panBy`/`zoomAt`/`flyTo`, non-finite values ignored); every pan/zoom chart has
+  `resetView()`; RadarChart's value scale is `valueRange`/`setValueRange`. Renamed names stay as one-line
+  `@deprecated` aliases (`isReadOnly`, `isPlaying`, `isSupported`, `isClustered`, `resetZoom`, Radar `range`/
+  `setRange`, `paletteColor`, `pickHit`, `CHART_FONT`, …) — examples use the new names. Chart event names stay
+  specific (`targetHover`, `barClick`, …) where a chart has several clickable kinds. Runtime state objects
+  (`GraphNode`, `GraphEdge`, `ModelNode`) keep public fields; NGraph event payloads are typed `Readonly<…>`.
 - Zero runtime dependencies is a deliberate constraint, not an oversight — keep it that way
   unless there's a strong reason (this lib needs to be safe to drop into any consumer without
   dependency/version conflicts).

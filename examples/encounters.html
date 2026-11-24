@@ -308,12 +308,12 @@
         const t = rose.getTime(), max = rose.getMaxTime();
         clock.textContent = t === null ? '—' : EncounterRose.clock(t);
         slider.value = t === null ? 1000 : Math.round(t / Math.max(1, max) * 1000);
-        playBtn.textContent = rose.isPlaying() ? '❚❚ Pause' : '▶ Play';
-        playBtn.classList.toggle('on', rose.isPlaying());
+        playBtn.textContent = rose.playing ? '❚❚ Pause' : '▶ Play';
+        playBtn.classList.toggle('on', rose.playing);
         wholeBtn.classList.toggle('on', t === null);
     }
     rose.on('time', syncTime);
-    playBtn.addEventListener('click', () => { rose.isPlaying() ? rose.pause() : rose.play(); syncTime(); });
+    playBtn.addEventListener('click', () => { rose.playing ? rose.pause() : rose.play(); syncTime(); });
     wholeBtn.addEventListener('click', () => { rose.setTime(null); syncTime(); });
     slider.addEventListener('input', () => { rose.pause(); rose.setTime(Number(slider.value) / 1000 * rose.getMaxTime()); });
     document.querySelectorAll('[data-speed]').forEach((b) => b.addEventListener('click', () => {

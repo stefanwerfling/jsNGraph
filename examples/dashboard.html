@@ -153,7 +153,7 @@
     // --- two radars (existing RadarChart)
     const axes = ['Acidity', 'Body', 'Sweetness', 'Aroma', 'Bitterness', 'Finish'];
     const radarOpts = () => ({theme: chartTheme(), categories: axes, grid: 'polygon', ticks: false, legend: false,
-        zoom: false, range: {min: 0, max: 10}});
+        zoom: false, valueRange: {min: 0, max: 10}});
     const radar1 = new J.RadarChart($('radar1'), {...radarOpts(), series: [
         {name: 'House', values: [6, 7, 6, 8, 4, 7], color: C.amber, fill: false, width: 2.5},
         {name: 'Espresso', values: [4, 9, 5, 6, 7, 6], color: C.cyan, fill: false, width: 2.5}]});
