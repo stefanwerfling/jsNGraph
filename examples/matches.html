@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — match history</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    :root {
+        --mh-bg: #0d0e11;
+        --mh-panel: #16171b;
+        --mh-panel-2: #1c1d22;
+        --mh-line: #26282e;
+        --mh-text: #e9e9ec;
+        --mh-dim: #8d8f98;
+        --mh-faint: #5d6069;
+        --mh-win: #3ecf6e;
+        --mh-loss: #e8456b;
+        --mh-gold: #d9b25c;
+        --mh-blue: #4f9dff;
+        color-scheme: dark;
+    }
+    html, body { background: var(--mh-bg); }
+    body { font: 13px Inter, system-ui, -apple-system, sans-serif; color: var(--mh-text); }
+    button, select { font: inherit; color: inherit; }
+    .num { font-variant-numeric: tabular-nums; }
+
+    #page { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 12px; max-width: 1280px; margin: 0 auto; padding: 12px; }
+    .panel { background: var(--mh-panel); border: 1px solid var(--mh-line); border-radius: 6px; min-width: 0; }
+    .side { display: grid; gap: 12px; align-content: start; }
+    .ph { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--mh-line); }
+    .ph h2 { margin: 0; font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .ph h2::before { content: ''; width: 3px; height: 14px; background: var(--mh-gold); border-radius: 2px; }
+    .ph select { background: none; border: 0; color: var(--mh-text); font-weight: 600; cursor: pointer; }
+    .ph select option { background: var(--mh-panel); }
+
+    /* ---- rank card ---- */
+    #rank { padding: 12px; }
+    #rank .top { display: flex; gap: 12px; align-items: center; }
+    #rank .top .emb { width: 54px; height: 54px; flex: none; }
+    #rank .name { color: var(--mh-gold); font-size: 17px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+    #rank .sub { color: var(--mh-dim); font-size: 12px; }
+    #rank .wl { margin-left: auto; text-align: right; font-size: 15px; font-weight: 700; }
+    #rank .wl small { display: block; color: var(--mh-dim); font-weight: 500; font-size: 12px; }
+    #rank .hist-h { display: flex; justify-content: space-between; color: var(--mh-dim); font-size: 12px; margin: 14px 0 6px; }
+    #hist { display: flex; align-items: flex-end; gap: 2px; height: 40px; }
+    #hist button { flex: 1; min-width: 0; padding: 0; border: 0; background: none; cursor: pointer; position: relative; height: 100%; }
+    #hist button i { position: absolute; left: 12%; right: 12%; bottom: 6px; border-radius: 2px 2px 0 0; background: var(--rk); opacity: .85; }
+    #hist button:hover i { opacity: 1; }
+    #hist button::after { content: ''; position: absolute; left: 15%; right: 15%; bottom: 0; height: 3px; border-radius: 2px;
+        background: var(--c); }
+    #hist button.cur::before { content: ''; position: absolute; inset: -2px -1px; border: 1px solid var(--mh-gold); border-radius: 4px; }
+    #rank .mode { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding-top: 10px;
+        border-top: 1px solid var(--mh-line); }
+    #rank .mode b { font-weight: 700; }
+    #rank .mode span { color: var(--mh-dim); }
+
+    /* ---- heroes ---- */
+    .tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 6px; gap: 4px; }
+    .tabs button { height: 30px; border: 0; border-radius: 4px; background: none; color: var(--mh-dim); cursor: pointer; font-weight: 600; }
+    .tabs button.on { background: var(--mh-panel-2); color: var(--mh-text); box-shadow: inset 0 0 0 1px var(--mh-line); }
+    .hero-row { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; width: 100%;
+        padding: 7px 12px; border: 0; border-top: 1px solid var(--mh-line); background: none; cursor: pointer; text-align: left; }
+    .hero-row:hover { background: var(--mh-panel-2); }
+    .hero-row.on { background: #23242b; box-shadow: inset 3px 0 0 var(--mh-gold); }
+    .hero-row .pt { width: 36px; height: 36px; }
+    .hero-row b { display: block; font-weight: 700; }
+    .hero-row small { color: var(--mh-dim); font-size: 11.5px; white-space: nowrap; }
+    .hero-row .k, .hero-row .wr { white-space: nowrap; }
+    .hero-row .k { text-align: right; }
+    .hero-row .k .kda { font-weight: 600; }
+    .hero-row .wr { text-align: right; min-width: 64px; }
+    .wr-hi { color: var(--mh-win); } .wr-lo { color: var(--mh-loss); }
+
+    /* ---- activity ---- */
+    #act { padding: 10px 12px 14px; }
+    #act .months { display: grid; margin-left: 40px; color: var(--mh-dim); font-size: 12px; height: 18px; }
+    #act .grid { display: grid; grid-template-columns: 34px repeat(var(--weeks), 1fr); gap: 3px; align-items: center; }
+    #act .grid span { color: var(--mh-dim); font-size: 12px; }
+    #act .cell { aspect-ratio: 1; border-radius: 2px; background: #22242a; position: relative; cursor: default; }
+    #act .cell[data-n] { cursor: pointer; }
+    #act .cell.sel { outline: 1.5px solid #fff; outline-offset: 1px; }
+    #act .legend { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; color: var(--mh-dim); font-size: 11.5px; }
+    #act .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+
+    /* ---- 7 days ---- */
+    #week .row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 40px; gap: 8px; align-items: center; padding: 6px 12px;
+        border-top: 1px solid var(--mh-line); }
+    #week .row:first-child { border-top: 0; }
+    #week .hd { color: var(--mh-dim); font-size: 12px; }
+    #week .h { display: flex; gap: 6px; align-items: center; min-width: 0; }
+    #week .h svg { width: 22px; height: 22px; flex: none; }
+    #week .h span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #week .wl { display: flex; height: 18px; border-radius: 3px; overflow: hidden; font-size: 11px; font-weight: 700; }
+    #week .wl i { display: flex; align-items: center; padding: 0 5px; font-style: normal; min-width: 0; white-space: nowrap; }
+    #week .wl .w { background: #2f7d4b; }
+    #week .wl .l { background: #b23a5b; justify-content: flex-end; margin-left: auto; }
+    #week .pc { text-align: right; color: var(--mh-dim); }
+    #rating { height: 160px; margin: 4px 6px 8px; }
+
+    /* ---- header strip ---- */
+    #head { display: flex; align-items: center; gap: 22px; padding: 10px 14px; flex-wrap: wrap; }
+    #head .ring { width: 46px; height: 46px; flex: none; }
+    #head .blk b { display: block; font-size: 17px; font-weight: 700; }
+    #head .blk small { color: var(--mh-dim); }
+    #head .hero { display: flex; gap: 8px; align-items: center; }
+    #head .hero svg { width: 38px; height: 38px; }
+    #head .filter { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid var(--mh-line);
+        background: var(--mh-panel-2); cursor: pointer; font-size: 12px; }
+    .chip:hover { border-color: #3a3d46; }
+    #majority { padding: 0 14px 12px; }
+
+    /* ---- matches ---- */
+    #matches { display: grid; gap: 8px; margin-top: 12px; }
+    .m { background: var(--mh-panel); border: 1px solid var(--mh-line); border-radius: 6px; overflow: hidden; }
+    .m .row { display: grid; grid-template-columns: 4px 92px 30px 128px 112px minmax(170px, 1fr) minmax(220px, 260px) 30px;
+        gap: 10px; align-items: center; min-height: 92px; }
+    .m .bar { align-self: stretch; background: var(--res); }
+    .m.win { --res: var(--mh-win); } .m.loss { --res: var(--mh-loss); }
+    .m .when b { display: block; color: var(--res); font-weight: 700; }
+    .m .when small, .m .when div { color: var(--mh-dim); font-size: 12px; }
+    .m .when .r { margin-top: 10px; color: var(--mh-text); font-weight: 600; font-size: 13px; }
+    .m .when .d { color: var(--mh-dim); }
+    .m .emb { width: 26px; height: 26px; align-self: end; margin-bottom: 14px; }
+    .m .hero { display: flex; gap: 8px; align-items: center; }
+    .m .hero svg { width: 44px; height: 44px; flex: none; }
+    .m .kda b { display: block; font-size: 15px; font-weight: 700; white-space: nowrap; }
+    .m .kda small { color: var(--mh-dim); }
+    .m .st { color: var(--mh-dim); font-size: 12px; line-height: 1.5; }
+    .m .st b { color: var(--mh-text); font-weight: 600; }
+    .m .items { display: grid; grid-template-columns: repeat(6, 26px); gap: 3px; }
+    .m .items svg { width: 26px; height: 26px; display: block; border-radius: 3px; }
+    .m .items .empty { width: 26px; height: 26px; border-radius: 3px; background: #22242a; }
+    .m .tags { display: flex; gap: 6px; align-items: center; margin-top: 6px; font-size: 11.5px; }
+    .m .tags .place { color: var(--mh-dim); }
+    .m .tags .badge { padding: 1px 7px; border-radius: 3px; font-weight: 600; background: rgba(62,207,110,.14); color: var(--mh-win); }
+    .m .tags .badge.carry { background: rgba(217,178,92,.16); color: var(--mh-gold); }
+    .m .tags .badge.avg { background: rgba(79,157,255,.14); color: var(--mh-blue); }
+    .m .tags .badge.rough { background: rgba(232,69,107,.14); color: var(--mh-loss); }
+    .m .teams { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; font-size: 11.5px; }
+    .m .teams button { display: flex; gap: 5px; align-items: center; min-width: 0; padding: 0; height: 14px; border: 0; background: none;
+        color: var(--mh-dim); cursor: pointer; text-align: left; }
+    .m .teams button:hover { color: var(--mh-text); }
+    .m .teams button.me { color: var(--mh-text); font-weight: 700; }
+    .m .teams button.friend { color: var(--mh-gold); }
+    .m .teams svg { width: 13px; height: 13px; flex: none; }
+    .m .teams span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .m .open { align-self: stretch; border: 0; background: rgba(255,255,255,.02); color: var(--res); cursor: pointer; font-size: 15px; }
+    .m .open:hover { background: rgba(255,255,255,.06); }
+    .m.expanded .open span { display: inline-block; transform: rotate(180deg); }
+    .m .detail { display: none; border-top: 1px solid var(--mh-line); padding: 12px; gap: 12px; grid-template-columns: 1fr 1fr; }
+    .m.expanded .detail { display: grid; }
+    .m .detail h3 { margin: 0 0 6px; font-size: 12px; color: var(--mh-dim); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+    .m .detail .c { height: 200px; }
+    .more { height: 36px; border: 1px solid var(--mh-line); border-radius: 6px; background: var(--mh-panel); cursor: pointer; color: var(--mh-dim); }
+    .more:hover { color: var(--mh-text); }
+    .none { padding: 30px; text-align: center; color: var(--mh-dim); }
+
+    @media (max-width: 1180px) {
+        .m .row { grid-template-columns: 4px 88px 30px 124px 104px minmax(0, 1fr) 30px; }
+        .m .teams { display: none; }
+    }
+    @media (max-width: 900px) {
+        #page { grid-template-columns: minmax(0, 1fr); }
+        .side { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+        #main { order: -1; }
+    }
+    @media (max-width: 640px) {
+        .m .row { grid-template-columns: 4px 84px minmax(0, 1fr) 30px; row-gap: 6px; padding: 8px 0; }
+        .m .row > .emb, .m .row > .st { display: none; }
+        .m .row > .hero { grid-column: 3; grid-row: 1; }
+        .m .row > .kda { grid-column: 3; grid-row: 2; }
+        .m .row > .loadout { grid-column: 2 / 4; grid-row: 3; }
+        .m .row > .when { grid-row: 1 / 3; }
+        .m .row > .open { grid-column: 4; grid-row: 1 / 4; }
+        .m .row > .bar { grid-row: 1 / 4; }
+        .m .detail { grid-template-columns: minmax(0, 1fr); }
+        #head .filter { margin-left: 0; }
+    }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="achievements.html">Achievements</a>
+    <a href="matches.html" class="active">Match history</a>
+</nav>
+
+<main id="page">
+    <aside class="side">
+        <section class="panel" id="rank"></section>
+        <section class="panel">
+            <div class="tabs" id="hero-tabs"><button data-mode="Normal" class="on">Normal</button><button data-mode="Brawl">Brawl</button></div>
+            <div id="heroes"></div>
+        </section>
+        <section class="panel">
+            <div class="ph"><h2>Recent activity</h2><select id="act-mode" aria-label="Mode"><option>All</option><option>Normal</option><option>Brawl</option></select></div>
+            <div id="act"></div>
+        </section>
+        <section class="panel">
+            <div class="ph"><h2>Win rate in past 7 days</h2><select id="week-mode" aria-label="Mode"><option>Normal</option><option>Brawl</option><option>All</option></select></div>
+            <div id="week"></div>
+        </section>
+        <section class="panel">
+            <div class="ph"><h2>Rating</h2><span style="color:var(--mh-dim);font-size:12px">last 24 ranked games</span></div>
+            <div id="rating"></div>
+        </section>
+    </aside>
+
+    <section id="main">
+        <div class="panel">
+            <div id="head"></div>
+            <div id="majority"></div>
+        </div>
+        <div id="matches"></div>
+    </section>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+(() => {
+    const J = window.JSNGraph;
+    const $ = (id) => document.getElementById(id);
+    const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]);
+    let seed = 4242;
+    const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const ri = (a, b) => a + Math.floor(rand() * (b - a + 1));
+    const pick = (list) => list[Math.floor(rand() * list.length)];
+
+    // ------------------------------------------------------------------ invented game data
+    // Ironvale Arena: 6 v 6, ranks Rookie → Mythic with tiers I–III.
+    const RANKS = [
+        {name: 'Rookie', color: '#8b8f99'}, {name: 'Squire', color: '#b07a4a'}, {name: 'Warden', color: '#d9b25c'},
+        {name: 'Sentinel', color: '#5fb3a1'}, {name: 'Vanguard', color: '#4f9dff'}, {name: 'Paragon', color: '#a77ce0'},
+        {name: 'Champion', color: '#e8456b'}, {name: 'Mythic', color: '#f2f2f2'}
+    ];
+    const HEROES = [
+        {id: 'brask', name: 'Brask', hue: 18, head: 'horns'}, {id: 'nyla', name: 'Nyla', hue: 280, head: 'hood'},
+        {id: 'okoro', name: 'Okoro', hue: 140, head: 'crest'}, {id: 'vesper', name: 'Vesper', hue: 330, head: 'ears'},
+        {id: 'tamsin', name: 'Tamsin', hue: 200, head: 'goggles'}, {id: 'juno', name: 'Juno', hue: 48, head: 'crown'},
+        {id: 'kestrel', name: 'Kestrel', hue: 175, head: 'beak'}, {id: 'marrow', name: 'Marrow', hue: 0, head: 'skull'},
+        {id: 'sable', name: 'Sable', hue: 250, head: 'hood'}, {id: 'quill', name: 'Quill', hue: 95, head: 'ears'},
+        {id: 'ruin', name: 'Ruin', hue: 12, head: 'skull'}, {id: 'halden', name: 'Halden', hue: 215, head: 'crest'}
+    ];
+    const H = Object.fromEntries(HEROES.map((h) => [h.id, h]));
+    const NAMES = ['RemyJo', 'toothpick', 'Castizo', 'cornwall', 'Shrimp', 'Gaber', 'Capon', 'threyno', 'Blossom', 'Orbit', 'Griffith',
+        'RavenG', 'NOT-FU', 'MistXI', 'Shark', 'Crash', 'Raccoon', 'Sewer P.', 'Halcyon', 'pinto', 'Larkspur', 'Mo', 'Dregs', 'Tessel',
+        'Wick', 'Fennel', 'Boomer', 'Juniper', 'Okapi', 'Vanta', 'zed', 'Pollux'];
+    const FRIENDS = ['RemyJo', 'cornwall'];
+    const ME = 'You';
+    const ITEM_KINDS = [{id: 'weapon', color: '#d8833a'}, {id: 'vitality', color: '#58a645'}, {id: 'spirit', color: '#9a63d6'}];
+    const GLYPHS = ['bolt', 'shield', 'drop', 'star', 'eye', 'blade', 'ring', 'cross', 'wing', 'flame', 'gem', 'arrow'];
+
+    // ------------------------------------------------------------------ drawings (own, procedural SVG)
+    const emblem = (rank, tier) => {
+        const r = RANKS[rank];
+        const pips = Array.from({length: tier}, (_, i) => `<rect x="${44 + (i - (tier - 1) / 2) * 10}" y="78" width="6" height="10" rx="1" fill="${r.color}"/>`).join('');
+        return `<svg viewBox="0 0 100 100" class="emb" aria-hidden="true">
+            <path d="M50 6l36 12v28c0 22-16 36-36 46C30 82 14 68 14 46V18z" fill="#121317" stroke="${r.color}" stroke-width="4"/>
+            <path d="M50 18l24 8v20c0 14-10 24-24 31-14-7-24-17-24-31V26z" fill="${r.color}" opacity=".18"/>
+            <path d="M50 ${28 - rank}l${8 + rank} ${14 + rank}-${8 + rank} ${16 + rank}-${8 + rank}-${16 + rank}z" fill="${r.color}"/>
+            ${pips}</svg>`;
+    };
+    const portrait = (id) => {
+        const h = H[id];
+        const c = (l, s = 55) => `hsl(${h.hue} ${s}% ${l}%)`;
+        const extra = {
+            horns: `<path d="M24 40c-8-6-10-18-4-24 0 10 8 14 12 18zM76 40c8-6 10-18 4-24 0 10-8 14-12 18z" fill="#e9e2d0"/>`,
+            hood: `<path d="M18 74c0-34 12-56 32-56s32 22 32 56l-10-6c0-20-8-36-22-36S28 48 28 68z" fill="${c(22)}"/>`,
+            crest: `<path d="M50 8l8 22H42z" fill="${c(60, 80)}"/><path d="M40 14l10 18 10-18" fill="none" stroke="${c(70, 80)}" stroke-width="3"/>`,
+            ears: `<path d="M26 34l-6-24 18 14zM74 34l6-24-18 14z" fill="${c(40)}"/>`,
+            goggles: `<rect x="28" y="40" width="44" height="12" rx="6" fill="#20242c"/><circle cx="39" cy="46" r="5" fill="${c(70, 90)}"/><circle cx="61" cy="46" r="5" fill="${c(70, 90)}"/>`,
+            crown: `<path d="M30 24l6 10 6-14 8 14 8-14 6 14 6-10v12H30z" fill="#e2b65b"/>`,
+            beak: `<path d="M50 52l10 8-10 10-10-10z" fill="#e2b65b"/>`,
+            skull: `<circle cx="40" cy="48" r="6" fill="#111"/><circle cx="60" cy="48" r="6" fill="#111"/><path d="M42 64h16" stroke="#111" stroke-width="3"/>`
+        }[h.head];
+        return `<svg viewBox="0 0 100 100" class="pt" aria-hidden="true">
+            <rect width="100" height="100" rx="12" fill="${c(16, 40)}"/>
+            <circle cx="50" cy="120" r="44" fill="${c(30)}"/>
+            <ellipse cx="50" cy="52" rx="22" ry="25" fill="${h.head === 'skull' ? '#e6e0d2' : c(62, 35)}"/>
+            ${h.head !== 'skull' && h.head !== 'goggles' ? `<path d="M36 48h10M54 48h10" stroke="#16171b" stroke-width="4" stroke-linecap="round"/>` : ''}
+            ${extra}</svg>`;
+    };
+    const GLYPH = {
+        bolt: 'M54 14L30 54h16l-6 32 26-42H50z', shield: 'M50 14l28 10v20c0 20-14 32-28 40-14-8-28-20-28-40V24z',
+        drop: 'M50 12c14 22 24 34 24 48a24 24 0 0 1-48 0c0-14 10-26 24-48z', star: 'M50 12l10 26 28 2-22 18 8 28-24-16-24 16 8-28-22-18 28-2z',
+        eye: 'M12 50c12-18 24-24 38-24s26 6 38 24c-12 18-24 24-38 24S24 68 12 50zm38-12a12 12 0 1 0 0 24 12 12 0 0 0 0-24z',
+        blade: 'M74 12L36 58l-6 16 16-6 46-38zM24 70l-8 8 6 6 8-8z', ring: 'M50 16a34 34 0 1 0 0 68 34 34 0 0 0 0-68zm0 14a20 20 0 1 1 0 40 20 20 0 0 1 0-40z',
+        cross: 'M40 14h20v26h26v20H60v26H40V60H14V40h26z', wing: 'M14 66c20-4 36-20 44-46 6 20 2 40-10 52 14 0 26-6 38-18-6 22-28 34-50 32z',
+        flame: 'M50 10c18 20 26 34 20 52-4 12-12 20-20 20s-20-8-22-20c-2-12 6-18 10-24 0 8 4 12 8 12-4-16 0-26 4-40z',
+        gem: 'M30 20h40l16 20-36 44-36-44z', arrow: 'M14 50h52l-14-16 8-8 30 24-30 24-8-8 14-16H14z'
+    };
+    const item = (it) => {
+        if (!it) return '<span class="empty"></span>';
+        const k = ITEM_KINDS[it.kind];
+        return `<svg viewBox="0 0 100 100" aria-hidden="true"><title>${esc(it.name)}</title>
+            <rect width="100" height="100" rx="10" fill="${k.color}"/><rect x="4" y="4" width="92" height="92" rx="8" fill="#000" opacity=".22"/>
+            <path d="${GLYPH[it.glyph]}" fill="#f4efe6" transform="translate(12 12) scale(.76)"/>
+            <text x="92" y="24" text-anchor="end" font-family="Georgia,serif" font-weight="700" font-size="20" fill="#fff" opacity=".85">${'I'.repeat(it.tier).replace('IIII', 'IV')}</text></svg>`;
+    };
+
+    // ------------------------------------------------------------------ matches (seeded)
+    const NOW = new Date(2026, 10, 24, 21, 30).getTime();
+    const BADGES = [['Hard Carry', 'carry'], ['Great Team', ''], ['Good Team', ''], ['Avg Team', 'avg'], ['Tough Lobby', 'rough']];
+    const favourites = ['nyla', 'nyla', 'nyla', 'brask', 'okoro', 'okoro', 'vesper', 'tamsin', 'juno', 'marrow'];
+    let rating = 1680;
+    const matches = [];
+    let t = NOW - 40 * 60e3;
+    let matchId = 6890112;
+    for (let i = 0; i < 46; i++) {
+        const mode = rand() < 0.66 ? 'Normal' : 'Brawl';
+        const hero = pick(favourites);
+        const skill = {nyla: 0.62, brask: 0.45, okoro: 0.5, vesper: 0.4, tamsin: 0.35, juno: 0.5, marrow: 0.3}[hero] ?? 0.45;
+        const win = rand() < skill;
+        const k = ri(0, win ? 9 : 7), d = ri(1, win ? 6 : 11), a = ri(3, win ? 27 : 18);
+        const minutes = ri(19, 41) + rand();
+        const cs = Math.round(minutes * (2.2 + rand() * 2.6));
+        const withFriend = rand() < 0.35 ? pick(FRIENDS) : null;
+        const players = NAMES.filter((n) => !FRIENDS.includes(n)).sort(() => rand() - 0.5).slice(0, 11);
+        const teamA = [ME, ...players.slice(0, 5)];
+        const teamB = players.slice(5, 11);
+        if (withFriend) teamA[ri(1, 5)] = withFriend;
+        const heroesA = [hero, ...HEROES.filter((h) => h.id !== hero).sort(() => rand() - 0.5).slice(0, 5).map((h) => h.id)];
+        const heroesB = [...HEROES].sort(() => rand() - 0.5).slice(0, 6).map((h) => h.id);
+        const items = Array.from({length: 12}, (_, s) => s < ri(7, 12) ? {kind: ri(0, 2), glyph: pick(GLYPHS), tier: ri(1, 4),
+            name: `${pick(['Ember', 'Iron', 'Storm', 'Hollow', 'Gilded', 'Quiet'])} ${pick(['Edge', 'Ward', 'Lens', 'Charm', 'Coil', 'Heart'])}`} : null);
+        const place = win ? ri(1, 9) : ri(3, 12);
+        const badge = win ? BADGES[place <= 2 ? 0 : place <= 6 ? ri(1, 2) : 3] : BADGES[place <= 3 ? 0 : 4];
+        // net worth lead of the own team every minute; the winner ends ahead
+        let lead = 0;
+        const leadCurve = [];
+        for (let m = 0; m <= Math.floor(minutes); m++) {
+            lead += (rand() - 0.5) * 3200 + (win ? 1 : -1) * 260 * (m / minutes);
+            leadCurve.push(Math.round(lead));
+        }
+        const dmg = (team, mine) => team.map((_, j) => Math.round((mine && j === 0 ? 1.3 : 1) * (14000 + rand() * 26000) * minutes / 30));
+        const delta = mode === 'Normal' ? (win ? ri(14, 26) : -ri(12, 24)) : 0;
+        rating -= delta;   // walking back in time
+        matchId -= ri(2400, 6200);
+        matches.push({id: matchId, mode, hero, win, k, d, a, minutes, cs, at: t, kp: ri(28, 81), hs: (8 + rand() * 30).toFixed(1),
+            teamA, teamB, heroesA, heroesB, items, place, badge, leadCurve, dmgA: dmg(teamA, true), dmgB: dmg(teamB, false),
+            delta, rating: 0});
+        t -= (minutes + ri(4, 40)) * 60e3 + (rand() < 0.16 ? ri(1, 4) * 864e5 : 0);
+    }
+    // ratings forward in time
+    let r = rating;
+    for (const m of [...matches].reverse()) { r += m.delta; m.rating = r; }
+    const rankOf = (rt) => {
+        const step = Math.max(0, Math.min(RANKS.length * 3 - 1, Math.floor((rt - 1000) / 75)));
+        return {rank: Math.floor(step / 3), tier: step % 3 + 1};
+    };
+    const kdaOf = (m) => (m.k + m.a) / Math.max(1, m.d);
+    const ago = (ms) => {
+        const min = Math.round((NOW - ms) / 60e3);
+        if (min < 60) return `${min} minutes ago`;
+        const h = Math.round(min / 60);
+        if (h < 24) return `${h} hour${h > 1 ? 's' : ''} ago`;
+        const d = Math.round(h / 24);
+        return `${d} day${d > 1 ? 's' : ''} ago`;
+    };
+    const mmss = (min) => `${Math.floor(min)}:${String(Math.round((min % 1) * 60)).padStart(2, '0')}`;
+    const ordinal = (n) => `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}`;
+
+    // ------------------------------------------------------------------ state
+    const state = {heroMode: 'Normal', hero: null, player: null, day: null, shown: 10};
+    const filtered = () => matches.filter((m) => (!state.hero || m.hero === state.hero)
+        && (!state.player || m.teamA.includes(state.player) || m.teamB.includes(state.player))
+        && (!state.day || new Date(m.at).toDateString() === state.day));
+
+    // ------------------------------------------------------------------ rank card
+    function renderRank() {
+        const ranked = matches.filter((m) => m.mode === 'Normal');
+        const cur = rankOf(ranked[0].rating);
+        const w = ranked.filter((m) => m.win).length;
+        const brawl = matches.filter((m) => m.mode === 'Brawl');
+        const bw = brawl.filter((m) => m.win).length;
+        const last = ranked.slice(0, 24).reverse();
+        const lo = Math.min(...last.map((m) => m.rating)) - 40, hi = Math.max(...last.map((m) => m.rating));
+        $('rank').innerHTML = `<div class="top">${emblem(cur.rank, cur.tier)}<div><div class="name">${RANKS[cur.rank].name} ${'I'.repeat(cur.tier)}</div>
+            <div class="sub">Estimated rank</div><div class="sub num">${ranked[0].rating} rating</div></div>
+            <div class="wl num" style="white-space:nowrap">${w}W ${ranked.length - w}L<small>${(w / ranked.length * 100).toFixed(1)}%</small></div></div>
+            <div class="hist-h"><span>Rating per game · click to open</span><span>Last ${last.length} games</span></div>
+            <div id="hist">${last.map((m, i) => {
+                const rk = rankOf(m.rating);
+                return `<button title="${RANKS[rk.rank].name} ${'I'.repeat(rk.tier)} · ${m.win ? 'win' : 'loss'} ${m.delta > 0 ? '+' : ''}${m.delta}"
+                    style="--c:${m.win ? 'var(--mh-win)' : 'var(--mh-loss)'};--rk:${RANKS[rk.rank].color}" class="${i === last.length - 1 ? 'cur' : ''}"
+                    data-id="${m.id}"><i style="height:${Math.round(4 + (m.rating - lo) / Math.max(1, hi - lo) * 26)}px"></i></button>`;
+            }).join('')}</div>
+            <div class="mode"><b>Brawl</b><span class="num"><b>${bw}W ${brawl.length - bw}L</b> ${(bw / brawl.length * 100).toFixed(1)}%</span></div>`;
+        $('hist').onclick = (e) => {
+            const b = e.target.closest('button');
+            if (b) openMatch(Number(b.dataset.id));
+        };
+    }
+
+    // ------------------------------------------------------------------ heroes table
+    function heroStats(list) {
+        const by = new Map();
+        for (const m of list) {
+            const s = by.get(m.hero) ?? {hero: m.hero, n: 0, w: 0, k: 0, d: 0, a: 0, cs: 0};
+            s.n++; s.w += m.win ? 1 : 0; s.k += m.k; s.d += m.d; s.a += m.a; s.cs += m.cs;
+            by.set(m.hero, s);
+        }
+        return [...by.values()].sort((a, b) => b.n - a.n || b.w - a.w);
+    }
+    function renderHeroes() {
+        const stats = heroStats(matches.filter((m) => m.mode === state.heroMode));
+        $('heroes').innerHTML = stats.map((s) => {
+            const wr = s.w / s.n * 100;
+            return `<button class="hero-row${state.hero === s.hero ? ' on' : ''}" data-hero="${s.hero}">${portrait(s.hero)}
+                <div><b>${H[s.hero].name}</b><small class="num">${Math.round(s.cs / s.n)} last hits</small></div>
+                <div class="k num"><div class="kda">${((s.k + s.a) / Math.max(1, s.d)).toFixed(2)}:1 KDA</div>
+                    <small>${(s.k / s.n).toFixed(1)} / ${(s.d / s.n).toFixed(1)} / ${(s.a / s.n).toFixed(1)}</small></div>
+                <div class="wr num"><div class="${wr >= 50 ? 'wr-hi' : 'wr-lo'}">${Math.round(wr)}%</div><small>${s.n} played</small></div></button>`;
+        }).join('') || '<div class="none">No games in this mode.</div>';
+    }
+    $('heroes').onclick = (e) => {
+        const b = e.target.closest('[data-hero]');
+        if (!b) return;
+        state.hero = state.hero === b.dataset.hero ? null : b.dataset.hero;
+        state.shown = 10;
+        renderAll();
+    };
+    document.querySelectorAll('#hero-tabs button').forEach((b) => b.onclick = () => {
+        state.heroMode = b.dataset.mode;
+        document.querySelectorAll('#hero-tabs button').forEach((x) => x.classList.toggle('on', x === b));
+        renderHeroes();
+    });
+
+    // ------------------------------------------------------------------ activity grid (weekday × week)
+    function renderActivity() {
+        const mode = $('act-mode').value;
+        const list = matches.filter((m) => mode === 'All' || m.mode === mode);
+        const end = new Date(NOW);
+        end.setHours(0, 0, 0, 0);
+        const weeks = 9;
+        const monday = new Date(end);
+        monday.setDate(end.getDate() - ((end.getDay() + 6) % 7) - (weeks - 1) * 7);
+        const byDay = new Map();
+        for (const m of list) {
+            const k = new Date(m.at).toDateString();
+            const s = byDay.get(k) ?? {n: 0, w: 0};
+            s.n++; s.w += m.win ? 1 : 0;
+            byDay.set(k, s);
+        }
+        const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        let html = '';
+        const monthAt = [];
+        for (let wd = 0; wd < 7; wd++) {
+            html += `<span>${names[wd]}</span>`;
+            for (let w = 0; w < weeks; w++) {
+                const d = new Date(monday);
+                d.setDate(monday.getDate() + w * 7 + wd);
+                if (wd === 0 && d.getDate() <= 7 && w <= weeks - 2) monthAt.push([w, d.toLocaleDateString('en-GB', {month: 'short'})]);
+                const s = byDay.get(d.toDateString());
+                if (d > end) { html += '<i></i>'; continue; }
+                if (!s) { html += '<div class="cell"></div>'; continue; }
+                const wr = s.w / s.n;
+                const col = wr >= 0.6 ? '#3ecf6e' : wr >= 0.4 ? '#d9a23c' : '#e0563a';
+                const size = 0.45 + Math.min(1, s.n / 5) * 0.55;
+                html += `<div class="cell${state.day === d.toDateString() ? ' sel' : ''}" data-n="${s.n}" data-day="${d.toDateString()}"
+                    title="${d.toLocaleDateString('en-GB', {weekday: 'short', day: 'numeric', month: 'short'})}: ${s.n} games, ${s.w}W ${s.n - s.w}L"
+                    style="background:linear-gradient(${col},${col}) center/${size * 100}% ${size * 100}% no-repeat #22242a"></div>`;
+            }
+        }
+        $('act').innerHTML = `<div class="months" style="grid-template-columns:repeat(${weeks},1fr)">${monthAt.map(([w, n]) =>
+            `<span style="grid-column:${w + 1} / span 2">${n}</span>`).join('')}</div>
+            <div class="grid" style="--weeks:${weeks}">${html}</div>
+            <div class="legend"><span><i style="background:#3ecf6e"></i>≥ 60 % won</span><span><i style="background:#d9a23c"></i>even</span>
+            <span><i style="background:#e0563a"></i>&lt; 40 %</span><span>size = games</span></div>`;
+    }
+    $('act').onclick = (e) => {
+        const c = e.target.closest('[data-day]');
+        if (!c) return;
+        // a day shows everything played that day: it replaces the hero/player filters
+        state.day = state.day === c.dataset.day ? null : c.dataset.day;
+        state.hero = state.player = null;
+        state.shown = 10;
+        renderAll();
+    };
+    $('act-mode').onchange = renderActivity;
+
+    // ------------------------------------------------------------------ last 7 days
+    function renderWeek() {
+        const mode = $('week-mode').value;
+        const list = matches.filter((m) => NOW - m.at < 7 * 864e5 && (mode === 'All' || m.mode === mode));
+        const stats = heroStats(list);
+        const maxN = Math.max(1, ...stats.map((s) => s.n));
+        $('week').innerHTML = `<div class="row hd"><span>Hero</span><span>Win rate</span><span></span></div>` + (stats.map((s) => {
+            const l = s.n - s.w;
+            return `<div class="row"><div class="h">${portrait(s.hero)}<span>${H[s.hero].name}</span></div>
+                <div class="wl num" style="width:${30 + 70 * s.n / maxN}%">${s.w ? `<i class="w" style="width:${s.w / s.n * 100}%">${s.w}W</i>` : ''}
+                ${l ? `<i class="l" style="width:${l / s.n * 100}%">${l}L</i>` : ''}</div>
+                <span class="pc num">${Math.round(s.w / s.n * 100)}%</span></div>`;
+        }).join('') || '<div class="none">No games in the last 7 days.</div>');
+    }
+    $('week-mode').onchange = renderWeek;
+
+    // ------------------------------------------------------------------ rating line
+    const chartTheme = {...J.ChartTheme.dark, background: '#16171b', band: '', grid: 'rgba(255,255,255,0.05)'};
+    const ratingChart = new J.LineChart($('rating'), {theme: chartTheme, legend: false, yFormat: (v) => String(Math.round(v))});
+    function renderRating() {
+        const ranked = matches.filter((m) => m.mode === 'Normal').slice(0, 24).reverse();
+        ratingChart.setSeries([{y: ranked.map((m) => m.rating), color: '#d9b25c', width: 2,
+            fill: ['rgba(217,178,92,0.22)', 'rgba(217,178,92,0)'], highlight: ranked.length - 1}]);
+    }
+
+    // ------------------------------------------------------------------ header strip
+    const ring = document.createElement('div');
+    ring.className = 'ring';
+    const gauge = new J.RingGauge(ring, {theme: 'dark', thickness: 26, center: 'none', rounded: true, rings: [{value: 0, color: '#3ecf6e'}]});
+    gauge.setStyleVars({track: '#2a2c33'});
+    const majority = new J.MajorityBar($('majority'), {theme: 'dark', parts: [], format: (v) => `${v}`});
+    majority.setStyleVars({ink: '#e9e9ec', muted: '#8d8f98', track: '#22242a'});
+    function renderHead() {
+        const list = filtered().slice(0, 10);
+        const w = list.filter((m) => m.win).length;
+        const k = list.reduce((s, m) => s + m.k, 0), d = list.reduce((s, m) => s + m.d, 0), a = list.reduce((s, m) => s + m.a, 0);
+        const n = Math.max(1, list.length);
+        const top = heroStats(list).slice(0, 2);
+        const chips = [
+            state.hero ? `<button class="chip" data-clear="hero">${H[state.hero].name} ✕</button>` : '',
+            state.player ? `<button class="chip" data-clear="player">with ${esc(state.player)} ✕</button>` : '',
+            state.day ? `<button class="chip" data-clear="day">${new Date(state.day).toLocaleDateString('en-GB', {day: 'numeric', month: 'short'})} ✕</button>` : ''
+        ].join('');
+        $('head').innerHTML = `<div class="blk" style="display:flex;gap:10px;align-items:center"><span id="ring-slot"></span>
+                <div><b class="num">${list.length ? Math.round(w / list.length * 100) : 0}% WR</b><small>${list.length} games</small></div></div>
+            <div class="blk"><b class="num">${((k + a) / Math.max(1, d)).toFixed(1)} KDA</b>
+                <small class="num">${(k / n).toFixed(1)} / ${(d / n).toFixed(1)} / ${(a / n).toFixed(1)}</small></div>
+            ${top.map((s) => `<div class="hero">${portrait(s.hero)}<div class="blk"><b class="num ${s.w / s.n >= 0.5 ? 'wr-hi' : 'wr-lo'}" style="font-size:14px">
+                ${Math.round(s.w / s.n * 100)}% <small>(${s.w}W ${s.n - s.w}L)</small></b>
+                <small class="num">${((s.k + s.a) / Math.max(1, s.d)).toFixed(2)} KDA</small></div></div>`).join('')}
+            <div class="filter">${chips}</div>`;
+        $('ring-slot').appendChild(ring);
+        gauge.setValues([list.length ? w / list.length * 100 : 0]);
+        const all = filtered();
+        const aw = all.filter((m) => m.win).length;
+        majority.setParts([{label: 'Wins', value: aw, color: '#3ecf6e'}, {label: 'Losses', value: all.length - aw, color: '#e8456b'}]);
+    }
+    $('head').onclick = (e) => {
+        const c = e.target.closest('[data-clear]');
+        if (!c) return;
+        state[c.dataset.clear] = null;
+        renderAll();
+    };
+
+    // ------------------------------------------------------------------ match list
+    const charts = new Map();   // match id → its two detail charts while expanded
+    function matchEl(m) {
+        const el = document.createElement('article');
+        el.className = `m ${m.win ? 'win' : 'loss'}`;
+        el.dataset.id = m.id;
+        const rk = rankOf(m.rating);
+        const roster = (team, heroes) => team.map((p, i) => `<button class="${p === ME ? 'me' : FRIENDS.includes(p) ? 'friend' : ''}" data-player="${esc(p)}"
+            title="${esc(p)} · ${H[heroes[i]].name}">${portrait(heroes[i])}<span>${esc(p)}</span></button>`);
+        const ra = roster(m.teamA, m.heroesA), rb = roster(m.teamB, m.heroesB);
+        el.innerHTML = `<div class="row">
+            <div class="bar"></div>
+            <div class="when"><b>${m.mode}</b><small>${ago(m.at)}</small><div class="num">${m.id}</div>
+                <div class="r">${m.win ? 'Victory' : 'Defeat'}</div><div class="d num">${mmss(m.minutes)}</div></div>
+            ${m.mode === 'Normal' ? emblem(rk.rank, rk.tier) : '<span></span>'}
+            <div class="hero">${portrait(m.hero)}<div class="kda"><b class="num">${m.k} / ${m.d} / ${m.a}</b><small class="num">${kdaOf(m).toFixed(2)} KDA</small></div></div>
+            <div class="st num"><b>${m.cs} CS</b> (${(m.cs / m.minutes).toFixed(1)}/m)<br>${m.kp}% KP<br>${m.hs}% HS
+                ${m.delta ? `<br><span style="color:${m.delta > 0 ? 'var(--mh-win)' : 'var(--mh-loss)'}">${m.delta > 0 ? '+' : ''}${m.delta} rating</span>` : ''}</div>
+            <div class="loadout"><div class="items">${m.items.map(item).join('')}</div>
+                <div class="tags"><span class="place">${ordinal(m.place)}</span><span class="badge ${m.badge[1]}">${m.badge[0]}</span></div></div>
+            <div class="teams">${ra.map((x, i) => x + rb[i]).join('')}</div>
+            <button class="open" aria-label="Details"><span>⌄</span></button></div>
+            <div class="detail"><div><h3>Net worth lead (your team)</h3><div class="c lead"></div></div>
+                <div><h3>Hero damage</h3><div class="c dmg"></div></div></div>`;
+        return el;
+    }
+    function expand(el, m, on) {
+        el.classList.toggle('expanded', on);
+        if (!on) {
+            charts.get(m.id)?.forEach((c) => c.destroy());
+            charts.delete(m.id);
+            return;
+        }
+        if (charts.has(m.id)) return;
+        const lead = new J.LineChart(el.querySelector('.lead'), {theme: chartTheme, legend: false,
+            xLabels: m.leadCurve.map((_, i) => i % 5 === 0 ? `${i}′` : ''),
+            yFormat: (v) => `${v > 0 ? '+' : ''}${(v / 1000).toFixed(0)}k`});
+        const col = m.win ? '62,207,110' : '232,69,107';
+        lead.setSeries([
+            {name: 'even', y: m.leadCurve.map(() => 0), color: 'rgba(255,255,255,0.35)', width: 1, dash: [4, 4], legend: false},
+            {name: 'net worth lead', y: m.leadCurve, color: `rgb(${col})`, width: 2, fill: [`rgba(${col},0.3)`, `rgba(${col},0)`],
+                highlight: m.leadCurve.length - 1}
+        ]);
+        const dmg = new J.BarChart(el.querySelector('.dmg'), {theme: chartTheme, categories: ['1', '2', '3', '4', '5', '6'],
+            series: [{name: 'Your team', values: m.dmgA, color: '#3ecf6e'}, {name: 'Enemy', values: m.dmgB, color: '#e8456b'}],
+            yFormat: (v) => `${Math.round(v / 1000)}k`, format: (v) => v.toLocaleString('en-US')});
+        dmg.on('hover', (h) => {
+            if (!h) return;
+            const team = h.series === 0 ? m.teamA : m.teamB, hero = h.series === 0 ? m.heroesA : m.heroesB;
+            el.querySelector('.dmg').title = `${team[h.category]} (${H[hero[h.category]].name}): ${h.value.toLocaleString('en-US')}`;
+        });
+        charts.set(m.id, [lead, dmg]);
+    }
+    function renderMatches() {
+        for (const [, cs] of charts) cs.forEach((c) => c.destroy());
+        charts.clear();
+        const list = filtered();
+        const box = $('matches');
+        box.replaceChildren();
+        for (const m of list.slice(0, state.shown)) box.appendChild(matchEl(m));
+        if (list.length === 0) box.innerHTML = '<div class="panel none">No matches for this filter.</div>';
+        if (list.length > state.shown) {
+            const more = document.createElement('button');
+            more.className = 'more';
+            more.textContent = `Show more (${list.length - state.shown} left)`;
+            more.onclick = () => { state.shown += 10; renderMatches(); };
+            box.appendChild(more);
+        }
+    }
+    $('matches').addEventListener('click', (e) => {
+        const el = e.target.closest('.m');
+        if (!el) return;
+        const m = matches.find((x) => x.id === Number(el.dataset.id));
+        const p = e.target.closest('[data-player]');
+        if (p) {
+            if (p.dataset.player === ME) return;
+            state.player = state.player === p.dataset.player ? null : p.dataset.player;
+            state.shown = 10;
+            return renderAll();
+        }
+        if (e.target.closest('.open') || e.target.closest('.row')) expand(el, m, !el.classList.contains('expanded'));
+    });
+    function openMatch(id) {
+        state.hero = state.player = state.day = null;
+        const i = matches.findIndex((m) => m.id === id);
+        state.shown = Math.max(10, Math.ceil((i + 1) / 10) * 10);
+        renderAll();
+        const el = $('matches').querySelector(`[data-id="${id}"]`);
+        if (!el) return;
+        expand(el, matches[i], true);
+        el.scrollIntoView({behavior: 'smooth', block: 'center'});
+    }
+
+    function renderAll() {
+        renderHeroes();
+        renderActivity();
+        renderHead();
+        renderMatches();
+    }
+    renderRank();
+    renderWeek();
+    renderRating();
+    renderAll();
+    window.matchHistory = {matches, state, openMatch};
+})();
+</script>
+</body>
+</html>

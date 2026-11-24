@@ -207,6 +207,10 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   badges — one shared worn-print `feTurbulence` filter for all —, hidden/bugged entries, filters/sort; RingGauge,
   StatList, DonutChart, ProgressBars, LineChart, TileCalendar fed from the same list; "Play a session" simulates progress;
   phone layout switches list/stats with a bottom tab bar).
+  Example: `examples/matches.html` (invented arena game "Ironvale Arena": seeded match history, own rank emblems / hero
+  portraits / item icons as SVG strings; RingGauge + MajorityBar header, LineChart rating; a match unfolds into a LineChart
+  (net-worth lead, minute `xLabels`) and a grouped BarChart created on open and destroyed on close; filters hero / team-mate /
+  day — a day replaces the others).
 
 - `netview/` — `NetView` (subpath `jsngraph/netview`): a transformer compressed to fit the browser — one
   column per block, residual stream folded into `bins` (signed max per bin, scaled median→0 / p95→1 so
