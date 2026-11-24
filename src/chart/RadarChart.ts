@@ -38,6 +38,10 @@ export interface RadarChartOptions {
     zoom?: boolean;
     /** Value text in the tooltip. Default: the value with up to two decimals. */
     format?: (value: number) => string;
+    /** 'linear' (default) or 'log': rings at 1, 10, 100, 1K …, values ≤ 0 at the centre. */
+    scale?: 'linear' | 'log';
+    /** Text of a ring value (default: the tick for linear, 1K / 10K for log). */
+    ringFormat?: (value: number) => string;
 }
 
 export interface RadarChartEvents extends Record<string, unknown> {
@@ -68,6 +72,8 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
     private readonly animate: boolean;
     private readonly zoomable: boolean;
     private readonly format: (value: number) => string;
+    private scaleMode: 'linear' | 'log';
+    private readonly ringFormat: ((value: number) => string) | null;
 
     private growStart = -1;
     private scale = 1;
@@ -86,6 +92,8 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
         this.animate = options.animate ?? true;
         this.zoomable = options.zoom ?? true;
         this.format = options.format ?? ((v) => String(Math.round(v * 100) / 100));
+        this.scaleMode = options.scale ?? 'linear';
+        this.ringFormat = options.ringFormat ?? null;
         this.categories = (options.categories ?? []).slice();
 
         this.root.addEventListener('pointerdown', this.onDown);
@@ -169,6 +177,16 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
         super.destroy();
     }
 
+    /** Switch between a linear and a log scale. */
+    public setScale(scale: 'linear' | 'log'): void {
+        this.scaleMode = scale;
+        this.redraw();
+    }
+
+    public getScale(): 'linear' | 'log' {
+        return this.scaleMode;
+    }
+
     /** Ring range: fixed, or 0 … the next nice tick above the largest value. */
     public get range(): ChartRange {
         if (this.fixedRange !== null) {
@@ -176,6 +194,9 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
         }
 
         const ext = ChartScale.extent(this.series.flatMap((s) => s.values));
+        if (this.scaleMode === 'log') {
+            return {min: 0, max: RadarGeometry.logMax(ext.max)};
+        }
         const min = Math.min(0, ext.min);
         const step = ChartScale.niceStep(ext.max - min, 5);
 
@@ -208,7 +229,7 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
             }
 
             const pts = this.categories.map((_, i) => {
-                const full = RadarGeometry.point(cx, cy, r, i, n, s.values[i] ?? range.min, range);
+                const full = RadarGeometry.point(cx, cy, r, i, n, s.values[i] ?? range.min, range, this.scaleMode);
 
                 return {x: cx + (full.x - cx) * grow, y: cy + (full.y - cy) * grow};
             });
@@ -260,7 +281,8 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
     }
 
     private drawWeb(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, n: number, range: ChartRange): void {
-        const ticks = ChartScale.ticks(range, 5).filter((v) => v > range.min);
+        const log = this.scaleMode === 'log';
+        const ticks = log ? RadarGeometry.logTicks(range.max) : ChartScale.ticks(range, 5).filter((v) => v > range.min);
         const step = ChartScale.niceStep(range.max - range.min, 5);
 
         ctx.save();
@@ -271,9 +293,9 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
             ctx.fillStyle = this.theme.band;
             ticks.forEach((v, k) => {
                 if (k % 2 === 0) {
-                    const inner = k === 0 ? 0 : r * RadarGeometry.fraction(ticks[k - 1]!, range);
+                    const inner = k === 0 ? 0 : r * RadarGeometry.fraction(ticks[k - 1]!, range, this.scaleMode);
 
-                    this.ringPath(ctx, cx, cy, r * RadarGeometry.fraction(v, range), n);
+                    this.ringPath(ctx, cx, cy, r * RadarGeometry.fraction(v, range, this.scaleMode), n);
                     if (inner > 0) {
                         this.ringSubPath(ctx, cx, cy, inner, n);
                     }
@@ -285,7 +307,7 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
         ctx.strokeStyle = this.theme.axis;
         ctx.setLineDash([4, 4]);
         for (const v of ticks) {
-            this.ringPath(ctx, cx, cy, r * RadarGeometry.fraction(v, range), n);
+            this.ringPath(ctx, cx, cy, r * RadarGeometry.fraction(v, range, this.scaleMode), n);
             ctx.stroke();
         }
 
@@ -305,8 +327,10 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
             for (const v of ticks) {
-                const y = cy - r * RadarGeometry.fraction(v, range);
-                ctx.fillText(ChartScale.format(v, step).replace(/\.0$/, ''), cx + 5, y + 1);
+                const y = cy - r * RadarGeometry.fraction(v, range, this.scaleMode);
+                const text = this.ringFormat !== null ? this.ringFormat(v)
+                    : log ? RadarGeometry.compact(v) : ChartScale.format(v, step).replace(/\.0$/, '');
+                ctx.fillText(text, cx + 5, y + 1);
             }
         }
         ctx.restore();

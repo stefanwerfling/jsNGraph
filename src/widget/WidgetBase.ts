@@ -313,6 +313,44 @@ export class WidgetStyles {
             ':where(.wg-choro-tip){position:absolute;display:none;pointer-events:none;padding:4px 8px;border-radius:5px;' +
                 'background:var(--wg-surface);color:var(--wg-ink);border:1px solid var(--wg-track);font-size:12px;white-space:nowrap;' +
                 'box-shadow:0 2px 8px rgba(0,0,0,.15)}',
+            // donut
+            ':where(.wg-donut){display:flex;align-items:center;gap:18px}',
+            ':where(.wg-donut-below){flex-direction:column;align-items:stretch}',
+            ':where(.wg-donut-svg){flex:0 1 auto;margin:0 auto}',
+            ':where(.wg-donut-slice){fill:none;cursor:pointer;transition:opacity .2s,stroke-width .2s}',
+            ':where(.wg-donut-focus .wg-donut-slice:not(.wg-donut-on)){opacity:.3}',
+            ':where(.wg-donut-value){font-size:30px;font-weight:700;text-anchor:middle;dominant-baseline:central;fill:var(--wg-ink)}',
+            ':where(.wg-donut-label){font-size:12px;text-anchor:middle;dominant-baseline:central}',
+            ':where(.wg-donut-legend){flex:1 1 auto;display:grid;gap:2px;font-size:12px;min-width:0}',
+            ':where(.wg-donut-row){display:grid;grid-template-columns:10px 1fr auto 3.2em;gap:8px;align-items:center;padding:3px 6px;' +
+                'border-radius:4px;cursor:pointer;transition:opacity .2s}',
+            ':where(.wg-donut-focus .wg-donut-row:not(.wg-donut-on)){opacity:.45}',
+            ':where(.wg-donut-row.wg-donut-on){background:var(--wg-grid)}',
+            ':where(.wg-donut-swatch){width:10px;height:10px;border-radius:2px}',
+            ':where(.wg-donut-name){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+            ':where(.wg-donut-num){font-weight:600;text-align:right}',
+            ':where(.wg-donut-pct){color:var(--wg-muted);text-align:right}',
+            // calendar skyline
+            ':where(.wg-sky-tile-t){fill:var(--wg-track)}',
+            ':where(.wg-sky-tile-l){fill:color-mix(in srgb,var(--wg-track),#000 10%)}',
+            ':where(.wg-sky-tile-r){fill:color-mix(in srgb,var(--wg-track),#000 20%)}',
+            ':where(.wg-sky-day polygon){stroke:none}',
+            ':where(.wg-sky-label){pointer-events:none}',
+            ':where(.wg-sky){position:relative;user-select:none;-webkit-user-select:none}',
+            ':where(.wg-sky-svg){touch-action:none}',
+            ':where(.wg-sky-day){cursor:pointer}',
+            ':where(.wg-sky-day polygon){transition:opacity .2s}',
+            ':where(.wg-sky-hover .wg-sky-l,.wg-sky-hover .wg-sky-r,.wg-sky-hover .wg-sky-t){filter:brightness(1.18);' +
+                'stroke:var(--wg-ink);stroke-width:.5;stroke-linejoin:round}',
+            ':where(.wg-sky-hover .wg-sky-tile-t){fill:color-mix(in srgb,var(--wg-track),var(--wg-ink) 25%)}',
+            ':where(.wg-sky-sel .wg-sky-l,.wg-sky-sel .wg-sky-r,.wg-sky-sel .wg-sky-t){stroke:var(--wg-ink);stroke-width:1;' +
+                'stroke-linejoin:round}',
+            ':where(.wg-sky-sel .wg-sky-tile-t){fill:var(--wg-ink)}',
+            ':where(.wg-sky-dim .wg-sky-day:not(.wg-sky-on) :is(.wg-sky-l,.wg-sky-r,.wg-sky-t)){opacity:.16}',
+            ':where(.wg-sky-dim .wg-sky-on .wg-sky-tile-t){fill:color-mix(in srgb,var(--wg-track),var(--wg-c1) 45%)}',
+            ':where(.wg-sky-tip){position:absolute;display:none;pointer-events:none;padding:5px 9px;border-radius:5px;' +
+                'background:var(--wg-surface);color:var(--wg-ink);border:1px solid var(--wg-track);font-size:12px;line-height:1.45;' +
+                'white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.18);z-index:2}',
             '@media (prefers-reduced-motion:reduce){:where(.wg-marker-pulse){animation:none;opacity:0}}'
         ].join('');
     }

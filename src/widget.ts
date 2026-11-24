@@ -1,7 +1,7 @@
 /**
  * jsngraph/widget — small standalone dashboard widgets (SVG/DOM, no canvas): DayClock, RingGauge,
  * SegmentGauge, SegmentBar, ProgressBars, MonthCalendar, StatList, WorldMap, ParliamentChart,
- * TileCalendar, MajorityBar, ChoroplethMap.
+ * TileCalendar, MajorityBar, ChoroplethMap, CalendarSkyline.
  * Importing this subpath alone keeps the other parts out of a bundle;
  * `jsngraph` itself still exports everything.
  */
@@ -42,3 +42,9 @@ export { ChoroplethMap } from './widget/ChoroplethMap';
 export type { ChoroplethMapOptions, ChoroplethMapEvents, ChoroplethLegend, ChoroplethLegendRow } from './widget/ChoroplethMap';
 export { ChoroplethGeometry, ColorScale } from './widget/ChoroplethGeometry';
 export type { MapRing, MapPolygon, MapRegion, MapProjection, MapBounds, MapFit } from './widget/ChoroplethGeometry';
+export { CalendarSkyline } from './widget/CalendarSkyline';
+export type { CalendarSkylineOptions, CalendarSkylineEvents, SkylineColorMode, SkylineRange } from './widget/CalendarSkyline';
+export { SkylineGeometry } from './widget/SkylineGeometry';
+export type { SkylineDay, SkylineCell, SkylineGrid, SkylineScale, SkylineView, SkylineBox } from './widget/SkylineGeometry';
+export { DonutChart } from './widget/DonutChart';
+export type { DonutChartOptions, DonutChartEvents, DonutSlice } from './widget/DonutChart';

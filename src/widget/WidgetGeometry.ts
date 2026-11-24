@@ -35,6 +35,29 @@ export class WidgetGeometry {
         return `M${f(ax)} ${f(ay)}A${f(r)} ${f(r)} 0 ${sweep > 180 ? 1 : 0} 1 ${f(bx)} ${f(by)}`;
     }
 
+    /**
+     * Slices of a donut: each value's share of 360° from `start` (degrees,
+     * clockwise from the top), with `pad` degrees of gap after every visible
+     * slice (shrunk when slices are too thin for it). Values ≤ 0 get an empty
+     * span at their place, so a slice can grow from nothing.
+     */
+    public static donut(values: readonly number[], pad = 0, start = 0): Array<{from: number; to: number; share: number}> {
+        const vals = values.map((v) => (Number.isFinite(v) && v > 0 ? v : 0));
+        const total = vals.reduce((a, v) => a + v, 0);
+        const shown = vals.filter((v) => v > 0).length;
+        const gap = shown < 2 ? 0 : Math.min(pad, 360 / shown / 3);
+        const room = 360 - gap * shown;
+        let at = start;
+
+        return vals.map((v) => {
+            const share = total > 0 ? v / total : 0;
+            const sweep = share * room;
+            const out = {from: at, to: at + sweep, share};
+            at += sweep + (v > 0 ? gap : 0);
+            return out;
+        });
+    }
+
     /** Share of `max` covered by `value`, clamped to 0…1 (0 for max ≤ 0). */
     public static fraction(value: number, max: number, min = 0): number {
         if (!(max > min) || !Number.isFinite(value)) {

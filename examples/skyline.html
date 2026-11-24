@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — calendar skyline</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    html, body { background: #ffffff; }
+    body.dark { background: #11141c; }
+    main { box-sizing: border-box; width: 100%; max-width: 1400px; margin: 0 auto; padding: 12px 16px 28px; color: #273142;
+        font-family: system-ui, sans-serif; }
+    body.dark main { color: #d6dbe6; }
+    h1 { font-size: 20px; margin: 4px 0 2px; font-weight: 600; color: inherit; }
+    .sub { margin: 0 0 12px; color: #6f7890; font-size: 13px; max-width: 1050px; line-height: 1.45; }
+    .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 12px; }
+    .bar .lab { color: #8d96aa; margin-left: 6px; }
+    button { background: #fff; color: #273142; border: 1px solid #c8cfdc; border-radius: 4px; padding: 5px 10px;
+        font: 12px system-ui, sans-serif; cursor: pointer; }
+    body.dark button { background: #1c2130; color: #d6dbe6; border-color: #333b50; }
+    button.on { border-color: #8b7cf6; background: #ece9ff; }
+    body.dark button.on { background: #2a2850; }
+    #sky { max-width: 1300px; margin: 0 auto; }
+    .scope { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; margin: 0 0 10px; font-size: 13px; min-height: 22px; }
+    .scope b { font-size: 15px; }
+    .scope .muted { color: #8d96aa; }
+    .panels { display: grid; grid-template-columns: 1fr 1.3fr 1.3fr; gap: 16px; }
+    .panel { border: 1px solid #e1e6ef; border-radius: 8px; padding: 14px 16px; min-width: 0; }
+    body.dark .panel { border-color: #262d3f; background: #121726; }
+    .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #8d96aa; margin: 0 0 10px; font-weight: 600; }
+    #radar { height: 300px; }
+    @media (max-width: 1000px) { .panels { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="skyline.html" class="active">Calendar skyline</a>
+</nav>
+
+<main>
+    <h1>A year of contributions as a skyline</h1>
+    <p class="sub">One column per day, laid out like a contribution calendar — weeks from left to right, weekdays from back to
+        front — and raised by the day's count. Drag across the days to look at a range: the totals, the languages and the
+        kinds of work below follow it. Hover a language to see the days it led. The developer and every number are made up.</p>
+
+    <div class="bar">
+        <span class="lab">Colour</span>
+        <button class="mode on" data-v="season">Season</button>
+        <button class="mode" data-v="level">Level</button>
+        <button class="mode" data-v="category">Kind of work</button>
+        <span class="lab">Height</span>
+        <button class="scale on" data-v="linear">Linear</button>
+        <button class="scale" data-v="sqrt">√</button>
+        <button class="scale" data-v="log">Log</button>
+        <span class="lab">View</span>
+        <button id="turn">Turn 90°</button>
+        <button id="replay">Replay</button>
+        <button id="clear">Whole year</button>
+        <button id="theme">Dark</button>
+    </div>
+
+    <div id="sky"></div>
+    <div class="scope"><b id="scope">Whole year</b><span class="muted" id="scopeInfo"></span></div>
+
+    <div class="panels">
+        <div class="panel"><h2>Totals</h2><div id="stats"></div></div>
+        <div class="panel"><h2>Languages (days led)</h2><div id="donut"></div></div>
+        <div class="panel"><h2>Kinds of work (log scale)</h2><div id="radar"></div></div>
+    </div>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+(() => {
+    const J = window.JSNGraph;
+    const G = J.SkylineGeometry;
+    const $ = (id) => document.getElementById(id);
+
+    // ---- a made-up year: weekday rhythm, holidays, a release crunch, a quiet summer, an autumn side project ----------
+    let seed = 11;
+    const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const KINDS = ['commits', 'pull requests', 'reviews', 'issues', 'comments', 'releases'];
+    const LANGS = [
+        {label: 'TypeScript', color: '#3d7fd9'}, {label: 'Go', color: '#2fb3a5'}, {label: 'Rust', color: '#d0703c'},
+        {label: 'Python', color: '#e8b400'}, {label: 'Shell', color: '#8b7cf6'}
+    ];
+    const record = [];          // per day: counts per kind + leading language
+    const start = G.dayOf('2025-11-24');
+    for (let i = 0; i < 365; i++) {
+        const day = start + i;
+        const date = G.dateOf(day);
+        const wd = G.weekday(day);
+        const doy = G.dayOfYear(date);
+        const weekend = wd === 0 || wd === 6;
+        let rate = weekend ? 0.6 : 4.5;
+        if ((doy > 355 || doy < 4) || (doy > 205 && doy < 220)) rate = 0.15;
+        const crunch = doy > 75 && doy < 110, side = doy > 260 && doy < 290;
+        if (crunch) rate *= 2.2;
+        if (side) rate *= 1.7;
+        const active = rand() < (weekend ? 0.35 : 0.85);
+        const k = active ? rate * (0.4 + rand() * 1.6) * (rand() < 0.04 ? 3 : 1) : 0;
+        const c = {
+            commits: Math.round(k * (crunch ? 0.75 : 0.55)),
+            'pull requests': Math.round(k * (crunch ? 0.22 : 0.12) + (active && rand() < 0.15 ? 1 : 0)),
+            reviews: Math.round(k * (wd === 1 ? 0.5 : 0.14)),
+            issues: Math.round(k * 0.08 + (active && rand() < 0.1 ? 1 : 0)),
+            comments: Math.round(k * (1.2 + rand() * 1.5)),
+            releases: active && (crunch ? rand() < 0.12 : rand() < 0.015) ? 1 : 0
+        };
+        const value = c.commits + c['pull requests'] + c.reviews + c.issues;
+        const kind = ['commits', 'pull requests', 'reviews', 'issues'].reduce((a, b) => (c[b] > c[a] ? b : a), 'commits');
+        const r = rand();
+        const lang = value === 0 ? null : side ? (r < 0.7 ? 'Rust' : 'TypeScript') : crunch ? (r < 0.45 ? 'Go' : 'TypeScript')
+            : r < 0.55 ? 'TypeScript' : r < 0.7 ? 'Go' : r < 0.85 ? 'Python' : r < 0.93 ? 'Shell' : 'Rust';
+        record.push({date, day, value, kind, lang, c});
+    }
+    const days = record.map((r) => ({date: r.date, value: r.value, category: r.kind}));
+
+    // ---- widgets ---------------------------------------------------------------------------------------------------
+    const sky = new J.CalendarSkyline($('sky'), {days, theme: 'light', maxHeight: 5, locale: 'en',
+        categoryColors: {'commits': '#5b8def', 'pull requests': '#8b7cf6', 'reviews': '#2fb3a5', 'issues': '#e0664f'},
+        format: (d) => {
+            const r = record[d.day - start];
+            return r && r.value ? `${r.value} contributions · mostly ${r.kind}\n${r.lang}` : 'no contributions';
+        }});
+    const stats = new J.StatList($('stats'), {theme: 'light', layout: 'grid', size: 26, items: [
+        {label: 'contributions', value: 0, color: '#3d7fd9'}, {label: 'active days', value: 0, color: '#2fb3a5'},
+        {label: 'longest streak', value: 0, color: '#d0703c'}, {label: 'best day', value: 0, color: '#8b7cf6'}]});
+    const donut = new J.DonutChart($('donut'), {theme: 'light', centerLabel: 'active days', size: 190,
+        slices: LANGS.map((l) => ({...l, value: 0}))});
+    const radar = new J.RadarChart($('radar'), {theme: 'light', categories: KINDS, scale: 'log', grid: 'circle', zoom: false,
+        legend: true, format: (v) => Math.round(v).toLocaleString('en')});
+    Object.assign(window, {sky, donut, radar, stats});
+
+    // ---- linking ---------------------------------------------------------------------------------------------------
+    const sum = (rows, k) => rows.reduce((a, r) => a + r.c[k], 0);
+    const yearKinds = KINDS.map((k) => sum(record, k));
+    const show = (rows, label, info) => {
+        const active = rows.filter((r) => r.value > 0);
+        let streak = 0, run = 0;
+        for (const r of rows) { run = r.value > 0 ? run + 1 : 0; streak = Math.max(streak, run); }
+        stats.setValues([rows.reduce((a, r) => a + r.value, 0), active.length, streak, Math.max(0, ...rows.map((r) => r.value))]);
+        donut.setValues(LANGS.map((l) => active.filter((r) => r.lang === l.label).length));
+        const series = rows.length === record.length
+            ? [{name: 'Whole year', values: yearKinds, color: '#8b7cf6', fill: true}]
+            : [{name: 'Whole year', values: yearKinds, color: '#9aa3b5', dash: [4, 3]},
+                {name: 'Selection', values: KINDS.map((k) => sum(rows, k)), color: '#8b7cf6', fill: true}];
+        radar.setSeries(series, {animate: false});
+        $('scope').textContent = label;
+        $('scopeInfo').textContent = info;
+    };
+    const whole = () => show(record, 'Whole year', `${record[0].date} – ${record.at(-1).date} · drag across the days to pick a range`);
+    whole();
+    sky.on('rangeChange', (r) => {
+        if (!r) return whole();
+        const rows = record.filter((x) => x.date >= r.from && x.date <= r.to);
+        show(rows, `${r.from} – ${r.to}`, `${rows.length} days · click beside the days or “Whole year” to go back`);
+    });
+    $('clear').onclick = () => { sky.setRange(null); whole(); };
+    donut.on('segmentHover', (s) => sky.highlight(s ? record.filter((r) => r.lang === s.slice.label).map((r) => r.date) : null));
+    sky.on('dayHover', (d) => {
+        const r = d && record[d.day - start];
+        donut.highlight(r && r.lang ? r.lang : null);
+    });
+
+    // ---- controls --------------------------------------------------------------------------------------------------
+    const group = (cls, fn) => document.querySelectorAll(cls).forEach((b) => b.onclick = () => {
+        document.querySelectorAll(cls).forEach((x) => x.classList.toggle('on', x === b));
+        fn(b.dataset.v);
+    });
+    group('.mode', (v) => sky.setColorMode(v));
+    group('.scale', (v) => sky.setScale(v));
+    let view = 0;
+    $('turn').onclick = () => sky.setView(view = (view + 1) % 4);
+    $('replay').onclick = () => sky.replay();
+    let dark = false;
+    $('theme').onclick = (e) => {
+        dark = !dark;
+        const t = dark ? 'dark' : 'light';
+        document.body.classList.toggle('dark', dark);
+        [sky, stats, donut, radar].forEach((w) => w.setTheme(t));
+        e.target.textContent = dark ? 'Light' : 'Dark';
+    };
+
+    const q = new URLSearchParams(location.search);
+    if (q.get('theme') === 'dark') $('theme').click();
+    if (q.get('view')) sky.setView(view = Number(q.get('view')) % 4);
+})();
+</script>
+</body>
+</html>

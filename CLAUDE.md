@@ -179,7 +179,18 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   markers with optional pulse, HTML legend). `SegmentBar`/`ProgressBars` lay out at the container's real px width
   (`watchWidth`) so text keeps its size; the round ones scale like images. Pure parts: `WidgetGeometry` (polar, arcs,
   stacked segment owners, nice ticks), `CalendarGeometry` (grid, runs), `WorldMapGeometry` (decode, path, dots,
-  isLand); `test/Widgets.test.ts`. Example: `examples/dashboard.html` (made-up roastery, all widgets + LineChart +
+  isLand); `test/Widgets.test.ts`.
+  `CalendarSkyline` (plan + milestones S1–S4 in `docs/calendar-skyline.md`, done): a year of daily counts as an
+  isometric skyline on a contribution-calendar grid (weeks × weekdays), height by linear/sqrt/log against a quantile cap,
+  colour by season (hemisphere) / level / category / function, faces shaded, floor tiles for empty days, month names lying on
+  the floor, four views (`setView`), grow-in/morph via `Tween`. Pure `SkylineGeometry` (UTC day maths, `grid`, `place`,
+  `order`, `box`, `heightScale`, `levels`, `seasonColor`; `test/Skyline.test.ts`). Hover tooltip (`format`), drag across
+  days = range brush (`rangeChange` live/final with total), click = `daySelect`, `highlight(dates)`; state lives in
+  classes on the day groups. `DonutChart` (same subpath): stroked slices with gaps (`WidgetGeometry.donut`), total /
+  hovered share in the middle, HTML legend with value + %, `segmentHover`/`segmentClick`, `highlight(label)`, morphing
+  `setValues`. RadarChart got `scale: 'log'` (one ring per decade, `RadarGeometry.logMax`/`logTicks`/`compact`) and
+  `ringFormat`. Example: `examples/skyline.html` (brush drives totals, language donut and kinds radar; donut hover
+  highlights days). Example: `examples/dashboard.html` (made-up roastery, all widgets + LineChart +
   RadarChart, live data, theme + map mode toggles).
 
 - `netview/` — `NetView` (subpath `jsngraph/netview`): a transformer compressed to fit the browser — one
