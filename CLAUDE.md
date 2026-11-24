@@ -203,6 +203,10 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   `ringFormat`. Example: `examples/skyline.html` (brush drives totals, language donut and kinds radar; donut hover
   highlights days). Example: `examples/dashboard.html` (made-up roastery, all widgets + LineChart +
   RadarChart, live data, theme + map mode toggles).
+  Example: `examples/achievements.html` (invented game "Ashfall Ascent": achievement list in plain DOM with SVG stencil
+  badges — one shared worn-print `feTurbulence` filter for all —, hidden/bugged entries, filters/sort; RingGauge,
+  StatList, DonutChart, ProgressBars, LineChart, TileCalendar fed from the same list; "Play a session" simulates progress;
+  phone layout switches list/stats with a bottom tab bar).
 
 - `netview/` — `NetView` (subpath `jsngraph/netview`): a transformer compressed to fit the browser — one
   column per block, residual stream folded into `bins` (signed max per bin, scaled median→0 / p95→1 so
