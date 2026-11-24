@@ -75,9 +75,9 @@ export class TileCalendar extends Widget<TileCalendarEvents> {
 
         const s = options.start ?? new Date();
 
-        this.start = s instanceof Date ? {year: s.getFullYear(), month: s.getMonth()} : s;
-        this.months = options.months ?? 3;
-        this.columns = options.columns;
+        this.start = s instanceof Date ? {year: s.getFullYear(), month: s.getMonth()} : {...s};
+        this.months = TileCalendar.monthCount(options.months ?? 3);
+        this.columns = options.columns === undefined ? undefined : TileCalendar.monthCount(options.columns);
         this.weekStart = options.weekStart ?? 1;
         this.categories = (options.categories ?? []).map((c) => ({...c}));
         this.days = TileCalendar.copyDays(options.days);
@@ -131,8 +131,8 @@ export class TileCalendar extends Widget<TileCalendarEvents> {
     }
 
     public setMonths(start: {year: number; month: number}, months = this.months): void {
-        this.start = start;
-        this.months = months;
+        this.start = {...start};
+        this.months = TileCalendar.monthCount(months);
         this.render();
     }
 
@@ -311,5 +311,10 @@ export class TileCalendar extends Widget<TileCalendarEvents> {
     private readonly onLeave = (): void => {
         this.events.emit('dayHover', null);
     };
+
+    /** At least one whole month (0, negatives, fractions or NaN would draw an empty or broken grid). */
+    private static monthCount(n: number): number {
+        return Number.isFinite(n) ? Math.max(1, Math.floor(n)) : 1;
+    }
 
 }

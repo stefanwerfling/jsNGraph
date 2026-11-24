@@ -855,6 +855,33 @@ export class WorkflowModel {
         return null;
     }
 
+    /**
+     * A pasted fragment reduced to well-formed entries: nodes need a string id
+     * and type and finite x/y, notes a string id, finite x/y and size, connections
+     * two port refs, groups a string id and a node list. Foreign clipboard data
+     * (or a hand-edited fragment) therefore never reaches the model half-shaped.
+     */
+    public static cleanFragment(fragment: unknown): WorkflowDocument {
+        const f = (typeof fragment === 'object' && fragment !== null ? fragment : {}) as Record<string, unknown>;
+        const list = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v : [])
+            .filter((e): e is Record<string, unknown> => typeof e === 'object' && e !== null);
+        const str = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
+        const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+        const ref = (v: unknown): boolean => typeof v === 'object' && v !== null
+            && str((v as Record<string, unknown>).node) && str((v as Record<string, unknown>).port);
+
+        return {
+            nodes: list(f.nodes).filter((n) => str(n.id) && str(n.type) && num(n.x) && num(n.y))
+                .map((n) => structuredClone(n) as unknown as WorkflowNodeData),
+            connections: list(f.connections).filter((c) => ref(c.from) && ref(c.to))
+                .map((c) => structuredClone(c) as unknown as WorkflowConnection),
+            notes: list(f.notes).filter((n) => str(n.id) && num(n.x) && num(n.y) && num(n.w) && num(n.h))
+                .map((n) => ({...structuredClone(n), text: typeof n.text === 'string' ? n.text : ''}) as unknown as WorkflowNote),
+            groups: list(f.groups).filter((g) => str(g.id) && Array.isArray(g.nodes))
+                .map((g) => ({...structuredClone(g), nodes: (g.nodes as unknown[]).filter(str)}) as unknown as WorkflowGroup)
+        };
+    }
+
     public static sameRef(a: WorkflowPortRef, b: WorkflowPortRef): boolean {
         return a.node === b.node && a.port === b.port;
     }

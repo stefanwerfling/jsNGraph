@@ -10,6 +10,7 @@ import { ModelFlowData, ModelGraphData } from './ModelTypes';
 import { Theme, ThemeTokens } from '../render/Theme';
 import { Tooltip } from '../ui/Tooltip';
 import { EventEmitter } from '../util/EventEmitter';
+import { RenderLoop } from '../view/RenderLoop';
 
 export interface ModelViewOptions {
     /** 'dark' (default) | 'light' | a custom palette. */
@@ -74,7 +75,8 @@ export class ModelView {
     private detailPanelEnabled: boolean;
     private selectedId: string | null = null;
     private hoveredId: string | null = null;
-    private rafId: number | null = null;
+    /** On demand: runs continuously only while animated flows are shown. */
+    private readonly loop: RenderLoop;
     /** While false, every resize re-frames the graph; a user pan/zoom locks it. */
     private userAdjusted = false;
     private width = 0;
@@ -100,8 +102,10 @@ export class ModelView {
         this.layout = new FlowLayout(options.layout);
         this.tooltip = new Tooltip(this.root, this.theme);
         this.panel = new ModelPanel(this.root, this.theme);
+        this.loop = new RenderLoop(this.frame);
         this.panel.onClose(() => {
             this.selectedId = null;
+            this.loop.request();
         });
 
         this.interaction = new ModelInteraction(
@@ -114,6 +118,7 @@ export class ModelView {
                 onCameraChange: () => {
                     this.userAdjusted = true;
                     this.panel.hide();
+                    this.loop.request();
                 }
             }
         );
@@ -122,7 +127,8 @@ export class ModelView {
         this.resizeObserver.observe(this.root);
         this.resize();
 
-        this.rafId = requestAnimationFrame(this.frame);
+        document.fonts?.addEventListener('loadingdone', this.onFontsLoaded);
+        this.loop.request();
     }
 
     /**
@@ -193,14 +199,17 @@ export class ModelView {
         this.renderer.setTheme(this.theme);
         this.tooltip.setTheme(this.theme);
         this.panel.setTheme(this.theme);
+        this.loop.request();
     }
 
     public setShowLabels(show: boolean): void {
         this.showLabels = show;
+        this.loop.request();
     }
 
     public setAnimate(animate: boolean): void {
         this.animate = animate;
+        this.loop.request();
     }
 
     /** Frame the whole graph in the viewport. */
@@ -212,18 +221,21 @@ export class ModelView {
         this.camera.fit(this.bounds(), this.width, this.height, 48, 88);
         this.userAdjusted = false;
         this.panel.hide();
+        this.loop.request();
     }
 
     public zoomIn(): void {
         this.camera.zoomAt(this.width / 2, this.height / 2, 1.2);
         this.userAdjusted = true;
         this.panel.hide();
+        this.loop.request();
     }
 
     public zoomOut(): void {
         this.camera.zoomAt(this.width / 2, this.height / 2, 1 / 1.2);
         this.userAdjusted = true;
         this.panel.hide();
+        this.loop.request();
     }
 
     public on<K extends keyof ModelViewEvents>(event: K, listener: (payload: ModelViewEvents[K]) => void): this {
@@ -239,9 +251,8 @@ export class ModelView {
     }
 
     public destroy(): void {
-        if (this.rafId !== null) {
-            cancelAnimationFrame(this.rafId);
-        }
+        this.loop.destroy();
+        document.fonts?.removeEventListener('loadingdone', this.onFontsLoaded);
 
         this.resizeObserver.disconnect();
         this.interaction.destroy();
@@ -320,6 +331,8 @@ export class ModelView {
         if (this.width > 0 && this.height > 0 && this.visibleNodes.length > 0) {
             this.camera.fit(this.bounds(), this.width, this.height, 48, 88);
         }
+
+        this.loop.request();
     }
 
     private bounds(): Bounds {
@@ -427,6 +440,7 @@ export class ModelView {
 
     private handleHover(node: ModelNode | null): void {
         this.hoveredId = node?.id ?? null;
+        this.loop.request();
         this.events.emit('moduleHover', node);
 
         if (node === null) {
@@ -445,6 +459,7 @@ export class ModelView {
     private handleClick(node: ModelNode | null, clientX: number, clientY: number): void {
         this.events.emit('moduleClick', node);
         this.selectedId = node?.id ?? null;
+        this.loop.request();
 
         if (node === null || !this.detailPanelEnabled) {
             this.panel.hide();
@@ -470,9 +485,17 @@ export class ModelView {
         if (!this.userAdjusted && this.visibleNodes.length > 0 && width > 0 && height > 0) {
             this.camera.fit(this.bounds(), width, height, 48, 88);
         }
+
+        this.loop.request();
     }
 
-    private readonly frame = (timeMs: number): void => {
+    /** A web font (e.g. Inter) arrived: draw the labels with it. */
+    private readonly onFontsLoaded = (): void => {
+        this.loop.request();
+    };
+
+    /** Draws one frame; true while animated flow dots need the next one. */
+    private readonly frame = (timeMs: number): boolean => {
         this.renderer.draw(
             this.visibleNodes,
             this.edges,
@@ -484,7 +507,7 @@ export class ModelView {
             {showLabels: this.showLabels, animate: this.animate}
         );
 
-        this.rafId = requestAnimationFrame(this.frame);
+        return this.animate && this.edges.some((edge) => edge.animated);
     };
 
     private static resolveTheme(theme: 'dark' | 'light' | ThemeTokens): ThemeTokens {

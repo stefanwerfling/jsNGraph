@@ -135,9 +135,21 @@ export class IsoEditor {
         }
     }
 
-    /** Add an item; it lands on the nearest free tile. Returns its id. */
+    /** A given id (must be unused by any element) or a new one with `prefix`. */
+    private freshId(id: string | undefined, prefix: string): string {
+        if (id === undefined || id === '') {
+            return IsoModel.uid(this.doc, prefix);
+        }
+        if (IsoModel.kindOf(this.doc, id) !== null) {
+            throw new Error(`Iso element id '${id}' already exists`);
+        }
+
+        return id;
+    }
+
+    /** Add an item; it lands on the nearest free tile. Returns its id; throws when `data.id` is taken. */
     public addItem(data: Omit<IsoItem, 'id'> & {id?: string}): string {
-        const id = data.id ?? IsoModel.uid(this.doc, 'item');
+        const id = this.freshId(data.id, 'item');
         const it: IsoItem = {...JSON.parse(JSON.stringify(data)) as IsoItem, id, tile: IsoModel.freeTileNear(this.doc, data.tile)};
 
         this.doc.items.push(it);
@@ -147,7 +159,7 @@ export class IsoEditor {
     }
 
     public addConnector(from: IsoAnchor, to: IsoAnchor, data: Partial<Omit<IsoConnector, 'id' | 'from' | 'to'>> & {id?: string} = {}): string {
-        const id = data.id ?? IsoModel.uid(this.doc, 'link');
+        const id = this.freshId(data.id, 'link');
 
         this.doc.connectors.push({
             ...JSON.parse(JSON.stringify(data)) as Partial<IsoConnector>, id,
@@ -159,7 +171,7 @@ export class IsoEditor {
     }
 
     public addRegion(from: IsoTile, to: IsoTile, data: Partial<Omit<IsoRegion, 'id' | 'from' | 'to'>> & {id?: string} = {}): string {
-        const id = data.id ?? IsoModel.uid(this.doc, 'region');
+        const id = this.freshId(data.id, 'region');
         const r = IsoProjection.rect(from, to);
 
         this.doc.regions.push({
@@ -173,7 +185,7 @@ export class IsoEditor {
     }
 
     public addText(tile: IsoTile, text: string, data: Partial<Omit<IsoText, 'id' | 'tile' | 'text'>> & {id?: string} = {}): string {
-        const id = data.id ?? IsoModel.uid(this.doc, 'text');
+        const id = this.freshId(data.id, 'text');
 
         this.doc.texts.push({...JSON.parse(JSON.stringify(data)) as Partial<IsoText>, id, tile: {x: tile.x, y: tile.y}, text});
         this.commit('text', [id]);

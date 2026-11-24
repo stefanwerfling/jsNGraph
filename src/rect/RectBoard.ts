@@ -1085,7 +1085,7 @@ export class RectBoard {
     }
 
     private handleKey(e: KeyboardEvent): void {
-        if (this.storyIds.length === 0) {
+        if (this.storyIds.length === 0 || !RectBoard.storyKey(e) || this.viewport.clientWidth === 0) {
             return;
         }
 
@@ -1099,6 +1099,23 @@ export class RectBoard {
             e.preventDefault();
             this.goto(-1);
         }
+    }
+
+    /**
+     * Story keys are page-wide, but never steal a key someone else handled, a
+     * shortcut with a modifier, or typing / list navigation in a form field.
+     */
+    private static storyKey(e: KeyboardEvent): boolean {
+        if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) {
+            return false;
+        }
+
+        const t = e.target;
+        if (!(t instanceof HTMLElement)) {
+            return true;
+        }
+
+        return !(t.isContentEditable || t.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]') !== null);
     }
 
 }

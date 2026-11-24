@@ -109,7 +109,8 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   orthogonal edges + nested `GroupFrame` container boxes), `ModelPanel.ts` (click detail panel).
   Edges are muted toward `nodeStroke` (dots keep the full accent), chips have a slight vertical gradient. Text
   asks for Inter with a system-ui fallback; the font is not bundled (zero assets) — a page that loads Inter via CSS
-  gets it automatically, since the view redraws every frame.
+  gets it automatically (a `document.fonts` `loadingdone` requests a frame). Drawn through the on-demand `RenderLoop`: it
+  only keeps running while animated flows are shown.
   `ModelView.computeGroups` builds a `GroupFrame` (padded bbox + label tab + ×N) per expanded
   parent, padded more for outer groups so nested frames sit cleanly inside. Reuses `render/Theme.ts`
   and `ui/Tooltip.ts` from NGraph; `ModelView.ts` auto-fits on every resize until the user pans/zooms.

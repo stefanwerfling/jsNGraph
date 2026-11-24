@@ -451,7 +451,8 @@ export class WorkflowEditor {
      * fragment's top-left there (world coordinates); without it the copy is
      * offset from the original until it no longer sits on top of it.
      */
-    public paste(fragment: WorkflowDocument, at?: RectPoint): string[] {
+    public paste(input: WorkflowDocument, at?: RectPoint): string[] {
+        const fragment = WorkflowModel.cleanFragment(input);
         const offset = this.readOnlyFlag ? null : this.arrange.pasteOffset(fragment, at);
 
         if (offset === null) {

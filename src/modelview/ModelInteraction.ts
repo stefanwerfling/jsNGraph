@@ -32,6 +32,7 @@ export class ModelInteraction {
         canvas.addEventListener('pointermove', this.onPointerMove);
         canvas.addEventListener('pointerdown', this.onPointerDown);
         canvas.addEventListener('pointerup', this.onPointerUp);
+        canvas.addEventListener('pointercancel', this.onPointerCancel);
         canvas.addEventListener('pointerleave', this.onPointerLeave);
         canvas.addEventListener('wheel', this.onWheel, {passive: false});
     }
@@ -40,6 +41,7 @@ export class ModelInteraction {
         this.canvas.removeEventListener('pointermove', this.onPointerMove);
         this.canvas.removeEventListener('pointerdown', this.onPointerDown);
         this.canvas.removeEventListener('pointerup', this.onPointerUp);
+        this.canvas.removeEventListener('pointercancel', this.onPointerCancel);
         this.canvas.removeEventListener('pointerleave', this.onPointerLeave);
         this.canvas.removeEventListener('wheel', this.onWheel);
     }
@@ -105,6 +107,10 @@ export class ModelInteraction {
     };
 
     private readonly onPointerUp = (event: PointerEvent): void => {
+        if (!this.panning) {
+            return;
+        }
+
         const wasDrag = this.moved;
 
         this.panning = false;
@@ -118,6 +124,14 @@ export class ModelInteraction {
 
             this.callbacks.onClick(hit, event.clientX, event.clientY);
         }
+    };
+
+    /** The browser took the pointer (touch scroll, lost capture): end the pan, no click. */
+    private readonly onPointerCancel = (): void => {
+        this.panning = false;
+        this.moved = false;
+        this.downPos = null;
+        this.canvas.style.cursor = this.hovered !== null ? 'pointer' : 'grab';
     };
 
     private readonly onPointerLeave = (): void => {

@@ -127,7 +127,7 @@ export interface HoloScene {
 
 export interface HoloTableOptions {
     scene?: Partial<HoloScene>;
-    /** Start camera (default: the whole table, a little turned). */
+    /** Start camera; fields left out follow the auto-fit (default: the whole table, a little turned). */
     camera?: Partial<HoloCamera>;
     /** Table top / edge / decoration colours. */
     table?: {top?: string; edge?: string; trim?: string};
@@ -178,6 +178,8 @@ export class HoloTable extends ChartSurface<HoloTableEvents> {
     private scene: HoloScene;
     private cam: HoloCamera;
     private home: HoloCamera | null = null;
+    /** Fields of `options.camera` that the auto-fit keeps. */
+    private readonly startCam: Partial<HoloCamera>;
     private userMoved = false;
     private flight: {from: HoloCamera; to: HoloCamera; start: number; ms: number} | null = null;
     private readonly table: {top: string; edge: string; trim: string};
@@ -201,10 +203,8 @@ export class HoloTable extends ChartSurface<HoloTableEvents> {
         this.table = {top: '#0a1118', edge: '#16212b', trim: '#1f3b4d', ...options.table};
         this.format = options.format ?? ((v) => String(Math.round(v * 10) / 10));
         this.interactive = options.interactive ?? true;
-        this.cam = {yaw: -14, pitch: 42, distance: 2000, tx: this.scene.width / 2, ty: this.scene.height / 2, ...options.camera};
-        if (options.camera?.distance !== undefined) {
-            this.userMoved = true;
-        }
+        this.startCam = HoloTable.validCamera(options.camera ?? {});
+        this.cam = {yaw: -14, pitch: 42, distance: 2000, tx: this.scene.width / 2, ty: -this.scene.height / 2, ...this.startCam};
         this.barStart = performance.now();
 
         this.root.style.cursor = this.interactive ? 'grab' : '';
@@ -241,7 +241,7 @@ export class HoloTable extends ChartSurface<HoloTableEvents> {
 
     /** Move the camera; animated by default. */
     public setCamera(cam: Partial<HoloCamera>, options: {animate?: boolean; ms?: number} = {}): void {
-        const to = {...this.cam, ...cam};
+        const to = {...this.cam, ...HoloTable.validCamera(cam)};
 
         this.userMoved = true;
         if (options.animate === false) {
@@ -319,6 +319,26 @@ export class HoloTable extends ChartSurface<HoloTableEvents> {
         };
     }
 
+    /** Finite fields only, pitch and distance clamped to what the pointer allows. */
+    private static validCamera(cam: Partial<HoloCamera>): Partial<HoloCamera> {
+        const out: Partial<HoloCamera> = {};
+
+        for (const key of ['yaw', 'pitch', 'distance', 'tx', 'ty'] as const) {
+            const v = cam[key];
+            if (typeof v === 'number' && Number.isFinite(v)) {
+                out[key] = v;
+            }
+        }
+        if (out.pitch !== undefined) {
+            out.pitch = Math.max(12, Math.min(89, out.pitch));
+        }
+        if (out.distance !== undefined) {
+            out.distance = Math.max(150, Math.min(20000, out.distance));
+        }
+
+        return out;
+    }
+
     private P(x: number, y: number, z = 0): HoloPoint {
         return HoloGeometry.project(this.frameNow!, x, -y, z);
     }
@@ -332,7 +352,7 @@ export class HoloTable extends ChartSurface<HoloTableEvents> {
         this.lastNow = now;
 
         if (!this.userMoved) {
-            this.cam = this.overview();
+            this.cam = {...this.overview(), ...this.startCam};
             this.home = this.cam;
         }
         let flying = false;

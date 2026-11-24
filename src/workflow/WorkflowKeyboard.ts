@@ -3,6 +3,7 @@ import { WorkflowGestures } from './WorkflowGestures';
 import { WorkflowRenderer } from './WorkflowRenderer';
 import { WorkflowViewport } from './WorkflowViewport';
 import { WorkflowFragment } from './WorkflowTypes';
+import { WorkflowModel } from './WorkflowModel';
 
 /** What the keyboard handler needs from the editor beyond its public API. */
 export interface WorkflowKeyboardHost {
@@ -49,7 +50,7 @@ export class WorkflowKeyboard {
             const data = JSON.parse(text) as Partial<WorkflowFragment>;
 
             if (data.format === 'jsngraph-workflow' && Array.isArray(data.nodes) && Array.isArray(data.connections)) {
-                return data as WorkflowFragment;
+                return {format: 'jsngraph-workflow', version: 1, ...WorkflowModel.cleanFragment(data)};
             }
         } catch {
             // not JSON — someone else's clipboard
