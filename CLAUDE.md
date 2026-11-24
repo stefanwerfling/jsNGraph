@@ -553,6 +553,10 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   quadratic-as-cubic (directed ones end at the rim), shared by drawing, labels, dots and edge hit-testing; lane ≠ 0
   edges are never batched/sent to WebGL. ForceLayout divides spring force by `bundle`, so a bundle is one spring.
 - Edge labels: `\n` breaks lines.
+- Example: `examples/skilltree.html` — an invented game skill tree on `layoutMode: 'static'`: icon-function nodes,
+  learned/learnable/locked purely through `styleNode`/`styleEdge` over a page-side set (`repaint` after a change),
+  point budget with unlearn only when nothing else is cut off from the root, search via `highlight`, banners as an
+  'under' overlay.
 - Example: `examples/ownership.html` (fictional; seeds company positions and leaves next to their neighbour —
   random starts left leaves on the wrong side of the hub).
 

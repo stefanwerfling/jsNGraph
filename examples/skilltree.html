@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — skill tree</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    body { background: #0b0d11; }
+    .graph-stage { background: #0b0d11; }
+    .options {
+        position: absolute; top: 64px; left: 14px; z-index: 5; width: 200px;
+        background: rgba(14, 18, 24, 0.92); border: 1px solid #2a323d; border-radius: 6px;
+        font: 12px system-ui, sans-serif; color: #c9d1da; overflow: hidden;
+    }
+    .options h2 {
+        margin: 0; padding: 6px 10px; font-size: 13px; font-weight: 600; color: #fff;
+        background: linear-gradient(90deg, #1f5f8b, #17384f);
+    }
+    .options .body { padding: 8px 10px 10px; display: grid; gap: 7px; }
+    .options label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+    .options input[type="search"] {
+        width: 100%; box-sizing: border-box; padding: 5px 7px; border-radius: 4px;
+        border: 1px solid #36404c; background: #0d1116; color: #e6edf3; font: inherit;
+    }
+    .options button {
+        padding: 5px 8px; border-radius: 4px; border: 1px solid #3a4552; background: #1a2129;
+        color: #dfe6ee; font: inherit; cursor: pointer;
+    }
+    .options button:hover { border-color: #e3d34a; }
+    .options .row { display: flex; gap: 6px; }
+    .options .row button { flex: 1; }
+    .options .found { color: #8d98a5; min-height: 1em; }
+
+    .points {
+        position: absolute; left: 18px; bottom: 18px; z-index: 5; display: flex; align-items: center; gap: 10px;
+        font: 600 34px/1 system-ui, sans-serif; color: #f0e04c; text-shadow: 0 0 12px rgba(240, 224, 76, 0.45);
+    }
+    .points small { display: block; font: 500 11px system-ui, sans-serif; color: #8d98a5; text-shadow: none; letter-spacing: 0.08em; text-transform: uppercase; }
+    .points.empty { color: #8d98a5; text-shadow: none; }
+
+    .card {
+        position: absolute; right: 16px; bottom: 16px; z-index: 5; width: 260px; display: none;
+        background: rgba(12, 15, 20, 0.94); border: 1px solid #2a323d; border-radius: 6px; padding: 10px 12px;
+        font: 12px/1.45 system-ui, sans-serif; color: #c9d1da; pointer-events: none;
+    }
+    .card.show { display: block; }
+    .card h3 { margin: 0 0 2px; font-size: 14px; color: #fff; }
+    .card .tier { color: #8d98a5; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+    .card p { margin: 6px 0 0; }
+    .card .state { margin-top: 8px; font-weight: 600; }
+    .card .state.learned { color: #f0e04c; }
+    .card .state.open { color: #e6edf3; }
+    .card .state.locked { color: #6c7682; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="monitoring.html">Monitoring</a>
+    <a href="layered.html">Layered flow</a>
+    <a href="radial.html">Radial</a>
+    <a href="ownership.html">Ownership</a>
+    <a href="knowledge.html">Knowledge</a>
+    <a href="skilltree.html" class="active">Skill tree</a>
+    <a href="api.html">API playground</a>
+</nav>
+
+<div class="options">
+    <h2>Options</h2>
+    <div class="body">
+        <label><input type="checkbox" id="names"> Show node names</label>
+        <input type="search" id="search" placeholder="Search skills…" autocomplete="off">
+        <div class="row"><button id="find">Search</button><button id="reset">Reset</button></div>
+        <div class="found" id="found"></div>
+    </div>
+</div>
+
+<div class="points" id="points"><span id="points-value">0</span><span><small>points left</small><small>click to learn</small></span></div>
+<div class="card" id="card"></div>
+
+<div id="graph" class="graph-stage"></div>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+    // An invented skill tree for a made-up lighthouse-keeper class with three
+    // callings — Tidecaller, Forgeborn and Stormherald. Everything is plain
+    // NGraph: fixed positions (layoutMode 'static'), circle nodes with
+    // hand-drawn icon functions, a styleNode/styleEdge pair that reads the
+    // page's learned set (gold glow = learned, bright = learnable, dim =
+    // locked), an 'under' overlay for the fog and the calling banners, and
+    // highlight() for the search. Click a bright node to learn it; click a
+    // learned one to give the point back (only if nothing else hangs on it).
+
+    const POINTS = 24;
+
+    // ---- icons (drawn around 0,0 in a box of `s`) -----------------------------------------------------
+    const icon = {
+        blade(ctx, s) {
+            for (const d of [-0.12, 0.12]) {
+                ctx.beginPath();
+                ctx.moveTo(-s * 0.28 + d * s, s * 0.28 + d * s);
+                ctx.lineTo(s * 0.28 + d * s, -s * 0.28 + d * s);
+                ctx.stroke();
+            }
+        },
+        clock(ctx, s) {
+            ctx.beginPath(); ctx.arc(0, 0, s * 0.3, 0, Math.PI * 2); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, -s * 0.18); ctx.lineTo(0, 0); ctx.lineTo(s * 0.13, s * 0.08); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(-s * 0.08, -s * 0.38); ctx.lineTo(s * 0.08, -s * 0.38); ctx.stroke();
+        },
+        shield(ctx, s) {
+            ctx.beginPath();
+            ctx.moveTo(0, -s * 0.36);
+            ctx.lineTo(s * 0.28, -s * 0.24);
+            ctx.quadraticCurveTo(s * 0.26, s * 0.18, 0, s * 0.36);
+            ctx.quadraticCurveTo(-s * 0.26, s * 0.18, -s * 0.28, -s * 0.24);
+            ctx.closePath(); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, -s * 0.22); ctx.lineTo(0, s * 0.2); ctx.stroke();
+        },
+        pulse(ctx, s) {
+            ctx.beginPath();
+            ctx.moveTo(-s * 0.38, 0); ctx.lineTo(-s * 0.16, 0); ctx.lineTo(-s * 0.08, -s * 0.24);
+            ctx.lineTo(s * 0.04, s * 0.26); ctx.lineTo(s * 0.12, -s * 0.1); ctx.lineTo(s * 0.18, 0); ctx.lineTo(s * 0.38, 0);
+            ctx.stroke();
+        },
+        swirl(ctx, s) {
+            ctx.beginPath();
+            for (let a = 0; a < Math.PI * 4.2; a += 0.15) {
+                const r = s * 0.04 + a * s * 0.025;
+                const x = Math.cos(a) * r, y = Math.sin(a) * r;
+                a === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        },
+        spark(ctx, s) {
+            ctx.beginPath();
+            for (let i = 0; i < 8; i++) {
+                const a = i * Math.PI / 4, r = i % 2 === 0 ? s * 0.36 : s * 0.12;
+                const x = Math.cos(a) * r, y = Math.sin(a) * r;
+                i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            }
+            ctx.closePath(); ctx.fill();
+        },
+        rise(ctx, s) {
+            for (const y of [s * 0.12, -s * 0.12]) {
+                ctx.beginPath(); ctx.moveTo(-s * 0.24, y + s * 0.12); ctx.lineTo(0, y - s * 0.1); ctx.lineTo(s * 0.24, y + s * 0.12); ctx.stroke();
+            }
+        },
+        eye(ctx, s) {
+            ctx.beginPath();
+            ctx.moveTo(-s * 0.36, 0);
+            ctx.quadraticCurveTo(0, -s * 0.3, s * 0.36, 0);
+            ctx.quadraticCurveTo(0, s * 0.3, -s * 0.36, 0);
+            ctx.stroke();
+            ctx.beginPath(); ctx.arc(0, 0, s * 0.09, 0, Math.PI * 2); ctx.fill();
+        },
+        wave(ctx, s) {
+            for (const dy of [-s * 0.12, s * 0.12]) {
+                ctx.beginPath();
+                ctx.moveTo(-s * 0.36, dy);
+                ctx.bezierCurveTo(-s * 0.18, dy - s * 0.18, -s * 0.06, dy + s * 0.18, s * 0.08, dy);
+                ctx.bezierCurveTo(s * 0.18, dy - s * 0.14, s * 0.28, dy - s * 0.04, s * 0.36, dy);
+                ctx.stroke();
+            }
+        },
+        flame(ctx, s) {
+            ctx.beginPath();
+            ctx.moveTo(0, s * 0.36);
+            ctx.bezierCurveTo(-s * 0.34, s * 0.3, -s * 0.26, -s * 0.06, -s * 0.06, -s * 0.36);
+            ctx.bezierCurveTo(-s * 0.02, -s * 0.12, s * 0.12, -s * 0.12, s * 0.12, -s * 0.24);
+            ctx.bezierCurveTo(s * 0.34, -s * 0.02, s * 0.3, s * 0.3, 0, s * 0.36);
+            ctx.closePath(); ctx.stroke();
+        },
+        bolt(ctx, s) {
+            ctx.beginPath();
+            ctx.moveTo(s * 0.08, -s * 0.38); ctx.lineTo(-s * 0.2, s * 0.04); ctx.lineTo(0, s * 0.04);
+            ctx.lineTo(-s * 0.08, s * 0.38); ctx.lineTo(s * 0.22, -s * 0.06); ctx.lineTo(s * 0.02, -s * 0.06);
+            ctx.closePath(); ctx.fill();
+        },
+        /** The keeper's lighthouse: the root. */
+        lamp(ctx, s) {
+            ctx.beginPath();
+            ctx.moveTo(-s * 0.15, s * 0.38); ctx.lineTo(-s * 0.08, -s * 0.1); ctx.lineTo(s * 0.08, -s * 0.1); ctx.lineTo(s * 0.15, s * 0.38);
+            ctx.closePath(); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(-s * 0.12, s * 0.16); ctx.lineTo(s * 0.12, s * 0.16); ctx.stroke();
+            ctx.fillRect(-s * 0.07, -s * 0.22, s * 0.14, s * 0.1);
+            ctx.beginPath(); ctx.moveTo(-s * 0.1, -s * 0.22); ctx.lineTo(0, -s * 0.32); ctx.lineTo(s * 0.1, -s * 0.22); ctx.closePath(); ctx.fill();
+            ctx.save();
+            ctx.globalAlpha *= 0.7;
+            for (const d of [-1, 1]) {
+                ctx.beginPath();
+                ctx.moveTo(d * s * 0.08, -s * 0.17);
+                ctx.lineTo(d * s * 0.42, -s * 0.28);
+                ctx.lineTo(d * s * 0.42, -s * 0.06);
+                ctx.closePath(); ctx.fill();
+            }
+            ctx.restore();
+        }
+    };
+
+    // ---- the tree ---------------------------------------------------------------------------------------
+    const callings = [
+        {id: 'tide', name: 'Tidecaller', y: -300, color: '#4fb3d9', glyph: 'wave', side: -1,
+            words: ['Undertow', 'Brine', 'Ebb', 'Riptide', 'Salt', 'Current', 'Deepwater', 'Spray', 'Shoal', 'Mooring', 'Fathom', 'Swell'],
+            notables: ['Drowned Bell', 'Kelp Shroud'], keystone: 'Slack Water', cap: 'Call of the Tide',
+            capText: 'Every third hit raises a wave that knocks enemies back and heals you for 8% of the damage.'},
+        {id: 'ember', name: 'Forgeborn', y: 0, color: '#e8873a', glyph: 'flame', side: 0,
+            words: ['Cinder', 'Anvil', 'Bellows', 'Slag', 'Quench', 'Ember', 'Hearth', 'Temper', 'Kiln', 'Tongs', 'Ashfall', 'Clinker'],
+            notables: ['Molten Core', 'Ironskin'], keystone: null, cap: 'Heart of the Forge',
+            capText: 'Your attacks leave burning slag. Standing in your own slag doubles armour.'},
+        {id: 'storm', name: 'Stormherald', y: 300, color: '#a98bf0', glyph: 'bolt', side: 1,
+            words: ['Static', 'Gale', 'Thunderhead', 'Squall', 'Arc', 'Downdraft', 'Crackle', 'Overcast', 'Charge', 'Updraft', 'Sleet', 'Ozone'],
+            notables: ['Eye of the Storm', 'Lightning Rod'], keystone: 'Pressure Front', cap: 'Herald of Thunder',
+            capText: 'Dashing through an enemy chains lightning to four more. Each chain shortens your dash cooldown.'}
+    ];
+    const minorKinds = [
+        {icon: 'blade', stat: '+4% weapon damage'},
+        {icon: 'clock', stat: '−5% skill cooldown'},
+        {icon: 'shield', stat: '+6% armour'},
+        {icon: 'pulse', stat: '+5% health'},
+        {icon: 'swirl', stat: '+8% status duration'},
+        {icon: 'spark', stat: '+3% critical chance'},
+        {icon: 'rise', stat: '+4% movement speed'},
+        {icon: 'eye', stat: '+10% accuracy'}
+    ];
+
+    const nodes = new Map();   // id → {id, name, tier, icon, calling, text, x, y, size}
+    const edges = [];
+    const link = (a, b) => edges.push({id: `${a}~${b}`, source: a, target: b, animated: false});
+    const add = (n) => { nodes.set(n.id, n); return n.id; };
+
+    add({id: 'root', name: 'Keeper of the Lamp', tier: 'Origin', icon: 'lamp', calling: null, x: -150, y: 0, size: 40,
+        text: 'Where every keeper starts. Already learned.'});
+
+    let minorCount = 0;
+    for (const c of callings) {
+        const word = (i) => c.words[i % c.words.length];
+        const minor = (id, x, y) => {
+            const k = minorKinds[(minorCount * 5 + 3) % minorKinds.length];
+            minorCount++;
+            return add({id, name: `${word(minorCount)} ${k.icon === 'blade' ? 'Edge' : k.icon === 'clock' ? 'Rhythm' : k.icon === 'shield' ? 'Plating'
+                : k.icon === 'pulse' ? 'Vigour' : k.icon === 'swirl' ? 'Spiral' : k.icon === 'spark' ? 'Flare' : k.icon === 'rise' ? 'Stride' : 'Sight'}`,
+                tier: 'Minor', icon: k.icon, calling: c.id, text: k.stat, x, y, size: 13});
+        };
+        const hubs = [];
+
+        // The way out of the lamp: straight for the middle calling, a short diagonal for the others.
+        let prev = 'root';
+        if (c.side !== 0) {
+            prev = add({id: `${c.id}-a1`, name: `${word(3)} Path`, tier: 'Path', icon: c.glyph, calling: c.id,
+                x: -80, y: c.side * 120, size: 14, text: `Opens the way to the ${c.name}. +2% ${c.name} damage.`});
+            link('root', prev);
+            const a2 = add({id: `${c.id}-a2`, name: `${word(5)} Steps`, tier: 'Path', icon: 'rise', calling: c.id,
+                x: -30, y: c.side * 220, size: 13, text: '+4% movement speed'});
+            link(prev, a2);
+            prev = a2;
+        }
+
+        for (let i = 0; i < 6; i++) {
+            const x = 40 + i * 165;
+            const hub = add({id: `${c.id}-h${i}`, name: `${word(i * 2)} ${['Rite', 'Oath', 'Vigil', 'Psalm', 'Creed', 'Rune'][i]}`,
+                tier: 'Hub', icon: c.glyph, calling: c.id, x, y: c.y, size: 16,
+                text: `+${3 + i}% ${c.name} damage. Opens both branches ahead.`});
+            if (i === 0) {
+                link(prev, hub);
+            } else {
+                // A diamond: the previous hub splits into two minors that meet again here.
+                const mx = x - 82, up = minor(`${c.id}-u${i}`, mx, c.y - 46), down = minor(`${c.id}-d${i}`, mx, c.y + 46);
+                link(hubs[i - 1], up); link(hubs[i - 1], down); link(up, hub); link(down, hub);
+            }
+            hubs.push(hub);
+        }
+
+        // Notables hang off two hubs, away from the middle (the middle calling alternates), each with a leaf.
+        [[1, c.side === 0 ? -1 : c.side], [4, c.side === 0 ? 1 : c.side]].forEach(([h, dir], k) => {
+            const hx = 40 + h * 165;
+            const notable = add({id: `${c.id}-n${k}`, name: c.notables[k], tier: 'Notable', icon: k === 0 ? 'eye' : 'shield',
+                calling: c.id, x: hx, y: c.y + dir * 125, size: 22,
+                text: k === 0 ? `Enemies you mark take 15% more ${c.name} damage for 4 s.` : 'While above 50% health, incoming damage is reduced by 12%.'});
+            link(hubs[h], notable);
+            const leaf = add({id: `${c.id}-l${k}`, name: `${word(k + 7)} Echo`, tier: 'Minor', icon: k === 0 ? 'spark' : 'pulse',
+                calling: c.id, x: hx + 70, y: c.y + dir * 125, size: 13, text: k === 0 ? '+3% critical chance' : '+5% health'});
+            link(notable, leaf);
+        });
+
+        // The last diamond leads into the capstone inside the calling's banner.
+        const capX = 40 + 5 * 165 + 230;
+        const up = minor(`${c.id}-cu`, capX - 115, c.y - 46), down = minor(`${c.id}-cd`, capX - 115, c.y + 46);
+        const cap = add({id: `${c.id}-cap`, name: c.cap, tier: `${c.name} capstone`, icon: c.glyph, calling: c.id,
+            x: capX, y: c.y, size: 28, text: c.capText});
+        link(hubs[5], up); link(hubs[5], down); link(up, cap); link(down, cap);
+        c.hubs = hubs;
+        c.capX = capX;
+    }
+
+    // Keystones bridge two callings (learnable from either side).
+    for (const [a, b, h, name, text] of [
+        ['tide', 'ember', 3, 'Slack Water', 'Skills of one calling refund 20% of the cooldown of the other.'],
+        ['ember', 'storm', 2, 'Pressure Front', 'Burning enemies conduct lightning: chains jump twice as far.']
+    ]) {
+        const ca = callings.find((c) => c.id === a), cb = callings.find((c) => c.id === b);
+        const id = add({id: `key-${a}-${b}`, name, tier: 'Keystone', icon: 'swirl', calling: null,
+            x: 40 + h * 165 + 82, y: (ca.y + cb.y) / 2, size: 18, text});
+        link(ca.hubs[h], id);
+        link(id, cb.hubs[h + 1]);
+    }
+
+    // ---- state ------------------------------------------------------------------------------------------
+    const learned = new Set(['root']);
+    const adjacency = new Map([...nodes.keys()].map((id) => [id, new Set()]));
+    for (const e of edges) {
+        adjacency.get(e.source).add(e.target);
+        adjacency.get(e.target).add(e.source);
+    }
+
+    const learnable = (id) => !learned.has(id) && [...adjacency.get(id)].some((n) => learned.has(n));
+    const pointsLeft = () => POINTS - (learned.size - 1);
+
+    /** Can `id` be unlearned without cutting anything else off from the lamp? */
+    function removable(id) {
+        if (id === 'root' || !learned.has(id)) {
+            return false;
+        }
+        const seen = new Set(['root']);
+        const queue = ['root'];
+        while (queue.length > 0) {
+            for (const n of adjacency.get(queue.pop())) {
+                if (n !== id && learned.has(n) && !seen.has(n)) {
+                    seen.add(n);
+                    queue.push(n);
+                }
+            }
+        }
+        return seen.size === learned.size - 1;
+    }
+
+    // ---- look -------------------------------------------------------------------------------------------
+    const GOLD = '#e9dc4c';
+    const callingColor = (n) => callings.find((c) => c.id === n.calling)?.color ?? '#c9d1da';
+
+    function styleNode(node) {
+        const n = nodes.get(node.id);
+        const on = learned.has(node.id);
+        const open = learnable(node.id) && pointsLeft() > 0;
+        const big = n.size >= 18;
+
+        if (node.id === 'root') {
+            return {
+                shape: 'circle', radius: n.size, fill: '#123a63', color: GOLD, iconColor: GOLD,
+                icon: icon.lamp, glow: 18, ring: {color: GOLD, width: 3, gap: 4}, labelColor: '#fff'
+            };
+        }
+
+        return {
+            shape: 'circle',
+            radius: n.size,
+            fill: on ? '#34331a' : big ? '#242a31' : '#191d23',
+            color: on ? GOLD : open ? '#e3e8ee' : '#59616b',
+            iconColor: on ? '#fff7b0' : open ? '#ffffff' : '#7d8692',
+            icon: icon[n.icon],
+            glow: on ? (big ? 16 : 11) : open ? 6 : 0,
+            ring: n.tier.endsWith('capstone') ? {color: on ? GOLD : callingColor(n), width: 2, gap: 3, opacity: on ? 1 : 0.6} : null,
+            labelColor: on ? '#fff4a8' : '#c9d1da',
+            labelSize: big ? 12 : 10.5
+        };
+    }
+
+    function styleEdge(edge) {
+        const a = learned.has(edge.source.id), b = learned.has(edge.target.id);
+        if (a && b) {
+            return {color: GOLD, width: 2.6, glow: 6};
+        }
+        return {color: a || b ? '#9aa3ad' : '#4a525c', width: a || b ? 1.8 : 1.4};
+    }
+
+    // ---- graph ------------------------------------------------------------------------------------------
+    const graph = new JSNGraph.NGraph(document.getElementById('graph'), {
+        layoutMode: 'static',
+        theme: {...JSNGraph.Theme.dark, background: '#0b0d11', gridDot: '#0b0d11', nodeHoverStroke: '#ffffff', nodeLabel: '#c9d1da',
+            highlightStroke: '#ffffff', dimOpacity: 0.25},
+        grid: false,
+        panZoom: true,
+        minZoom: 0.35,
+        maxZoom: 2.5,
+        draggable: false,
+        detailPanel: false,
+        tooltip: false,
+        edgeTooltip: false,
+        showLabels: false,
+        labelPosition: 'below',
+        labelMinZoom: 0,
+        styleNode,
+        styleEdge
+    });
+
+    graph.setData(
+        [...nodes.values()].map((n) => ({id: n.id, label: n.name, x: n.x, y: n.y, size: n.size, fixed: true})),
+        edges
+    );
+
+    // Fog and the calling banners, drawn in world space under the edges.
+    const fog = Array.from({length: 14}, (_, i) => ({
+        x: -200 + ((i * 397) % 1500), y: -420 + ((i * 263) % 840), r: 160 + (i * 53) % 180
+    }));
+    graph.addOverlay({layer: 'under', draw(ctx) {
+        for (const f of fog) {
+            const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r);
+            g.addColorStop(0, 'rgba(120, 132, 150, 0.07)');
+            g.addColorStop(1, 'rgba(120, 132, 150, 0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(f.x - f.r, f.y - f.r, f.r * 2, f.r * 2);
+        }
+
+        for (const c of callings) {
+            const x0 = c.capX - 170, x1 = c.capX + 330, y0 = c.y - 118, y1 = c.y + 118;
+            const g = ctx.createLinearGradient(x0, 0, x1, 0);
+            g.addColorStop(0, c.color + '00');
+            g.addColorStop(0.45, c.color + '1a');
+            g.addColorStop(1, c.color + '3a');
+            ctx.fillStyle = g;
+            ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+            // Thin edges that fade in from the left like the fill.
+            const edge = ctx.createLinearGradient(x0, 0, x1, 0);
+            edge.addColorStop(0, c.color + '00');
+            edge.addColorStop(1, c.color + '66');
+            ctx.fillStyle = edge;
+            ctx.fillRect(x0, y0, x1 - x0, 1.5);
+            ctx.fillRect(x0, y1 - 1.5, x1 - x0, 1.5);
+
+            // The calling's sigil, large and faint, right of the capstone.
+            ctx.save();
+            ctx.translate(c.capX + 200, c.y - 6);
+            ctx.globalAlpha = 0.22;
+            ctx.strokeStyle = c.color;
+            ctx.fillStyle = c.color;
+            ctx.lineWidth = 7;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            icon[c.glyph](ctx, 190);
+            ctx.restore();
+
+            ctx.font = '600 22px system-ui, sans-serif';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'alphabetic';
+            ctx.fillStyle = 'rgba(230, 236, 243, 0.85)';
+            ctx.fillText(c.name, x1 - 16, y1 - 16);
+        }
+    }});
+
+    // ---- interaction ------------------------------------------------------------------------------------
+    const card = document.getElementById('card');
+    const pointsEl = document.getElementById('points');
+
+    function refresh() {
+        document.getElementById('points-value').textContent = String(pointsLeft());
+        pointsEl.classList.toggle('empty', pointsLeft() === 0);
+        graph.repaint();
+    }
+
+    function showCard(id) {
+        const n = id === null ? undefined : nodes.get(id);
+        if (n === undefined) {
+            card.classList.remove('show');
+            return;
+        }
+        const state = learned.has(id)
+            ? ['learned', id === 'root' ? 'Learned' : removable(id) ? 'Learned — click to unlearn' : 'Learned — other skills depend on it']
+            : learnable(id)
+                ? pointsLeft() > 0 ? ['open', 'Click to learn (1 point)'] : ['locked', 'No points left']
+                : ['locked', 'Locked — learn a neighbouring skill first'];
+        const esc = (s) => s.replace(/[&<>]/g, (ch) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'})[ch]);
+        card.innerHTML = `<div class="tier">${esc(n.tier)}</div><h3>${esc(n.name)}</h3><p>${esc(n.text)}</p>`
+            + `<div class="state ${state[0]}">${esc(state[1])}</div>`;
+        card.classList.add('show');
+    }
+
+    let hovered = null;
+    graph.on('nodeHover', (node) => {
+        hovered = node?.id ?? null;
+        showCard(hovered);
+    });
+
+    graph.on('nodeClick', (node) => {
+        if (node === null) {
+            return;
+        }
+        const id = node.id;
+        if (learned.has(id)) {
+            if (removable(id)) {
+                learned.delete(id);
+            } else if (id !== 'root') {
+                graph.pulse([id], '#ff6b5a', {durationMs: 700});
+            }
+        } else if (learnable(id) && pointsLeft() > 0) {
+            learned.add(id);
+            graph.pulse([id], GOLD, {durationMs: 900});
+        } else {
+            graph.pulse([id], '#8d98a5', {durationMs: 600});
+        }
+        refresh();
+        showCard(hovered);
+    });
+
+    document.getElementById('names').addEventListener('change', (e) => graph.setShowLabels(e.target.checked));
+
+    function search() {
+        const q = document.getElementById('search').value.trim().toLowerCase();
+        const found = document.getElementById('found');
+        if (q === '') {
+            graph.clearHighlight();
+            found.textContent = '';
+            return;
+        }
+        const ids = [...nodes.values()]
+            .filter((n) => n.name.toLowerCase().includes(q) || n.text.toLowerCase().includes(q) || n.tier.toLowerCase().includes(q))
+            .map((n) => n.id);
+        found.textContent = ids.length === 0 ? 'Nothing found' : `${ids.length} found`;
+        if (ids.length === 0) {
+            graph.clearHighlight();
+            return;
+        }
+        graph.highlight(ids);
+        graph.pulse(ids, '#ffffff', {durationMs: 1000});
+    }
+    document.getElementById('find').addEventListener('click', search);
+    document.getElementById('search').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            search();
+        } else if (e.key === 'Escape') {
+            e.target.value = '';
+            search();
+        }
+    });
+
+    document.getElementById('reset').addEventListener('click', () => {
+        learned.clear();
+        learned.add('root');
+        document.getElementById('search').value = '';
+        search();
+        refresh();
+        graph.fit({padding: 40});
+    });
+
+    // A few skills learned up front so the gold path shows right away (?fresh starts empty).
+    if (!new URLSearchParams(location.search).has('fresh')) {
+        for (const id of ['tide-a1', 'tide-a2', 'tide-h0', 'tide-u1', 'tide-h1', 'tide-n0', 'tide-d2', 'tide-h2', 'ember-h0']) {
+            learned.add(id);
+        }
+    }
+    refresh();
+    requestAnimationFrame(() => graph.fit({padding: 40}));
+
+    window.tree = {graph, nodes, learned};
+</script>
+</body>
+</html>
