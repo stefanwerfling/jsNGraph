@@ -153,6 +153,7 @@
             <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -8 5.1" result="mask"/>
             <feComposite in="SourceGraphic" in2="mask" operator="in"/>
         </filter>
+        <clipPath id="badge-clip"><rect x="7" y="7" width="86" height="86" rx="7"/></clipPath>
         <filter id="speck" x="0" y="0" width="100%" height="100%">
             <feTurbulence type="fractalNoise" baseFrequency="2.2" numOctaves="1" seed="3" result="n"/>
             <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.94  0 0 0 0 0.92  0 0 0 0 0.88  0 0 0 9 -6.3"/>
@@ -287,9 +288,8 @@
         return d;
     })();
     const badge = (motif) => `<svg viewBox="0 0 100 100" aria-hidden="true">
-        <clipPath id="clip-${motif}"><rect x="7" y="7" width="86" height="86" rx="7"/></clipPath>
         <g filter="url(#wear)"><rect x="7" y="7" width="86" height="86" rx="7" fill="${INK}"/>
-            <path d="${rays}" fill="${CREAM}" opacity=".09" clip-path="url(#clip-${motif})"/>
+            <path d="${rays}" fill="${CREAM}" opacity=".09" clip-path="url(#badge-clip)"/>
             ${MOTIFS[motif] ?? MOTIFS.hidden}
             <rect x="7" y="7" width="86" height="86" rx="7" fill="none" stroke="${CREAM}" stroke-width="3.5"/></g>
         <rect x="7" y="7" width="86" height="86" rx="7" filter="url(#speck)" opacity=".18"/></svg>`;
@@ -383,7 +383,9 @@
     }
     const closeness = (a) => isDone(a) ? -1 : a.max ? a.progress / a.max : 0;
 
-    function renderList() {
+    // `fresh`: right after a session — the just-unlocked cards flash once, never on later rebuilds.
+    function renderList(fresh = false) {
+        if (!fresh) justUnlocked.clear();
         const keep = {
             all: () => true,
             unlocked: isDone,
@@ -417,14 +419,21 @@
     $('list').addEventListener('click', (e) => {
         const el = e.target.closest('.ach');
         if (!el) return;
+        const id = el.dataset.id;
         if (e.target.closest('[data-reveal]')) {
-            revealed.add(el.dataset.id);
-        } else {
-            openId = openId === el.dataset.id ? null : el.dataset.id;
+            // swap just this card (no list rebuild, no fade-in for the others)
+            revealed.add(id);
+            const fresh = card(A.find((a) => a.id === id));
+            fresh.style.animation = 'none';
+            el.replaceWith(fresh);
+            fresh.focus({preventScroll: true});
+            return;
         }
-        justUnlocked.clear();
-        renderList();
-        $('list').querySelector(`[data-id="${el.dataset.id}"]`)?.focus({preventScroll: true});
+        const was = openId;
+        openId = openId === id ? null : id;
+        $('list').querySelector(`[data-id="${was}"]`)?.classList.remove('open');
+        if (openId) el.classList.add('open');
+        el.classList.remove('just');
     });
     $('list').addEventListener('keydown', (e) => {
         if ((e.key === 'Enter' || e.key === ' ') && e.target.classList?.contains('ach')) { e.preventDefault(); e.target.click(); }
@@ -452,6 +461,7 @@
     donut.on('segmentClick', ({slice}) => {
         filter = 'unlocked';
         sort = 'game';
+        $('sort').value = 'game';
         document.querySelectorAll('#controls .chip').forEach((x) => x.classList.toggle('on', x.dataset.filter === 'unlocked'));
         renderList();
         log(`${slice.label}: ${A.filter((a) => a.cat === slice.label && isDone(a)).map((a) => a.title).join(', ') || 'none yet'}`);
@@ -544,7 +554,7 @@
             }
         }
         log(`${fmtDay(when)}: ${news.length ? `unlocked ${news.map((a) => a.title).join(', ')}` : 'no unlock'}${notes.length ? ' · ' + notes.join(' · ') : ''}`);
-        renderList();
+        renderList(true);
         renderStats();
     };
 

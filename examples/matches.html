@@ -328,13 +328,17 @@
             name: `${pick(['Ember', 'Iron', 'Storm', 'Hollow', 'Gilded', 'Quiet'])} ${pick(['Edge', 'Ward', 'Lens', 'Charm', 'Coil', 'Heart'])}`} : null);
         const place = win ? ri(1, 9) : ri(3, 12);
         const badge = win ? BADGES[place <= 2 ? 0 : place <= 6 ? ri(1, 2) : 3] : BADGES[place <= 3 ? 0 : 4];
-        // net worth lead of the own team every minute; the winner ends ahead
+        // net worth lead of the own team every minute (random walk, bent below so the winner ends ahead)
         let lead = 0;
         const leadCurve = [];
         for (let m = 0; m <= Math.floor(minutes); m++) {
             lead += (rand() - 0.5) * 3200 + (win ? 1 : -1) * 260 * (m / minutes);
-            leadCurve.push(Math.round(lead));
+            leadCurve.push(lead);
         }
+        // bend the walk so it ends where the result says: ahead after a win, behind after a loss
+        const target = (win ? 1 : -1) * (1500 + rand() * 7000);
+        const off = target - leadCurve[leadCurve.length - 1];
+        for (let j = 0; j < leadCurve.length; j++) leadCurve[j] = Math.round(leadCurve[j] + off * (j / (leadCurve.length - 1)) ** 2);
         const dmg = (team, mine) => team.map((_, j) => Math.round((mine && j === 0 ? 1.3 : 1) * (14000 + rand() * 26000) * minutes / 30));
         const delta = mode === 'Normal' ? (win ? ri(14, 26) : -ri(12, 24)) : 0;
         rating -= delta;   // walking back in time
@@ -360,14 +364,18 @@
         const d = Math.round(h / 24);
         return `${d} day${d > 1 ? 's' : ''} ago`;
     };
-    const mmss = (min) => `${Math.floor(min)}:${String(Math.round((min % 1) * 60)).padStart(2, '0')}`;
+    const mmss = (min) => {
+        const sec = Math.round(min * 60);   // round once, then split: never "27:60"
+        return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+    };
+    const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const ordinal = (n) => `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}`;
 
     // ------------------------------------------------------------------ state
     const state = {heroMode: 'Normal', hero: null, player: null, day: null, shown: 10};
     const filtered = () => matches.filter((m) => (!state.hero || m.hero === state.hero)
         && (!state.player || m.teamA.includes(state.player) || m.teamB.includes(state.player))
-        && (!state.day || new Date(m.at).toDateString() === state.day));
+        && (!state.day || dayKey(new Date(m.at)) === state.day));
 
     // ------------------------------------------------------------------ rank card
     function renderRank() {
@@ -420,6 +428,7 @@
         const b = e.target.closest('[data-hero]');
         if (!b) return;
         state.hero = state.hero === b.dataset.hero ? null : b.dataset.hero;
+        state.day = null;   // a day and a hero/team-mate filter replace each other
         state.shown = 10;
         renderAll();
     };
@@ -460,7 +469,7 @@
                 const wr = s.w / s.n;
                 const col = wr >= 0.6 ? '#3ecf6e' : wr >= 0.4 ? '#d9a23c' : '#e0563a';
                 const size = 0.45 + Math.min(1, s.n / 5) * 0.55;
-                html += `<div class="cell${state.day === d.toDateString() ? ' sel' : ''}" data-n="${s.n}" data-day="${d.toDateString()}"
+                html += `<div class="cell${state.day === dayKey(d) ? ' sel' : ''}" data-n="${s.n}" data-day="${dayKey(d)}"
                     title="${d.toLocaleDateString('en-GB', {weekday: 'short', day: 'numeric', month: 'short'})}: ${s.n} games, ${s.w}W ${s.n - s.w}L"
                     style="background:linear-gradient(${col},${col}) center/${size * 100}% ${size * 100}% no-repeat #22242a"></div>`;
             }
@@ -523,7 +532,8 @@
         const chips = [
             state.hero ? `<button class="chip" data-clear="hero">${H[state.hero].name} ✕</button>` : '',
             state.player ? `<button class="chip" data-clear="player">with ${esc(state.player)} ✕</button>` : '',
-            state.day ? `<button class="chip" data-clear="day">${new Date(state.day).toLocaleDateString('en-GB', {day: 'numeric', month: 'short'})} ✕</button>` : ''
+            state.day ? `<button class="chip" data-clear="day">${new Date(...state.day.split('-').map((v, i) => Number(v) - (i === 1 ? 1 : 0)))
+                .toLocaleDateString('en-GB', {day: 'numeric', month: 'short'})} ✕</button>` : ''
         ].join('');
         $('head').innerHTML = `<div class="blk" style="display:flex;gap:10px;align-items:center"><span id="ring-slot"></span>
                 <div><b class="num">${list.length ? Math.round(w / list.length * 100) : 0}% WR</b><small>${list.length} games</small></div></div>
@@ -543,11 +553,13 @@
         const c = e.target.closest('[data-clear]');
         if (!c) return;
         state[c.dataset.clear] = null;
+        state.shown = 10;
         renderAll();
     };
 
     // ------------------------------------------------------------------ match list
     const charts = new Map();   // match id → its two detail charts while expanded
+    const expanded = new Set(); // ids the user unfolded; kept across list rebuilds
     function matchEl(m) {
         const el = document.createElement('article');
         el.className = `m ${m.win ? 'win' : 'loss'}`;
@@ -574,6 +586,7 @@
     }
     function expand(el, m, on) {
         el.classList.toggle('expanded', on);
+        if (on) expanded.add(m.id); else expanded.delete(m.id);
         if (!on) {
             charts.get(m.id)?.forEach((c) => c.destroy());
             charts.delete(m.id);
@@ -589,14 +602,13 @@
             {name: 'net worth lead', y: m.leadCurve, color: `rgb(${col})`, width: 2, fill: [`rgba(${col},0.3)`, `rgba(${col},0)`],
                 highlight: m.leadCurve.length - 1}
         ]);
-        const dmg = new J.BarChart(el.querySelector('.dmg'), {theme: chartTheme, categories: ['1', '2', '3', '4', '5', '6'],
-            series: [{name: 'Your team', values: m.dmgA, color: '#3ecf6e'}, {name: 'Enemy', values: m.dmgB, color: '#e8456b'}],
+        // one bar per player (stacked with zeros, so each bar has its team's colour); the chart's own
+        // tooltip then reads "player (hero) · team: value"
+        const zeros = [0, 0, 0, 0, 0, 0];
+        const dmg = new J.BarChart(el.querySelector('.dmg'), {theme: chartTheme, mode: 'stacked',
+            categories: [...m.teamA.map((p, i) => `${p} (${H[m.heroesA[i]].name})`), ...m.teamB.map((p, i) => `${p} (${H[m.heroesB[i]].name})`)],
+            series: [{name: 'Your team', values: [...m.dmgA, ...zeros], color: '#3ecf6e'}, {name: 'Enemy', values: [...zeros, ...m.dmgB], color: '#e8456b'}],
             yFormat: (v) => `${Math.round(v / 1000)}k`, format: (v) => v.toLocaleString('en-US')});
-        dmg.on('hover', (h) => {
-            if (!h) return;
-            const team = h.series === 0 ? m.teamA : m.teamB, hero = h.series === 0 ? m.heroesA : m.heroesB;
-            el.querySelector('.dmg').title = `${team[h.category]} (${H[hero[h.category]].name}): ${h.value.toLocaleString('en-US')}`;
-        });
         charts.set(m.id, [lead, dmg]);
     }
     function renderMatches() {
@@ -605,7 +617,10 @@
         const list = filtered();
         const box = $('matches');
         box.replaceChildren();
-        for (const m of list.slice(0, state.shown)) box.appendChild(matchEl(m));
+        for (const m of list.slice(0, state.shown)) {
+            const el = box.appendChild(matchEl(m));
+            if (expanded.has(m.id)) expand(el, m, true);
+        }
         if (list.length === 0) box.innerHTML = '<div class="panel none">No matches for this filter.</div>';
         if (list.length > state.shown) {
             const more = document.createElement('button');
@@ -623,10 +638,11 @@
         if (p) {
             if (p.dataset.player === ME) return;
             state.player = state.player === p.dataset.player ? null : p.dataset.player;
+            state.day = null;
             state.shown = 10;
             return renderAll();
         }
-        if (e.target.closest('.open') || e.target.closest('.row')) expand(el, m, !el.classList.contains('expanded'));
+        if (e.target.closest('.open')) expand(el, m, !el.classList.contains('expanded'));
     });
     function openMatch(id) {
         state.hero = state.player = state.day = null;

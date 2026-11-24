@@ -210,7 +210,8 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   Example: `examples/matches.html` (invented arena game "Ironvale Arena": seeded match history, own rank emblems / hero
   portraits / item icons as SVG strings; RingGauge + MajorityBar header, LineChart rating; a match unfolds into a LineChart
   (net-worth lead, minute `xLabels`) and a grouped BarChart created on open and destroyed on close; filters hero / team-mate /
-  day — a day replaces the others).
+  day — a day and a hero/team-mate filter replace each other; unfolded matches survive list rebuilds; damage bars are one
+  stacked bar per player so the chart's own tooltip names them).
 
 - `netview/` — `NetView` (subpath `jsngraph/netview`): a transformer compressed to fit the browser — one
   column per block, residual stream folded into `bins` (signed max per bin, scaled median→0 / p95→1 so
