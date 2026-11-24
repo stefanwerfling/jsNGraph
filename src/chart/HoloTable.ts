@@ -164,9 +164,6 @@ interface Pick {
     test: (sx: number, sy: number, px: number, py: number) => number;
 }
 
-const FONT = 'system-ui, -apple-system, sans-serif';
-const EMPTY: HoloScene = {width: 1600, height: 1000, panels: [], lines: [], areas: [], bars: [], ridges: [], markers: [], texts: [], cards: []};
-
 /**
  * A dark table seen in perspective with glowing dashboard content on it:
  * panels, road maps and routes (with travelling dots), districts, columns,
@@ -176,6 +173,8 @@ const EMPTY: HoloScene = {width: 1600, height: 1000, panels: [], lines: [], area
  */
 export class HoloTable extends ChartSurface<HoloTableEvents> {
 
+    private static readonly EMPTY: HoloScene = {width: 1600, height: 1000, panels: [], lines: [], areas: [], bars: [], ridges: [], markers: [], texts: [], cards: []};
+
     private scene: HoloScene;
     private cam: HoloCamera;
     private home: HoloCamera | null = null;
@@ -184,7 +183,7 @@ export class HoloTable extends ChartSurface<HoloTableEvents> {
     private readonly table: {top: string; edge: string; trim: string};
     private readonly format: (v: number) => string;
     private readonly interactive: boolean;
-    private paused = false;
+    private pausedState = false;
     private clock = 0;
     private lastNow = -1;
     private barFrom = new Map<string, number>();
@@ -198,7 +197,7 @@ export class HoloTable extends ChartSurface<HoloTableEvents> {
 
     public constructor(container: HTMLElement, options: HoloTableOptions = {}) {
         super(container, options.theme ?? {background: '#05080c', text: '#8fa6b8', title: '#d9f3ff'});
-        this.scene = {...EMPTY, ...options.scene};
+        this.scene = structuredClone({...HoloTable.EMPTY, ...options.scene});
         this.table = {top: '#0a1118', edge: '#16212b', trim: '#1f3b4d', ...options.table};
         this.format = options.format ?? ((v) => String(Math.round(v * 10) / 10));
         this.interactive = options.interactive ?? true;
@@ -212,6 +211,7 @@ export class HoloTable extends ChartSurface<HoloTableEvents> {
         this.root.addEventListener('pointerdown', this.onDown);
         this.root.addEventListener('pointermove', this.onMove);
         this.root.addEventListener('pointerup', this.onUp);
+        this.root.addEventListener('pointercancel', this.onUp);
         this.root.addEventListener('pointerleave', this.onLeave);
         this.root.addEventListener('wheel', this.onWheel, {passive: false});
         this.root.addEventListener('dblclick', this.onDblClick);
@@ -226,12 +226,13 @@ export class HoloTable extends ChartSurface<HoloTableEvents> {
             this.barFrom = new Map(this.scene.bars.map((b) => [b.id, this.barHeight(b, now)]));
             this.barStart = now;
         }
-        this.scene = {...this.scene, ...scene};
+        this.scene = {...this.scene, ...structuredClone(scene)};
         this.redraw();
     }
 
-    public getScene(): Readonly<HoloScene> {
-        return this.scene;
+    /** A copy of the scene. */
+    public getScene(): HoloScene {
+        return structuredClone(this.scene);
     }
 
     public getCamera(): HoloCamera {
@@ -285,14 +286,20 @@ export class HoloTable extends ChartSurface<HoloTableEvents> {
 
     /** Stop the flowing dots, pulses and turbines. */
     public setPaused(paused: boolean): void {
-        this.paused = paused;
+        this.pausedState = paused;
         this.redraw();
+    }
+
+    /** True while the motion is stopped. */
+    public get paused(): boolean {
+        return this.pausedState;
     }
 
     public override destroy(): void {
         this.root.removeEventListener('pointerdown', this.onDown);
         this.root.removeEventListener('pointermove', this.onMove);
         this.root.removeEventListener('pointerup', this.onUp);
+        this.root.removeEventListener('pointercancel', this.onUp);
         this.root.removeEventListener('pointerleave', this.onLeave);
         this.root.removeEventListener('wheel', this.onWheel);
         this.root.removeEventListener('dblclick', this.onDblClick);
@@ -319,7 +326,7 @@ export class HoloTable extends ChartSurface<HoloTableEvents> {
     // ---- drawing ------------------------------------------------------------------------------------------
 
     protected draw(ctx: CanvasRenderingContext2D, now: number): boolean {
-        if (this.lastNow >= 0 && !this.paused) {
+        if (this.lastNow >= 0 && !this.pausedState) {
             this.clock += Math.min(0.1, (now - this.lastNow) / 1000);
         }
         this.lastNow = now;
@@ -401,7 +408,7 @@ export class HoloTable extends ChartSurface<HoloTableEvents> {
 
         this.drawTooltip(ctx);
 
-        const moving = !this.paused && (this.scene.lines.some((l) => (l.flow ?? 0) > 0)
+        const moving = !this.pausedState && (this.scene.lines.some((l) => (l.flow ?? 0) > 0)
             || this.scene.markers.some((m) => m.pulse === true || m.shape === 'turbine'));
         const growing = this.barStart >= 0 && now - this.barStart < 900;
 
@@ -808,7 +815,7 @@ export class HoloTable extends ChartSurface<HoloTableEvents> {
 
         ctx.save();
         ctx.transform(px.x - p0.x, px.y - p0.y, py.x - p0.x, py.y - p0.y, p0.x, p0.y);
-        ctx.font = `${t.weight ?? 500} ${t.size ?? 14}px ${FONT}`;
+        ctx.font = `${t.weight ?? 500} ${t.size ?? 14}px ${ChartSurface.FONT_FAMILY}`;
         ctx.textAlign = t.align ?? 'left';
         ctx.textBaseline = 'alphabetic';
         ctx.fillStyle = t.color ?? this.theme.title;
@@ -821,7 +828,7 @@ export class HoloTable extends ChartSurface<HoloTableEvents> {
         const p = this.P(t.x, t.y, t.z ?? 0);
 
         ctx.save();
-        ctx.font = `${t.weight ?? 600} ${Math.max(9, (t.size ?? 14) * p.k)}px ${FONT}`;
+        ctx.font = `${t.weight ?? 600} ${Math.max(9, (t.size ?? 14) * p.k)}px ${ChartSurface.FONT_FAMILY}`;
         ctx.textAlign = t.align ?? 'center';
         ctx.textBaseline = 'bottom';
         ctx.fillStyle = t.color ?? this.theme.title;
@@ -849,7 +856,7 @@ export class HoloTable extends ChartSurface<HoloTableEvents> {
         }
 
         ctx.save();
-        ctx.font = `12px ${FONT}`;
+        ctx.font = `12px ${ChartSurface.FONT_FAMILY}`;
         const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 18;
         const hh = lines.length * 16 + 10;
         const x = Math.max(4, Math.min(this.width - w - 4, this.pointer.x + 14));
@@ -865,7 +872,7 @@ export class HoloTable extends ChartSurface<HoloTableEvents> {
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
         lines.forEach((l, i) => {
-            ctx.font = i === 0 ? `600 12px ${FONT}` : `12px ${FONT}`;
+            ctx.font = i === 0 ? `600 12px ${ChartSurface.FONT_FAMILY}` : `12px ${ChartSurface.FONT_FAMILY}`;
             ctx.fillStyle = i === 0 ? '#e6f7ff' : '#9fc3d6';
             ctx.fillText(l, x + 9, y + 6 + i * 16);
         });
@@ -983,7 +990,7 @@ export class HoloTable extends ChartSurface<HoloTableEvents> {
             this.root.releasePointerCapture(e.pointerId);
         }
         this.root.style.cursor = this.interactive ? 'grab' : '';
-        if (d !== null && !d.moved) {
+        if (d !== null && !d.moved && e.type === 'pointerup') {
             const hit = this.pick(this.local(e).x, this.local(e).y);
             if (hit !== null) {
                 this.events.emit('click', hit);

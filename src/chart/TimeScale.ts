@@ -8,37 +8,6 @@ export interface TimeStep {
     ms: number;
 }
 
-const MIN = 60_000;
-const HOUR = 60 * MIN;
-const DAY = 24 * HOUR;
-
-const STEPS: TimeStep[] = [
-    {unit: 'minute', count: 1, ms: MIN},
-    {unit: 'minute', count: 5, ms: 5 * MIN},
-    {unit: 'minute', count: 15, ms: 15 * MIN},
-    {unit: 'minute', count: 30, ms: 30 * MIN},
-    {unit: 'hour', count: 1, ms: HOUR},
-    {unit: 'hour', count: 3, ms: 3 * HOUR},
-    {unit: 'hour', count: 6, ms: 6 * HOUR},
-    {unit: 'hour', count: 12, ms: 12 * HOUR},
-    {unit: 'day', count: 1, ms: DAY},
-    {unit: 'day', count: 2, ms: 2 * DAY},
-    {unit: 'day', count: 5, ms: 5 * DAY},
-    {unit: 'day', count: 7, ms: 7 * DAY},
-    {unit: 'day', count: 14, ms: 14 * DAY},
-    {unit: 'month', count: 1, ms: 30.4 * DAY},
-    {unit: 'month', count: 2, ms: 61 * DAY},
-    {unit: 'month', count: 3, ms: 91 * DAY},
-    {unit: 'month', count: 6, ms: 182 * DAY},
-    {unit: 'year', count: 1, ms: 365 * DAY},
-    {unit: 'year', count: 2, ms: 730 * DAY},
-    {unit: 'year', count: 5, ms: 1826 * DAY},
-    {unit: 'year', count: 10, ms: 3652 * DAY},
-    {unit: 'year', count: 25, ms: 9131 * DAY},
-    {unit: 'year', count: 50, ms: 18262 * DAY},
-    {unit: 'year', count: 100, ms: 36524 * DAY}
-];
-
 /**
  * Pure time-axis maths (local time, ms since epoch): a calendar step that
  * gives about `maxTicks` ticks, ticks on round calendar positions (whole
@@ -47,15 +16,42 @@ const STEPS: TimeStep[] = [
  */
 export class TimeScale {
 
-    public static readonly MINUTE = MIN;
-    public static readonly HOUR = HOUR;
-    public static readonly DAY = DAY;
+    public static readonly MINUTE = 60_000;
+    public static readonly HOUR = 60 * TimeScale.MINUTE;
+    public static readonly DAY = 24 * TimeScale.HOUR;
+
+    private static readonly STEPS: ReadonlyArray<TimeStep> = [
+        {unit: 'minute', count: 1, ms: TimeScale.MINUTE},
+        {unit: 'minute', count: 5, ms: 5 * TimeScale.MINUTE},
+        {unit: 'minute', count: 15, ms: 15 * TimeScale.MINUTE},
+        {unit: 'minute', count: 30, ms: 30 * TimeScale.MINUTE},
+        {unit: 'hour', count: 1, ms: TimeScale.HOUR},
+        {unit: 'hour', count: 3, ms: 3 * TimeScale.HOUR},
+        {unit: 'hour', count: 6, ms: 6 * TimeScale.HOUR},
+        {unit: 'hour', count: 12, ms: 12 * TimeScale.HOUR},
+        {unit: 'day', count: 1, ms: TimeScale.DAY},
+        {unit: 'day', count: 2, ms: 2 * TimeScale.DAY},
+        {unit: 'day', count: 5, ms: 5 * TimeScale.DAY},
+        {unit: 'day', count: 7, ms: 7 * TimeScale.DAY},
+        {unit: 'day', count: 14, ms: 14 * TimeScale.DAY},
+        {unit: 'month', count: 1, ms: 30.4 * TimeScale.DAY},
+        {unit: 'month', count: 2, ms: 61 * TimeScale.DAY},
+        {unit: 'month', count: 3, ms: 91 * TimeScale.DAY},
+        {unit: 'month', count: 6, ms: 182 * TimeScale.DAY},
+        {unit: 'year', count: 1, ms: 365 * TimeScale.DAY},
+        {unit: 'year', count: 2, ms: 730 * TimeScale.DAY},
+        {unit: 'year', count: 5, ms: 1826 * TimeScale.DAY},
+        {unit: 'year', count: 10, ms: 3652 * TimeScale.DAY},
+        {unit: 'year', count: 25, ms: 9131 * TimeScale.DAY},
+        {unit: 'year', count: 50, ms: 18262 * TimeScale.DAY},
+        {unit: 'year', count: 100, ms: 36524 * TimeScale.DAY}
+    ];
 
     /** The smallest step that keeps the ticks at or below `maxTicks`. */
     public static step(range: ChartRange, maxTicks = 6): TimeStep {
         const span = Math.max(1, range.max - range.min);
 
-        return STEPS.find((s) => span / s.ms <= maxTicks) ?? STEPS[STEPS.length - 1]!;
+        return TimeScale.STEPS.find((s) => span / s.ms <= maxTicks) ?? TimeScale.STEPS[TimeScale.STEPS.length - 1]!;
     }
 
     /** Tick times inside the range on round positions of the step. */

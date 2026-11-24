@@ -24,8 +24,6 @@ export interface AssociationTally {
     last: number;
 }
 
-const key = (a: string, b: string): string => (a < b ? a + '\u0000' + b : b + '\u0000' + a);
-
 /**
  * Pure part of `AssociationSky`: who was seen with whom. Tallies sightings
  * and co-sightings up to a time, the half-weight association index
@@ -69,7 +67,7 @@ export class AssociationIndex {
             }
             for (let i = 0; i < ids.length; i++) {
                 for (let j = i + 1; j < ids.length; j++) {
-                    const k = key(ids[i]!, ids[j]!);
+                    const k = AssociationIndex.key(ids[i]!, ids[j]!);
                     together.set(k, (together.get(k) ?? 0) + 1);
                 }
             }
@@ -256,6 +254,11 @@ export class AssociationIndex {
         upper.pop();
 
         return lower.concat(upper);
+    }
+
+    /** Order-independent map key of a pair. */
+    private static key(a: string, b: string): string {
+        return a < b ? a + '\u0000' + b : b + '\u0000' + a;
     }
 
 }

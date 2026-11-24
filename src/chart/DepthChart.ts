@@ -1,6 +1,6 @@
 import { Color } from '../util/Color';
 import { ChartRange, ChartRect, ChartScale } from './ChartScale';
-import { CHART_FONT, ChartSurface } from './ChartSurface';
+import { ChartSurface } from './ChartSurface';
 import { ChartThemeTokens } from './ChartTheme';
 import { DepthBook, DepthLayout, DepthLevel, DepthOrder } from './DepthLayout';
 
@@ -73,7 +73,7 @@ export class DepthChart extends ChartSurface<DepthChartEvents> {
         this.askColor = options.askColor ?? '#a4d007';
         this.scale = options.scale ?? 'linear';
         this.step = options.step ?? true;
-        this.window = options.window ?? null;
+        this.window = DepthChart.copyWindow(options.window ?? null);
         this.format = options.format ?? ((p) => p.toFixed(2));
         this.quantityFormat = options.quantityFormat ?? ((q) => Math.round(q).toLocaleString('en-US'));
         this.bidText = options.bidText ?? ((q, p) => `${q} buy orders at ${p} or higher`);
@@ -83,6 +83,7 @@ export class DepthChart extends ChartSurface<DepthChartEvents> {
         this.canvas.addEventListener('pointerdown', this.onDown);
         this.canvas.addEventListener('pointermove', this.onMove);
         this.canvas.addEventListener('pointerup', this.onUp);
+        this.canvas.addEventListener('pointercancel', this.onUp);
         this.canvas.addEventListener('pointerleave', this.onLeave);
         this.canvas.addEventListener('wheel', this.onWheel, {passive: false});
         this.canvas.addEventListener('dblclick', this.onDblClick);
@@ -95,8 +96,11 @@ export class DepthChart extends ChartSurface<DepthChartEvents> {
         this.redraw();
     }
 
+    /** A copy of the merged book. */
     public getBook(): DepthBook {
-        return this.book;
+        const b = this.book;
+
+        return {...b, bids: b.bids.map((l) => ({...l})), asks: b.asks.map((l) => ({...l}))};
     }
 
     public setScale(scale: 'linear' | 'log'): void {
@@ -111,7 +115,7 @@ export class DepthChart extends ChartSurface<DepthChartEvents> {
     }
 
     public setWindow(window: ChartRange | number | null): void {
-        this.window = window;
+        this.window = DepthChart.copyWindow(window);
         this.view = null;
         this.redraw();
     }
@@ -122,15 +126,21 @@ export class DepthChart extends ChartSurface<DepthChartEvents> {
     }
 
     public setRange(range: ChartRange | null): void {
-        this.view = range;
+        this.view = range === null ? null : {...range};
         this.events.emit('rangeChange', this.priceRange());
         this.redraw();
+    }
+
+    /** Back to the whole book (or the window). */
+    public resetView(): void {
+        this.setRange(null);
     }
 
     public override destroy(): void {
         this.canvas.removeEventListener('pointerdown', this.onDown);
         this.canvas.removeEventListener('pointermove', this.onMove);
         this.canvas.removeEventListener('pointerup', this.onUp);
+        this.canvas.removeEventListener('pointercancel', this.onUp);
         this.canvas.removeEventListener('pointerleave', this.onLeave);
         this.canvas.removeEventListener('wheel', this.onWheel);
         this.canvas.removeEventListener('dblclick', this.onDblClick);
@@ -198,7 +208,7 @@ export class DepthChart extends ChartSurface<DepthChartEvents> {
             this.yMax = target;
         }
 
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
 
         const shown = ticks.filter((v) => v <= this.yMax! * 1.0001);
         const left = Math.ceil(Math.max(...shown.map((v) => ctx.measureText(this.quantityFormat(v)).width), 10)) + 14;
@@ -246,7 +256,7 @@ export class DepthChart extends ChartSurface<DepthChartEvents> {
         ctx.restore();
 
         ctx.fillStyle = theme.text;
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
         for (const v of shown) {
@@ -337,7 +347,7 @@ export class DepthChart extends ChartSurface<DepthChartEvents> {
         ctx.stroke();
         ctx.setLineDash([]);
         ctx.fillStyle = this.theme.text;
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         ctx.fillText(text, x, p.y + 6);
@@ -413,7 +423,7 @@ export class DepthChart extends ChartSurface<DepthChartEvents> {
         const pr = this.format(hit.price);
         const text = hit.side === 'bid' ? this.bidText(q, pr) : this.askText(q, pr);
 
-        ctx.font = `600 ${CHART_FONT}`;
+        ctx.font = `600 ${ChartSurface.FONT}`;
 
         const w = ctx.measureText(text).width + 18;
         const tx = px + 12 + w > p.x + p.w ? px - 12 - w : px + 12;
@@ -506,7 +516,11 @@ export class DepthChart extends ChartSurface<DepthChartEvents> {
     };
 
     private readonly onDblClick = (): void => {
-        this.setRange(null);
+        this.resetView();
     };
+
+    private static copyWindow(window: ChartRange | number | null): ChartRange | number | null {
+        return window !== null && typeof window === 'object' ? {...window} : window;
+    }
 
 }

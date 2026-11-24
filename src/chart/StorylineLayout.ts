@@ -109,20 +109,6 @@ interface Group {
     members: string[];
 }
 
-const DEFAULTS: Required<StorylineLayoutOptions> = {
-    columnGap: 110,
-    barWidth: 18,
-    minWidth: 3,
-    maxWidth: 14,
-    laneGap: 1,
-    groupGap: 26,
-    idleGap: 6,
-    eventPad: 6,
-    minEventHeight: 60,
-    sweeps: 10,
-    relax: 24
-};
-
 /**
  * Storyline layout (the "who was where, when" chart): one column per time,
  * every entity a band from its first to its last appearance, packed
@@ -135,10 +121,24 @@ const DEFAULTS: Required<StorylineLayoutOptions> = {
  */
 export class StorylineLayout {
 
+    private static readonly DEFAULTS: Required<StorylineLayoutOptions> = {
+        columnGap: 110,
+        barWidth: 18,
+        minWidth: 3,
+        maxWidth: 14,
+        laneGap: 1,
+        groupGap: 26,
+        idleGap: 6,
+        eventPad: 6,
+        minEventHeight: 60,
+        sweeps: 10,
+        relax: 24
+    };
+
     private readonly o: Required<StorylineLayoutOptions>;
 
     public constructor(options: StorylineLayoutOptions = {}) {
-        this.o = {...DEFAULTS, ...options};
+        this.o = {...StorylineLayout.DEFAULTS, ...options};
     }
 
     public layout(data: StorylineData): StorylineResult {

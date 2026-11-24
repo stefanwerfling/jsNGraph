@@ -3,15 +3,18 @@ import { RenderLoop } from '../view/RenderLoop';
 import { ChartRange, ChartRect, ChartScale } from './ChartScale';
 import { ChartTheme, ChartThemeTokens } from './ChartTheme';
 
-/** Font of axis labels and legends; the page's own font when it sets one on the container. */
-export const CHART_FONT = '11px system-ui, -apple-system, sans-serif';
-
 /**
  * Shared base of the charts: a root element with one canvas, sized to the
  * container (device-pixel sharp), an on-demand render loop and the axis
  * drawing both charts use. Subclasses draw in CSS pixels.
  */
 export abstract class ChartSurface<Events extends Record<string, unknown>> {
+
+    /** Font of axis labels and legends. */
+    public static readonly FONT = '11px system-ui, -apple-system, sans-serif';
+
+    /** Font family of the charts that size their own text. */
+    public static readonly FONT_FAMILY = 'system-ui, -apple-system, sans-serif';
 
     protected readonly root: HTMLDivElement;
     protected readonly canvas: HTMLCanvasElement;
@@ -51,12 +54,18 @@ export abstract class ChartSurface<Events extends Record<string, unknown>> {
         return this.root;
     }
 
-    public on<K extends keyof Events>(event: K, listener: (payload: Events[K]) => void): void {
+    /** Subscribe to an event; chainable. */
+    public on<K extends keyof Events>(event: K, listener: (payload: Events[K]) => void): this {
         this.events.on(event, listener);
+
+        return this;
     }
 
-    public off<K extends keyof Events>(event: K, listener: (payload: Events[K]) => void): void {
+    /** Unsubscribe a listener; chainable. */
+    public off<K extends keyof Events>(event: K, listener: (payload: Events[K]) => void): this {
         this.events.off(event, listener);
+
+        return this;
     }
 
     public setTheme(theme: 'dark' | 'light' | Partial<ChartThemeTokens>): void {
@@ -137,7 +146,7 @@ export abstract class ChartSurface<Events extends Record<string, unknown>> {
         ctx.stroke();
 
         ctx.fillStyle = theme.text;
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         for (const v of ticks) {
@@ -181,7 +190,7 @@ export abstract class ChartSurface<Events extends Record<string, unknown>> {
         ctx.stroke();
 
         ctx.fillStyle = theme.text;
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
         for (const v of ticks) {
@@ -220,3 +229,6 @@ export abstract class ChartSurface<Events extends Record<string, unknown>> {
     }
 
 }
+
+/** @deprecated use ChartSurface.FONT */
+export const CHART_FONT = ChartSurface.FONT;

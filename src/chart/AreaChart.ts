@@ -2,7 +2,7 @@ import { Color } from '../util/Color';
 import { AreaBand, AreaLayout, AreaStack } from './AreaLayout';
 import { ChartNote, ChartNotes, NoteAnchor } from './ChartNotes';
 import { ChartRange, ChartRect, ChartScale } from './ChartScale';
-import { CHART_FONT, ChartSurface } from './ChartSurface';
+import { ChartSurface } from './ChartSurface';
 import { ChartThemeTokens } from './ChartTheme';
 import { StreamLayout } from './StreamLayout';
 
@@ -56,9 +56,6 @@ export interface AreaChartEvents extends Record<string, unknown> {
     hover: {index: number; x: number; values: number[]} | null;
 }
 
-const PALETTE = ['#faab18', '#1380a1', '#990000', '#588300', '#6a3d9a', '#e8743b'];
-const REVEAL_MS = 900;
-
 /**
  * Area chart: stacked, 100 % or overlapping areas over x, with a projected
  * part drawn lighter, dashed guide marks, notes with pointers, a legend and a
@@ -66,6 +63,9 @@ const REVEAL_MS = 900;
  * Canvas, zero dependencies.
  */
 export class AreaChart extends ChartSurface<AreaChartEvents> {
+
+    private static readonly PALETTE = ['#faab18', '#1380a1', '#990000', '#588300', '#6a3d9a', '#e8743b'];
+    private static readonly REVEAL_MS = 900;
 
     private x: number[] = [];
     private series: AreaSeries[] = [];
@@ -92,14 +92,14 @@ export class AreaChart extends ChartSurface<AreaChartEvents> {
     public constructor(container: HTMLElement, options: AreaChartOptions = {}) {
         super(container, options.theme);
         this.stack = options.stack ?? 'zero';
-        this.fixedX = options.xRange ?? null;
-        this.fixedY = options.yRange ?? null;
+        this.fixedX = options.xRange === undefined ? null : {...options.xRange};
+        this.fixedY = options.yRange === undefined ? null : {...options.yRange};
         this.yFormatOpt = options.yFormat;
         this.xFormat = options.xFormat ?? ((x) => String(Math.round(x * 100) / 100));
         this.formatOpt = options.format;
         this.projectFrom = options.projectFrom ?? null;
         this.projectLabel = options.projectLabel ?? '';
-        this.marks = options.marks ?? [];
+        this.marks = (options.marks ?? []).map((m) => ({...m}));
         this.legend = options.legend ?? true;
         this.lineWidthOpt = options.lineWidth;
         this.animate = options.animate ?? true;
@@ -118,8 +118,9 @@ export class AreaChart extends ChartSurface<AreaChartEvents> {
         this.redraw();
     }
 
+    /** A copy of x and the series. */
     public getData(): {x: number[]; series: AreaSeries[]} {
-        return {x: this.x.slice(), series: this.series};
+        return {x: this.x.slice(), series: this.series.map((s) => ({...s, values: s.values.slice()}))};
     }
 
     public setStack(stack: AreaStack): void {
@@ -135,7 +136,7 @@ export class AreaChart extends ChartSurface<AreaChartEvents> {
     }
 
     public setMarks(marks: AreaMark[]): void {
-        this.marks = marks;
+        this.marks = marks.map((m) => ({...m}));
         this.redraw();
     }
 
@@ -174,7 +175,7 @@ export class AreaChart extends ChartSurface<AreaChartEvents> {
     }
 
     private color(i: number): string {
-        return this.series[i]?.color ?? PALETTE[i % PALETTE.length]!;
+        return this.series[i]?.color ?? AreaChart.PALETTE[i % AreaChart.PALETTE.length]!;
     }
 
     private sx(x: number): number {
@@ -200,7 +201,7 @@ export class AreaChart extends ChartSurface<AreaChartEvents> {
             return {min: Math.floor(r.min / step) * step, max: Math.ceil(r.max / step) * step};
         })());
 
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
 
         const yTicks = ChartScale.ticks(this.yr, 4);
         const left = Math.ceil(Math.max(...yTicks.map((v) => ctx.measureText(this.yFormat(v)).width))) + 12;
@@ -209,7 +210,7 @@ export class AreaChart extends ChartSurface<AreaChartEvents> {
         this.plot = {x: left, y: top, w: Math.max(10, this.width - left - 14), h: Math.max(10, this.height - top - 26)};
 
         const plot = this.plot;
-        const t = this.revealStart > 0 ? Math.min(1, (timeMs - this.revealStart) / REVEAL_MS) : 1;
+        const t = this.revealStart > 0 ? Math.min(1, (timeMs - this.revealStart) / AreaChart.REVEAL_MS) : 1;
         const reveal = 1 - ((1 - t) ** 3);
 
         if (this.legend) {
@@ -239,7 +240,7 @@ export class AreaChart extends ChartSurface<AreaChartEvents> {
 
         // axes
         ctx.fillStyle = theme.text;
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
         for (const v of yTicks) {
@@ -354,7 +355,7 @@ export class AreaChart extends ChartSurface<AreaChartEvents> {
             ctx.stroke();
             if (m.label !== undefined) {
                 ctx.fillStyle = color;
-                ctx.font = `700 ${CHART_FONT}`;
+                ctx.font = `700 ${ChartSurface.FONT}`;
                 ctx.textAlign = 'left';
                 ctx.textBaseline = 'top';
                 ctx.fillText(m.label, x + 5, plot.y + 5);
@@ -367,7 +368,7 @@ export class AreaChart extends ChartSurface<AreaChartEvents> {
         let x = left;
 
         ctx.save();
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'left';
         this.series.forEach((s, i) => {
@@ -414,7 +415,7 @@ export class AreaChart extends ChartSurface<AreaChartEvents> {
             return {name: s.name, text, color: this.color(si)};
         }).reverse();
 
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
 
         const head = this.xFormat(xv);
         const w = Math.max(ctx.measureText(head).width, ...rows.map((r) => ctx.measureText(`${r.name}  ${r.text}`).width)) + 34;
@@ -431,9 +432,9 @@ export class AreaChart extends ChartSurface<AreaChartEvents> {
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'left';
         ctx.fillStyle = theme.title;
-        ctx.font = `700 ${CHART_FONT}`;
+        ctx.font = `700 ${ChartSurface.FONT}`;
         ctx.fillText(head, x + 9, y + 12);
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         rows.forEach((r, k) => {
             const ry = y + 28 + k * 16;
             ctx.fillStyle = r.color;

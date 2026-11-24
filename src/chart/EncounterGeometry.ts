@@ -13,8 +13,6 @@ export interface AlignedFix extends EncounterFix {
     heading: number;
 }
 
-const TAU = Math.PI * 2;
-
 /**
  * Pure part of `EncounterRose`: every encounter track moved to one origin and
  * turned into a common frame, the position at a shared clock, direction
@@ -23,13 +21,15 @@ const TAU = Math.PI * 2;
  */
 export class EncounterGeometry {
 
+    private static readonly TAU = Math.PI * 2;
+
     /** Bearing from a to b (0 = up, clockwise), 0 … 2π. */
     public static bearing(ax: number, ay: number, bx: number, by: number): number {
         return EncounterGeometry.wrap(Math.atan2(bx - ax, by - ay));
     }
 
     public static wrap(a: number): number {
-        return ((a % TAU) + TAU) % TAU;
+        return ((a % EncounterGeometry.TAU) + EncounterGeometry.TAU) % EncounterGeometry.TAU;
     }
 
     /** Signed smallest difference b − a, −π … π. */
@@ -37,7 +37,7 @@ export class EncounterGeometry {
         let d = EncounterGeometry.wrap(b - a);
 
         if (d > Math.PI) {
-            d -= TAU;
+            d -= EncounterGeometry.TAU;
         }
 
         return d;
@@ -161,7 +161,7 @@ export class EncounterGeometry {
 
     /** Bin of a bearing among `bins` equal sectors, the first centred on 0. */
     public static binOf(bearing: number, bins: number): number {
-        return Math.floor(EncounterGeometry.wrap(bearing + Math.PI / bins) / TAU * bins) % bins;
+        return Math.floor(EncounterGeometry.wrap(bearing + Math.PI / bins) / EncounterGeometry.TAU * bins) % bins;
     }
 
     /**

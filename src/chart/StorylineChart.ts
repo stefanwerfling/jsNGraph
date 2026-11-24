@@ -1,5 +1,5 @@
 import { Color } from '../util/Color';
-import { CHART_FONT, ChartSurface } from './ChartSurface';
+import { ChartSurface } from './ChartSurface';
 import { ChartThemeTokens } from './ChartTheme';
 import {
     EntityPoint, PlacedEvent, StoryAppearance, StoryEntity, StoryEvent, StorylineData, StorylineLayout,
@@ -27,10 +27,6 @@ export interface StorylineChartEvents extends Record<string, unknown> {
     filterChange: {entity: string | null; series: string | null};
 }
 
-const PALETTE = ['#f2c12e', '#2f7de1', '#d6453d', '#3aa655', '#e58a2f', '#7d5bd6', '#34b3c4', '#c74b8b',
-    '#8a6d3b', '#9aa0a8', '#5fb39a', '#b8b23a', '#4b6cb7', '#e06c75', '#56b6c2', '#a4778b'];
-const AXIS_H = 64;
-
 interface Path {
     id: string;
     color: string;
@@ -47,6 +43,11 @@ interface Path {
  * series, double-click returns. Canvas + a DOM legend, zero dependencies.
  */
 export class StorylineChart extends ChartSurface<StorylineChartEvents> {
+
+    private static readonly PALETTE = ['#f2c12e', '#2f7de1', '#d6453d', '#3aa655', '#e58a2f', '#7d5bd6', '#34b3c4', '#c74b8b',
+        '#8a6d3b', '#9aa0a8', '#5fb39a', '#b8b23a', '#4b6cb7', '#e06c75', '#56b6c2', '#a4778b'];
+
+    private static readonly AXIS_H = 64;
 
     private data: StorylineData = {events: [], entities: [], appearances: []};
     private readonly layoutEngine: StorylineLayout;
@@ -94,7 +95,11 @@ export class StorylineChart extends ChartSurface<StorylineChartEvents> {
     }
 
     public setData(data: StorylineData): void {
-        this.data = {events: data.events.slice(), entities: data.entities.slice(), appearances: data.appearances.slice()};
+        this.data = {
+            events: data.events.map((e) => ({...e})),
+            entities: data.entities.map((e) => ({...e})),
+            appearances: data.appearances.map((a) => ({...a}))
+        };
         this.focus = {entity: null, series: null};
         this.relayout();
         this.buildLegend();
@@ -126,8 +131,9 @@ export class StorylineChart extends ChartSurface<StorylineChartEvents> {
         this.setHovered(id, null);
     }
 
+    /** A copy of the current layout (null before the first data). */
     public getLayout(): StorylineResult | null {
-        return this.result;
+        return this.result === null ? null : structuredClone(this.result);
     }
 
     /** Fit the whole chart into the view (also after the user zoomed). */
@@ -135,6 +141,11 @@ export class StorylineChart extends ChartSurface<StorylineChartEvents> {
         this.userView = false;
         this.fitView();
         this.redraw();
+    }
+
+    /** Fit the whole chart into the view (same as `fit()`; the filter stays — `reset()` clears both). */
+    public resetView(): void {
+        this.fit();
     }
 
     public override destroy(): void {
@@ -155,7 +166,7 @@ export class StorylineChart extends ChartSurface<StorylineChartEvents> {
     // ---- data → layout → paths -----------------------------------------
 
     private color(entity: StoryEntity, index: number): string {
-        return entity.color ?? PALETTE[index % PALETTE.length]!;
+        return entity.color ?? StorylineChart.PALETTE[index % StorylineChart.PALETTE.length]!;
     }
 
     /** The subset the current focus shows. */
@@ -261,7 +272,7 @@ export class StorylineChart extends ChartSurface<StorylineChartEvents> {
 
         const pad = 24;
         const availW = Math.max(10, this.width - 2 * pad);
-        const availH = Math.max(10, this.height - AXIS_H - this.legendHeight() - 2 * pad);
+        const availH = Math.max(10, this.height - StorylineChart.AXIS_H - this.legendHeight() - 2 * pad);
         const w = r.bounds.maxX - r.bounds.minX + 40;
         const h = Math.max(1, r.bounds.maxY - r.bounds.minY);
         const kx = Math.min(availW / w, 3);
@@ -271,7 +282,7 @@ export class StorylineChart extends ChartSurface<StorylineChartEvents> {
             kx,
             ky,
             tx: pad + (availW - w * kx) / 2 - (r.bounds.minX - 20) * kx,
-            ty: AXIS_H + pad + Math.max(0, availH - h * ky) / 2 - r.bounds.minY * ky
+            ty: StorylineChart.AXIS_H + pad + Math.max(0, availH - h * ky) / 2 - r.bounds.minY * ky
         };
     }
 
@@ -314,7 +325,7 @@ export class StorylineChart extends ChartSurface<StorylineChartEvents> {
         ctx.strokeStyle = Color.withAlpha(theme.text, 0.35);
         ctx.setLineDash([4, 5]);
         ctx.lineWidth = 1;
-        ctx.font = CHART_FONT.replace('11px', '12px');
+        ctx.font = ChartSurface.FONT.replace('11px', '12px');
         ctx.fillStyle = theme.text;
         for (const col of r.columns) {
             if (col.period === null) {
@@ -324,11 +335,11 @@ export class StorylineChart extends ChartSurface<StorylineChartEvents> {
             const x = Math.round(this.sx(col.x)) + 0.5;
 
             ctx.beginPath();
-            ctx.moveTo(x, AXIS_H - 6);
+            ctx.moveTo(x, StorylineChart.AXIS_H - 6);
             ctx.lineTo(x, bottom - 4);
             ctx.stroke();
             ctx.save();
-            ctx.translate(x + 2, AXIS_H - 10);
+            ctx.translate(x + 2, StorylineChart.AXIS_H - 10);
             ctx.rotate(-Math.PI / 3);
             ctx.fillText(col.period, 0, 0);
             ctx.restore();
@@ -337,7 +348,7 @@ export class StorylineChart extends ChartSurface<StorylineChartEvents> {
 
         ctx.save();
         ctx.beginPath();
-        ctx.rect(0, AXIS_H - 4, this.width, bottom - AXIS_H + 4);
+        ctx.rect(0, StorylineChart.AXIS_H - 4, this.width, bottom - StorylineChart.AXIS_H + 4);
         ctx.clip();
         ctx.globalAlpha = fade;
 
@@ -514,7 +525,7 @@ export class StorylineChart extends ChartSurface<StorylineChartEvents> {
         }
 
         ctx.save();
-        ctx.font = `600 ${CHART_FONT}`;
+        ctx.font = `600 ${ChartSurface.FONT}`;
 
         const w = ctx.measureText(text).width + 16;
         const x = Math.min(this.width - w - 4, at.x + 14);

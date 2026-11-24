@@ -1,6 +1,6 @@
 import { Color } from '../util/Color';
 import { ChartRange, ChartScale } from './ChartScale';
-import { CHART_FONT, ChartSurface } from './ChartSurface';
+import { ChartSurface } from './ChartSurface';
 import { ChartThemeTokens } from './ChartTheme';
 import {
     StreamData, StreamLayer, StreamLayout, StreamLayoutOptions, StreamOffset, StreamOrder, StreamResult
@@ -66,12 +66,6 @@ export interface StreamChartEvents extends Record<string, unknown> {
     rangeChange: ChartRange;
 }
 
-const PALETTE = ['#f6a91b', '#e8213c', '#27a9e6', '#c01fc4', '#5a5a52', '#3fb37f', '#7b61ff', '#ff7a45'];
-const TOP_MARKS = 34;
-const TOP_PLAIN = 10;
-const RIGHT = 16;
-const MORPH_MS = 450;
-
 interface PanelBox {
     top: number;
     height: number;
@@ -91,6 +85,12 @@ interface PanelBox {
  *     chart.setOffset('wiggle');
  */
 export class StreamChart extends ChartSurface<StreamChartEvents> {
+
+    private static readonly PALETTE = ['#f6a91b', '#e8213c', '#27a9e6', '#c01fc4', '#5a5a52', '#3fb37f', '#7b61ff', '#ff7a45'];
+    private static readonly TOP_MARKS = 34;
+    private static readonly TOP_PLAIN = 10;
+    private static readonly RIGHT = 16;
+    private static readonly MORPH_MS = 450;
 
     private data: StreamData = {x: [], layers: [], panels: []};
     private layoutOptions: Omit<StreamLayoutOptions, 'hidden'>;
@@ -123,8 +123,8 @@ export class StreamChart extends ChartSurface<StreamChartEvents> {
         this.sharedScale = options.sharedScale ?? true;
         this.panelGap = options.panelGap ?? 14;
         this.labelWidth = options.labelWidth ?? 110;
-        this.marks = options.marks ?? [];
-        this.annotations = options.annotations ?? [];
+        this.marks = (options.marks ?? []).map((m) => ({...m}));
+        this.annotations = (options.annotations ?? []).map((a) => ({...a}));
         this.outline = options.outline;
         this.zoomOn = options.zoom ?? true;
         this.animate = options.animate ?? true;
@@ -160,7 +160,7 @@ export class StreamChart extends ChartSurface<StreamChartEvents> {
         const sameShape = data.x.length === this.data.x.length && data.layers.length === this.data.layers.length
             && data.panels.length === this.data.panels.length;
 
-        this.data = {x: data.x, layers: data.layers.slice(), panels: data.panels.slice()};
+        this.data = StreamChart.copyData(data);
         for (const id of Array.from(this.hidden)) {
             if (!data.layers.some((l) => l.id === id)) {
                 this.hidden.delete(id);
@@ -174,12 +174,14 @@ export class StreamChart extends ChartSurface<StreamChartEvents> {
         this.buildNotes();
     }
 
+    /** A copy of the current data. */
     public getData(): StreamData {
-        return this.data;
+        return StreamChart.copyData(this.data);
     }
 
+    /** A copy of the current layout (null before the first data). */
     public getLayout(): StreamResult | null {
-        return this.result;
+        return this.result === null ? null : structuredClone(this.result);
     }
 
     public setOffset(offset: StreamOffset): void {
@@ -228,25 +230,31 @@ export class StreamChart extends ChartSurface<StreamChartEvents> {
     }
 
     public setMarks(marks: StreamMark[]): void {
-        this.marks = marks.slice();
+        this.marks = marks.map((m) => ({...m}));
         this.redraw();
     }
 
     public setAnnotations(annotations: StreamAnnotation[]): void {
-        this.annotations = annotations.slice();
+        this.annotations = annotations.map((a) => ({...a}));
         this.buildNotes();
         this.redraw();
     }
 
     /** Visible x range (null = everything). */
     public setRange(range: ChartRange | null): void {
-        this.range = range;
+        this.range = range === null ? null : {...range};
         this.redraw();
         this.events.emit('rangeChange', this.viewRange());
     }
 
-    public resetZoom(): void {
+    /** Show the whole x extent again. */
+    public resetView(): void {
         this.setRange(null);
+    }
+
+    /** @deprecated use resetView */
+    public resetZoom(): void {
+        this.resetView();
     }
 
     public override destroy(): void {
@@ -263,6 +271,15 @@ export class StreamChart extends ChartSurface<StreamChartEvents> {
     protected override themeChanged(): void {
         this.buildLegend();
         this.buildNotes();
+    }
+
+    /** Data copy: arrays and the objects in them, panel values per layer. */
+    private static copyData(data: StreamData): StreamData {
+        return {
+            x: Array.from(data.x),
+            layers: data.layers.map((l) => ({...l})),
+            panels: data.panels.map((p) => ({...p, values: p.values.map((v) => Array.from(v))}))
+        };
     }
 
     // ---- layout ----------------------------------------------------------
@@ -297,7 +314,7 @@ export class StreamChart extends ChartSurface<StreamChartEvents> {
             return 1;
         }
 
-        const t = Math.min(1, (now - this.morphStart) / MORPH_MS);
+        const t = Math.min(1, (now - this.morphStart) / StreamChart.MORPH_MS);
 
         return 1 - ((1 - t) ** 3);
     }
@@ -337,7 +354,7 @@ export class StreamChart extends ChartSurface<StreamChartEvents> {
     }
 
     private plotRight(): number {
-        return this.width - RIGHT;
+        return this.width - StreamChart.RIGHT;
     }
 
     private sx(x: number): number {
@@ -350,7 +367,7 @@ export class StreamChart extends ChartSurface<StreamChartEvents> {
 
     /** Panel rectangles and their y ranges. */
     private computeBoxes(r: StreamResult): PanelBox[] {
-        const top = this.marks.length > 0 ? TOP_MARKS : TOP_PLAIN;
+        const top = this.marks.length > 0 ? StreamChart.TOP_MARKS : StreamChart.TOP_PLAIN;
         const bottom = this.height - this.legendHeight() - 6;
         const n = r.panels.length;
         const avail = Math.max(10, bottom - top - (this.panelGap * Math.max(0, n - 1)));
@@ -387,7 +404,7 @@ export class StreamChart extends ChartSurface<StreamChartEvents> {
     }
 
     private color(layer: StreamLayer, i: number): string {
-        return layer.color ?? PALETTE[i % PALETTE.length]!;
+        return layer.color ?? StreamChart.PALETTE[i % StreamChart.PALETTE.length]!;
     }
 
     // ---- drawing ---------------------------------------------------------
@@ -518,7 +535,7 @@ export class StreamChart extends ChartSurface<StreamChartEvents> {
         }
 
         ctx.save();
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         ctx.textAlign = 'center';
         for (const m of this.marks) {
             const x = Math.round(this.sx(m.x)) + 0.5;
@@ -616,7 +633,7 @@ export class StreamChart extends ChartSurface<StreamChartEvents> {
         const panelLabel = this.data.panels[h.panel]?.label?.replace(/\n/g, ' ');
         const text = `${layer.label} · ${this.xFormat(dx)} · ${this.format(raw)}${panelLabel !== undefined ? ` (${panelLabel})` : ''}`;
 
-        ctx.font = `600 ${CHART_FONT}`;
+        ctx.font = `600 ${ChartSurface.FONT}`;
 
         const w = ctx.measureText(text).width + 22;
         const x = Math.min(this.width - w - 4, at.x + 14);
@@ -696,7 +713,7 @@ export class StreamChart extends ChartSurface<StreamChartEvents> {
             const dy = a.dy ?? -14;
             const left = Math.max(2, Math.min(this.width - w - 2, dx >= 0 ? ax + dx : ax + dx - w));
             // never over the mark labels at the top
-            const ceiling = this.marks.length > 0 ? TOP_MARKS : 2;
+            const ceiling = this.marks.length > 0 ? StreamChart.TOP_MARKS : 2;
             const top = Math.max(ceiling, Math.min(this.height - this.legendHeight() - h - 2, dy <= 0 ? ay + dy - h : ay + dy));
 
             el.style.display = 'block';
@@ -889,7 +906,7 @@ export class StreamChart extends ChartSurface<StreamChartEvents> {
         const press = this.press;
 
         this.press = null;
-        if (press === null || press.moved) {
+        if (press === null || press.moved || e.type !== 'pointerup') {
             return;
         }
 
@@ -929,7 +946,7 @@ export class StreamChart extends ChartSurface<StreamChartEvents> {
 
     private readonly onDblClick = (): void => {
         if (this.zoomOn) {
-            this.resetZoom();
+            this.resetView();
         }
     };
 

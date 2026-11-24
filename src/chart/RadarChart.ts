@@ -1,5 +1,5 @@
 import { ChartRange, ChartScale } from './ChartScale';
-import { CHART_FONT, ChartSurface } from './ChartSurface';
+import { ChartSurface } from './ChartSurface';
 import { ChartThemeTokens } from './ChartTheme';
 import { RadarGeometry, RadarPoint } from './RadarGeometry';
 
@@ -25,6 +25,8 @@ export interface RadarChartOptions {
     series?: RadarSeries[];
     theme?: 'dark' | 'light' | Partial<ChartThemeTokens>;
     /** Value range from centre to rim; default 0 … a round number above the data. */
+    valueRange?: ChartRange;
+    /** @deprecated use valueRange */
     range?: ChartRange;
     /** Ring shape. Default 'polygon' (a spider web); 'circle' for round rings. */
     grid?: 'polygon' | 'circle';
@@ -51,9 +53,6 @@ export interface RadarChartEvents extends Record<string, unknown> {
     toggle: {series: number; visible: boolean};
 }
 
-const PALETTE = ['#4cc3e8', '#ff8a42', '#8bd45f', '#c48bff', '#ffd25e', '#ff6b8a'];
-const ANIM_MS = 650;
-
 /**
  * A radar (spider / web / Kiviat) chart: one axis per category around a
  * centre, each series a closed profile across them. Dashed web rings,
@@ -62,6 +61,9 @@ const ANIM_MS = 650;
  * Canvas, zero dependencies.
  */
 export class RadarChart extends ChartSurface<RadarChartEvents> {
+
+    private static readonly PALETTE = ['#4cc3e8', '#ff8a42', '#8bd45f', '#c48bff', '#ffd25e', '#ff6b8a'];
+    private static readonly ANIM_MS = 650;
 
     private categories: string[] = [];
     private series: RadarSeries[] = [];
@@ -85,7 +87,8 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
 
     public constructor(container: HTMLElement, options: RadarChartOptions = {}) {
         super(container, options.theme);
-        this.fixedRange = options.range ?? null;
+        const range = options.valueRange ?? options.range;
+        this.fixedRange = range === undefined ? null : {...range};
         this.gridShape = options.grid ?? 'polygon';
         this.showTicks = options.ticks ?? true;
         this.showLegend = options.legend ?? true;
@@ -114,7 +117,7 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
 
     /** Replace the profiles (grows them in when `animate`). */
     public setSeries(series: RadarSeries[], options: {animate?: boolean} = {}): void {
-        this.series = series.map((s) => ({...s}));
+        this.series = RadarChart.copySeries(series);
         if (this.hovered !== null && (this.hovered.series >= this.series.length || !this.isVisible(this.hovered.series))) {
             this.hovered = null;   // kept otherwise: live updates do not drop the tooltip
         }
@@ -122,8 +125,9 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
         this.redraw();
     }
 
+    /** A copy of the profiles (with their current visibility). */
     public getSeries(): ReadonlyArray<RadarSeries> {
-        return this.series;
+        return RadarChart.copySeries(this.series);
     }
 
     public setVisible(index: number, visible: boolean): void {
@@ -149,9 +153,15 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
         this.redraw();
     }
 
-    public setRange(range: ChartRange | null): void {
-        this.fixedRange = range;
+    /** Value range from centre to rim (null = from the data). */
+    public setValueRange(range: ChartRange | null): void {
+        this.fixedRange = range === null ? null : {...range};
         this.redraw();
+    }
+
+    /** @deprecated use setValueRange */
+    public setRange(range: ChartRange | null): void {
+        this.setValueRange(range);
     }
 
     /** Play the grow-in again. */
@@ -160,6 +170,7 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
         this.redraw();
     }
 
+    /** Undo zoom and pan. */
     public resetView(): void {
         this.scale = 1;
         this.pan = {x: 0, y: 0};
@@ -187,10 +198,10 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
         return this.scaleMode;
     }
 
-    /** Ring range: fixed, or 0 … the next nice tick above the largest value. */
-    public get range(): ChartRange {
+    /** Ring value range: fixed, or 0 … the next nice tick above the largest value. */
+    public get valueRange(): ChartRange {
         if (this.fixedRange !== null) {
-            return this.fixedRange;
+            return {...this.fixedRange};
         }
 
         const ext = ChartScale.extent(this.series.flatMap((s) => s.values));
@@ -203,6 +214,15 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
         return {min, max: Math.max(step, Math.ceil(ext.max / step - 1e-9) * step)};
     }
 
+    /** @deprecated use valueRange */
+    public get range(): ChartRange {
+        return this.valueRange;
+    }
+
+    private static copySeries(series: readonly RadarSeries[]): RadarSeries[] {
+        return series.map((s) => ({...s, values: s.values.slice(), ...(s.dash !== undefined ? {dash: s.dash.slice()} : {})}));
+    }
+
     // ---- drawing -------------------------------------------------------
 
     protected draw(ctx: CanvasRenderingContext2D, timeMs: number): boolean {
@@ -212,12 +232,12 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
             this.growStart = timeMs;
         }
 
-        const t = this.growStart < 0 ? 1 : Math.min(1, (timeMs - this.growStart) / ANIM_MS);
+        const t = this.growStart < 0 ? 1 : Math.min(1, (timeMs - this.growStart) / RadarChart.ANIM_MS);
         const grow = 1 - (1 - t) ** 3;
         const cx = this.width / 2 + this.pan.x;
         const cy = this.height / 2 + 6 + this.pan.y;
         const r = this.baseRadius(ctx, n) * this.scale;
-        const range = this.range;
+        const range = this.valueRange;
 
         if (n >= 3) {
             this.drawWeb(ctx, cx, cy, r, n, range);
@@ -258,7 +278,7 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
 
     /** Largest radius that leaves room for the axis labels (measured) on every side. */
     private baseRadius(ctx: CanvasRenderingContext2D, n: number): number {
-        ctx.font = `500 ${CHART_FONT.replace('11px', '12px')}`;
+        ctx.font = `500 ${ChartSurface.FONT.replace('11px', '12px')}`;
 
         let side = 0;
 
@@ -272,7 +292,7 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
     }
 
     private color(s: RadarSeries, index: number): string {
-        return s.color ?? PALETTE[index % PALETTE.length]!;
+        return s.color ?? RadarChart.PALETTE[index % RadarChart.PALETTE.length]!;
     }
 
     private ringPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number, n: number): void {
@@ -323,7 +343,7 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
 
         if (this.showTicks) {
             ctx.fillStyle = this.theme.text;
-            ctx.font = CHART_FONT;
+            ctx.font = ChartSurface.FONT;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
             for (const v of ticks) {
@@ -394,7 +414,7 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
     private drawLabels(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, n: number): void {
         ctx.save();
         ctx.fillStyle = this.theme.title;
-        ctx.font = `500 ${CHART_FONT.replace('11px', '12px')}`;
+        ctx.font = `500 ${ChartSurface.FONT.replace('11px', '12px')}`;
         this.categories.forEach((label, i) => {
             const a = RadarGeometry.angle(i, n);
             const {align, baseline} = RadarGeometry.labelAlign(i, n);
@@ -429,7 +449,7 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
         ctx.strokeStyle = color;
         ctx.stroke();
 
-        ctx.font = `600 ${CHART_FONT}`;
+        ctx.font = `600 ${ChartSurface.FONT}`;
         const w = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width) + 20;
         const boxH = 38;
         let x = p.x + 12;
@@ -455,7 +475,7 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
         ctx.textBaseline = 'middle';
         ctx.fillStyle = color;
         ctx.fillText(line1, x + 10, y + 12);
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
         ctx.fillStyle = this.theme.title;
         ctx.fillText(line2, x + 10, y + 27);
         ctx.restore();
@@ -469,7 +489,7 @@ export class RadarChart extends ChartSurface<RadarChartEvents> {
         }
 
         ctx.save();
-        ctx.font = CHART_FONT;
+        ctx.font = ChartSurface.FONT;
 
         const rowH = 20;
         const w = Math.max(...this.series.map((s) => ctx.measureText(s.name).width)) + 50;
