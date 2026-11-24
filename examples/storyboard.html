@@ -212,7 +212,7 @@
     .scribble { position: relative; width: 100%; height: 100%; }
     .scribble .tx { position: absolute; font: 600 21px/1.05 Caveat, 'Segoe Print', 'Comic Sans MS', cursive; color: #6fa8ff;
         text-align: center; white-space: pre-wrap; outline: none; text-shadow: 0 0 10px rgba(47,124,255,.35); }
-    .scribble .tx[contenteditable="true"] { background: rgba(10,20,40,.7); border-radius: 6px; box-shadow: 0 0 0 1px #5aa0ff; cursor: text; }
+    .scribble .tx[contenteditable="true"] { pointer-events: auto; user-select: text; -webkit-user-select: text; background: rgba(10,20,40,.7); border-radius: 6px; box-shadow: 0 0 0 1px #5aa0ff; cursor: text; }
     .scribble svg { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
     .scribble path { fill: none; stroke: #6fa8ff; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
     .scribble.boxed .tx { border: 1px solid rgba(111,168,255,.4); border-radius: 6px; background: rgba(8,16,32,.55); }
@@ -634,7 +634,7 @@
                 }
                 return cache.get(key);
             },
-            reroll() { salt++; }
+            reroll() { salt++; cache.clear(); }
         };
     })();
 
@@ -719,7 +719,9 @@
     shotNumber = (id) => {
         const order = ['s1', 's2', 's3', 's4', 's6', 's5', 's7', 's8', 's9'];
         const i = order.indexOf(id);
-        return String(i < 0 ? order.length + extraShots.indexOf(id) + 1 : i + 1).padStart(2, '0');
+        if (i >= 0) return String(i + 1).padStart(2, '0');
+        if (!extraShots.includes(id)) extraShots.push(id);   // added, pasted, duplicated: next free number
+        return String(order.length + extraShots.indexOf(id) + 1).padStart(2, '0');
     };
     const extraShots = [];
 
@@ -763,14 +765,67 @@
     })();
 
     // ---- keep the story in sync between the two views (label + meta of shared ids)
+    // Returns whether `to` changed. Each mirrored edit is one step in `to`'s own history too,
+    // so the shared history below can undo both editors together.
     function mirror(from, to, ids) {
-        for (const id of ids) {
+        const changed = ids.filter((id) => {
             const a = from.getNode(id);
             const b = to.getNode(id);
-            if (!a || !b || a.type === 'scribble') continue;
-            if (a.label === b.label && JSON.stringify(a.meta) === JSON.stringify(b.meta)) continue;
-            to.updateNode(id, {label: a.label, meta: a.meta});
+            return a && b && a.type !== 'scribble' && (a.label !== b.label || JSON.stringify(a.meta) !== JSON.stringify(b.meta));
+        });
+        if (changed.length === 0) return false;
+        for (const [i, id] of changed.entries()) {
+            const a = from.getNode(id);
+            // several nodes: one undo step, committed with the last one
+            to.updateNode(id, {label: a.label, meta: a.meta}, {commit: i === changed.length - 1});
         }
+        return true;
+    }
+
+    // One history for both views: an entry lists the editors a change touched (the editor
+    // that made it, plus the other one when the change was mirrored); undo/redo replays it
+    // in all of them. Each editor's own Ctrl+Z/Y is routed here.
+    const undoStack = [];
+    const redoStack = [];
+    let replaying = false;
+    function record(name, c) {
+        if (replaying || c.kind === 'undo' || c.kind === 'redo' || c.kind === 'load') return;
+        const other = name === 'wf' ? 'cv' : 'wf';
+        const entry = [name];
+        if (c.kind === 'updateNode') {
+            replaying = true;
+            try {
+                if (mirror(editors[name], editors[other], c.nodes)) entry.push(other);
+            } finally {
+                replaying = false;
+            }
+        }
+        undoStack.push(entry);
+        redoStack.length = 0;
+    }
+    function step(from, to, method) {
+        const entry = from.pop();
+        if (!entry) return toast(method === 'undo' ? 'Nothing to undo' : 'Nothing to redo');
+        replaying = true;
+        try {
+            for (const name of entry) editors[name][method]();
+        } finally {
+            replaying = false;
+        }
+        to.push(entry);
+        if (selected) renderDetails();
+    }
+    const undo = () => step(undoStack, redoStack, 'undo');
+    const redo = () => step(redoStack, undoStack, 'redo');
+    for (const el of [$('wf-editor'), $('cv-editor')]) {
+        el.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            if (!(e.ctrlKey || e.metaKey) || (key !== 'z' && key !== 'y')) return;
+            if (e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+            e.preventDefault();
+            e.stopPropagation();   // capture phase: the editor never sees it
+            if (key === 'y' || e.shiftKey) redo(); else undo();
+        }, true);
     }
     let savedAt = Date.now();
     const markSaved = () => { savedAt = Date.now(); $('saved').textContent = 'Saving…'; setTimeout(() => $('saved').textContent = 'Saved just now', 450); };
@@ -779,29 +834,32 @@
         if (s >= 1) $('saved').textContent = `Saved ${s} min ago`;
     }, 15000);
     wf.on('change', (c) => {
-        if (c.kind === 'updateNode' || c.kind === 'undo' || c.kind === 'redo') mirror(wf, cv, c.nodes);
+        record('wf', c);
         markSaved();
         counts();
         if (selected) renderDetails();
     });
     cv.on('change', (c) => {
-        if (c.kind === 'updateNode' || c.kind === 'undo' || c.kind === 'redo') mirror(cv, wf, c.nodes);
+        record('cv', c);
         drawMini();
     });
 
     // ---- view switch
-    document.querySelectorAll('#views button').forEach((b) => b.onclick = () => {
-        active = b.dataset.view;
-        document.querySelectorAll('#views button').forEach((x) => x.classList.toggle('on', x === b));
-        $('view-wf').classList.toggle('on', active === 'wf');
-        $('view-cv').classList.toggle('on', active === 'cv');
+    // `then` runs after the fit, so a jump to a node is not undone by it.
+    function showView(name, then) {
+        active = name;
+        document.querySelectorAll('#views button').forEach((x) => x.classList.toggle('on', x.dataset.view === name));
+        $('view-wf').classList.toggle('on', name === 'wf');
+        $('view-cv').classList.toggle('on', name === 'cv');
         // two frames: the editor's own resize observer fits first when the view appears
         requestAnimationFrame(() => requestAnimationFrame(() => {
-            fitView(editors[active], false);
-            if (active === 'cv') { drawStars(); drawMini(); }
+            fitView(editors[name], false);
+            if (name === 'cv') { drawStars(); drawMini(); }
+            then?.();
         }));
-        try { history.replaceState(null, '', active === 'cv' ? '#canvas' : '#workflow'); } catch {}
-    });
+        try { history.replaceState(null, '', name === 'cv' ? '#canvas' : '#workflow'); } catch {}
+    }
+    document.querySelectorAll('#views button').forEach((b) => b.onclick = () => showView(b.dataset.view));
 
     // ================= workflow view =================
     let selected = null;
@@ -861,10 +919,17 @@
         $('d-add').onclick = () => {
             const port = n.type === 'decision' ? 'true' : 'out';
             const added = wf.addNodeFrom({node: n.id, port}, 'out', {type: 'scene', label: 'New Shot',
-                meta: {kind: 'station', art: 'blank', code: `SEQ_01_SHOT_${String(wf.getDocument().nodes.length + 1).padStart(3, '0')}`,
+                meta: {kind: 'station', art: 'blank', code: nextCode(),
                     desc: 'Describe the shot.', tags: [], severity: 'Low', source: 'Director', delay: 0}});
             if (added) { wf.select([added.id]); toast(`${added.label} added after ${n.label}`); }
         };
+    }
+
+    // Next free SEQ_01_SHOT_nnn over both views (deleting a shot never hands its code out twice).
+    function nextCode() {
+        const used = [wf, cv].flatMap((ed) => ed.getDocument().nodes)
+            .map((n) => /^SEQ_01_SHOT_(\d+)$/.exec(n.meta?.code ?? '')?.[1]).filter(Boolean).map(Number);
+        return `SEQ_01_SHOT_${String(Math.max(0, ...used) + 1).padStart(3, '0')}`;
     }
 
     // ---- simulated "render" run: walks downstream, the decision node rolls its sensor readings
@@ -872,10 +937,23 @@
     let running = false;
     async function run(fromId) {
         if (running) return;
+        if (!fromId || !wf.getNode(fromId)) return toast('Nothing to run — add a shot first');
         running = true;
         $('wf-run').disabled = true;
+        $('wf-play').disabled = true;
+        try {
+            await walk(fromId);
+        } catch (err) {
+            console.error(err);
+            toast('Run stopped');
+        } finally {
+            running = false;
+            $('wf-run').disabled = false;
+            $('wf-play').disabled = false;
+        }
+    }
+    async function walk(fromId) {
         wf.clearStatus();
-        const doc = wf.getDocument();
         const seen = new Set();
         const touched = new Set();
         let queue = [fromId];
@@ -886,10 +964,13 @@
                 if (seen.has(id)) continue;
                 seen.add(id);
                 const n = wf.getNode(id);
+                if (!n) continue;   // deleted while the run was going
                 wf.setNodeStatus(id, 'running');
                 toast(`Rendering ${n.meta?.code ?? id} — ${n.label}`);
                 await sleep(500 + (n.meta?.delay ?? 0) * 400);
-                let outs = doc.connections.filter((c) => c.from.node === id);
+                if (!wf.getNode(id)) continue;
+                // read the wires now: they may have changed while this node ran
+                let outs = wf.getDocument().connections.filter((c) => c.from.node === id);
                 if (n.type === 'decision') {
                     const stable = Math.random() < 0.55;
                     outs = outs.filter((c) => c.from.port === (stable ? 'true' : 'false'));
@@ -908,8 +989,6 @@
         }
         wf.setRunPath(seen, touched);
         toast(`Rendered ${seen.size} nodes`);
-        running = false;
-        $('wf-run').disabled = false;
     }
     const firstNode = () => {
         const doc = wf.getDocument();
@@ -948,7 +1027,7 @@
     document.querySelectorAll('#wf-side button').forEach((b) => b.onclick = () => {
         const what = b.dataset.side;
         if (what === 'tidy') return wf.tidyUp();
-        if (what === 'undo') return wf.undo();
+        if (what === 'undo') return undo();
         if (what === 'validate') {
             const d = wf.getDocument();
             const loose = d.nodes.filter((n) => !d.connections.some((c) => c.from.node === n.id || c.to.node === n.id));
@@ -958,17 +1037,19 @@
             return toast(issues.length ? issues.join(' · ') : 'Story is valid — every shot is linked');
         }
         if (what === 'search') {
-            const box = b.querySelector('input') ?? Object.assign(document.createElement('input'), {placeholder: 'find a shot…'});
-            if (!box.isConnected) {
-                box.style.cssText = 'width:100%;height:26px;margin-left:-4px;border-radius:5px;border:1px solid var(--sb-line-2);background:var(--sb-panel-2);padding:0 6px;outline:none';
-                b.replaceChildren(box);
-                box.oninput = () => {
-                    const q = box.value.trim().toLowerCase();
-                    const hit = q && wf.getDocument().nodes.find((n) => `${n.label} ${n.meta?.code} ${(n.meta?.tags ?? []).join(' ')}`.toLowerCase().includes(q));
-                    if (hit) { wf.select([hit.id]); wf.focusNode(hit.id, undefined, true); }
-                };
-                box.onblur = () => setTimeout(() => b.replaceChildren('Search'), 150);
-            }
+            // the field takes the button's place (an input inside a <button> is not valid HTML)
+            const box = Object.assign(document.createElement('input'), {type: 'search', placeholder: 'find a shot…'});
+            box.setAttribute('aria-label', 'Find a shot');
+            box.style.cssText = 'display:block;width:100%;height:30px;border-radius:6px;border:1px solid var(--sb-line-2);background:var(--sb-panel-2);padding:0 8px;outline:none';
+            b.replaceWith(box);
+            box.oninput = () => {
+                const q = box.value.trim().toLowerCase();
+                const hit = q && wf.getDocument().nodes.find((n) => `${n.label} ${n.meta?.code} ${(n.meta?.tags ?? []).join(' ')}`.toLowerCase().includes(q));
+                if (hit) { wf.select([hit.id]); wf.focusNode(hit.id, undefined, true); }
+            };
+            const back = () => { if (box.isConnected) box.replaceWith(b); };
+            box.onblur = back;
+            box.onkeydown = (e) => { if (e.key === 'Escape' || e.key === 'Enter') { back(); b.focus(); } };
             return box.focus();
         }
         if (what === 'nodes') return wf.fit();
@@ -1085,7 +1166,7 @@
         else if (t === 'shot') addShot();
         else if (t === 'note') addNote();
         else if (t === 'tidy') cv.tidyUp();
-        else if (t === 'undo') cv.undo();
+        else if (t === 'undo') undo();
     });
     $('cv-reroll').onclick = () => {
         Art.reroll();
@@ -1116,13 +1197,11 @@
         if (n?.type === 'scribble') editScribble(e.id);
         else if (n) {
             // Jump to the same shot in the workflow view.
-            document.querySelector('#views [data-view="wf"]').click();
-            setTimeout(() => { if (wf.getNode(e.id)) { wf.select([e.id]); wf.focusNode(e.id, 1, true); } }, 60);
+            showView('wf', () => { if (wf.getNode(e.id)) { wf.select([e.id]); wf.focusNode(e.id, 1, true); } });
         }
     });
     wf.on('nodeDblClick', (e) => {
-        document.querySelector('#views [data-view="cv"]').click();
-        setTimeout(() => { if (cv.getNode(e.id)) { cv.select([e.id]); cv.focusNode(e.id, 1, true); } }, 60);
+        showView('cv', () => { if (cv.getNode(e.id)) { cv.select([e.id]); cv.focusNode(e.id, 1, true); } });
     });
 
     // Camera follow-ups (zoom label, stars, mini map) — once per frame while something moves.
@@ -1140,7 +1219,7 @@
     document.fonts?.addEventListener?.('loadingdone', () => drawMini());
 
     renderDetails();
-    if (location.hash === '#canvas') document.querySelector('#views [data-view="cv"]').click();
+    if (location.hash === '#canvas') showView('cv');
     window.storyboard = {wf, cv};
 })();
 </script>
