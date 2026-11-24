@@ -1,5 +1,5 @@
 import { CalendarCell, CalendarGeometry } from './CalendarGeometry';
-import { svgEl, Widget, WidgetOptions } from './WidgetBase';
+import { Widget, WidgetDom, WidgetOptions } from './WidgetBase';
 
 /** A marked day (a dot under its number). */
 export interface CalendarMark {
@@ -37,18 +37,18 @@ export interface MonthCalendarEvents extends Record<string, unknown> {
     monthChange: {year: number; month: number};
 }
 
-const CELL_W = 40;
-const CELL_H = 30;
-const HEAD = 24;
-const TITLE = 30;
-const W = CELL_W * 7;
-
 /**
  * A month as a grid of days with a highlighted range (one pill per week row),
  * marked days, today and coloured weekend days. Built-in range / day
  * selection and month navigation. SVG, zero dependencies.
  */
 export class MonthCalendar extends Widget<MonthCalendarEvents> {
+
+    private static readonly CELL_W = 40;
+    private static readonly CELL_H = 30;
+    private static readonly HEAD = 24;
+    private static readonly TITLE = 30;
+    private static readonly W = MonthCalendar.CELL_W * 7;
 
     private year: number;
     private month: number;
@@ -75,7 +75,7 @@ export class MonthCalendar extends Widget<MonthCalendarEvents> {
         this.weekStart = ((options.weekStart ?? 1) % 7 + 7) % 7;
         this.locale = options.locale;
         this.range = options.range ?? null;
-        this.marks = options.marks ?? [];
+        this.marks = (options.marks ?? []).map((m) => ({...m}));
         this.today = options.today === undefined ? now : options.today;
         this.weekend = options.weekend ?? 'sunday';
         this.outside = options.outside ?? false;
@@ -119,7 +119,7 @@ export class MonthCalendar extends Widget<MonthCalendarEvents> {
     }
 
     public setMarks(marks: readonly CalendarMark[]): void {
-        this.marks = [...marks];
+        this.marks = marks.map((m) => ({...m}));
         this.render();
     }
 
@@ -135,22 +135,22 @@ export class MonthCalendar extends Widget<MonthCalendarEvents> {
 
     /** Draw again (setters call it). */
     public render(): void {
-        const top = this.header ? TITLE : 0;
+        const top = this.header ? MonthCalendar.TITLE : 0;
 
         this.cells = CalendarGeometry.grid(this.year, this.month, this.weekStart);
 
         const rows = this.cells.length / 7;
-        const h = top + HEAD + (rows * CELL_H);
-        const svg = svgEl('svg', {viewBox: `0 0 ${W} ${h}`, class: 'wg-svg', role: 'grid'});
+        const h = top + MonthCalendar.HEAD + (rows * MonthCalendar.CELL_H);
+        const svg = WidgetDom.svg('svg', {viewBox: `0 0 ${MonthCalendar.W} ${h}`, class: 'wg-svg', role: 'grid'});
         const monthName = new Date(this.year, this.month, 1).toLocaleDateString(this.locale, {month: 'long', year: 'numeric'});
 
         svg.setAttribute('aria-label', monthName);
 
         if (this.header) {
-            const title = svgEl('text', {x: W / 2, y: 18, class: 'wg-cal-title', 'text-anchor': 'middle'});
+            const title = WidgetDom.svg('text', {x: MonthCalendar.W / 2, y: 18, class: 'wg-cal-title', 'text-anchor': 'middle'});
             title.textContent = monthName;
-            const prev = svgEl('text', {x: 14, y: 14, class: 'wg-cal-nav', 'data-wg-nav': -1, role: 'button'});
-            const next = svgEl('text', {x: W - 14, y: 14, class: 'wg-cal-nav', 'data-wg-nav': 1, role: 'button'});
+            const prev = WidgetDom.svg('text', {x: 14, y: 14, class: 'wg-cal-nav', 'data-wg-nav': -1, role: 'button'});
+            const next = WidgetDom.svg('text', {x: MonthCalendar.W - 14, y: 14, class: 'wg-cal-nav', 'data-wg-nav': 1, role: 'button'});
             prev.textContent = '‹';
             next.textContent = '›';
             svg.append(title, prev, next);
@@ -159,12 +159,12 @@ export class MonthCalendar extends Widget<MonthCalendarEvents> {
         // weekday heads
         CalendarGeometry.weekdays(this.weekStart).forEach((wd, col) => {
             const name = new Date(2023, 0, 1 + wd).toLocaleDateString(this.locale, {weekday: 'short'}).replace('.', '').slice(0, 2);
-            const t = svgEl('text', {x: (col + 0.5) * CELL_W, y: top + 14, class: `wg-cal-head${this.isAccent(wd) ? ' wg-cal-weekend' : ''}`});
+            const t = WidgetDom.svg('text', {x: (col + 0.5) * MonthCalendar.CELL_W, y: top + 14, class: `wg-cal-head${this.isAccent(wd) ? ' wg-cal-weekend' : ''}`});
             t.textContent = name;
             svg.appendChild(t);
         });
 
-        const y0 = top + HEAD;
+        const y0 = top + MonthCalendar.HEAD;
         const shown = this.range ?? (this.anchor !== null ? {start: this.anchor, end: this.anchor} : null);
         const inRange = new Set<number>();
 
@@ -174,12 +174,12 @@ export class MonthCalendar extends Widget<MonthCalendarEvents> {
 
             for (const run of CalendarGeometry.runs(visible, shown.start, shown.end)) {
                 const pad = 3;
-                const x = (run.from * CELL_W) + (run.startCap ? pad : 0);
-                const w = ((run.to - run.from + 1) * CELL_W) - (run.startCap ? pad : 0) - (run.endCap ? pad : 0);
-                const y = y0 + (run.row * CELL_H) + 3;
-                const hh = CELL_H - 6;
+                const x = (run.from * MonthCalendar.CELL_W) + (run.startCap ? pad : 0);
+                const w = ((run.to - run.from + 1) * MonthCalendar.CELL_W) - (run.startCap ? pad : 0) - (run.endCap ? pad : 0);
+                const y = y0 + (run.row * MonthCalendar.CELL_H) + 3;
+                const hh = MonthCalendar.CELL_H - 6;
 
-                svg.appendChild(svgEl('path', {d: MonthCalendar.pill(x, y, w, hh, run.startCap, run.endCap), class: 'wg-cal-range'}));
+                svg.appendChild(WidgetDom.svg('path', {d: MonthCalendar.pill(x, y, w, hh, run.startCap, run.endCap), class: 'wg-cal-range'}));
                 for (let c = run.from; c <= run.to; c++) {
                     inRange.add((run.row * 7) + c);
                 }
@@ -191,9 +191,9 @@ export class MonthCalendar extends Widget<MonthCalendarEvents> {
                 return;
             }
 
-            const cx = (cell.col + 0.5) * CELL_W;
-            const cy = y0 + ((cell.row + 0.5) * CELL_H);
-            const g = svgEl('g', {'data-wg-day': i, role: 'gridcell'});
+            const cx = (cell.col + 0.5) * MonthCalendar.CELL_W;
+            const cy = y0 + ((cell.row + 0.5) * MonthCalendar.CELL_H);
+            const g = WidgetDom.svg('g', {'data-wg-day': i, role: 'gridcell'});
             const classes = ['wg-cal-day'];
 
             if (!cell.inMonth) {
@@ -205,23 +205,23 @@ export class MonthCalendar extends Widget<MonthCalendarEvents> {
                 classes.push('wg-cal-weekend');
             }
 
-            g.appendChild(svgEl('rect', {x: cx - 15, y: cy - 12, width: 30, height: 24, rx: 12, class: 'wg-cal-cell'}));
+            g.appendChild(WidgetDom.svg('rect', {x: cx - 15, y: cy - 12, width: 30, height: 24, rx: 12, class: 'wg-cal-cell'}));
             if (this.today !== null && CalendarGeometry.sameDay(cell.date, this.today)) {
-                g.appendChild(svgEl('circle', {cx, cy, r: 12, class: 'wg-cal-today'}));
+                g.appendChild(WidgetDom.svg('circle', {cx, cy, r: 12, class: 'wg-cal-today'}));
             }
 
-            const t = svgEl('text', {x: cx, y: cy, class: classes.join(' ')});
+            const t = WidgetDom.svg('text', {x: cx, y: cy, class: classes.join(' ')});
             t.textContent = String(cell.date.getDate()).padStart(2, '0');
             g.appendChild(t);
 
             const marks = this.marks.filter((m) => CalendarGeometry.sameDay(m.date, cell.date));
             marks.slice(0, 3).forEach((m, k) => {
-                const dot = svgEl('circle', {cx: cx + ((k - ((Math.min(3, marks.length) - 1) / 2)) * 5), cy: cy + 10, r: 1.8});
+                const dot = WidgetDom.svg('circle', {cx: cx + ((k - ((Math.min(3, marks.length) - 1) / 2)) * 5), cy: cy + 10, r: 1.8});
                 dot.style.fill = m.color ?? 'var(--wg-c1)';
                 g.appendChild(dot);
             });
 
-            const title = svgEl('title');
+            const title = WidgetDom.svg('title');
             title.textContent = cell.date.toLocaleDateString(this.locale, {weekday: 'long', day: 'numeric', month: 'long'}) +
                 marks.filter((m) => m.label !== undefined).map((m) => ` · ${m.label}`).join('');
             g.appendChild(title);

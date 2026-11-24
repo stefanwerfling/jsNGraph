@@ -1,4 +1,4 @@
-import { paletteColor, svgEl, Widget, WidgetOptions } from './WidgetBase';
+import { Widget, WidgetDom, WidgetOptions } from './WidgetBase';
 import { WorldMapGeometry } from './WorldMapGeometry';
 
 /** A place on the map. */
@@ -47,6 +47,10 @@ export interface WorldMapEvents extends Record<string, unknown> {
  */
 export class WorldMap extends Widget<WorldMapEvents> {
 
+    private static round(n: number): number {
+        return Math.round(n * 100) / 100;
+    }
+
     private mode: 'fill' | 'dots';
     private readonly spacing: number;
     private readonly south: number;
@@ -63,12 +67,12 @@ export class WorldMap extends Widget<WorldMapEvents> {
         this.mode = options.mode ?? 'fill';
         this.spacing = options.dotSpacing ?? 2.5;
         [this.south, this.north] = options.latRange ?? [-58, 84];
-        this.markers = options.markers ?? [];
-        this.legend = options.legend ?? [];
+        this.markers = (options.markers ?? []).map((m) => ({...m}));
+        this.legend = (options.legend ?? []).map((l) => ({...l}));
 
-        this.svg = svgEl('svg', {viewBox: `0 0 360 ${this.north - this.south}`, class: 'wg-svg', role: 'img'});
-        this.landLayer = svgEl('g');
-        this.markerLayer = svgEl('g');
+        this.svg = WidgetDom.svg('svg', {viewBox: `0 0 360 ${this.north - this.south}`, class: 'wg-svg', role: 'img'});
+        this.landLayer = WidgetDom.svg('g');
+        this.markerLayer = WidgetDom.svg('g');
         this.svg.append(this.landLayer, this.markerLayer);
         this.legendBox = document.createElement('div');
         this.legendBox.className = 'wg-legend';
@@ -93,16 +97,16 @@ export class WorldMap extends Widget<WorldMapEvents> {
     }
 
     public setMarkers(markers: readonly MapMarker[]): void {
-        this.markers = [...markers];
+        this.markers = markers.map((m) => ({...m}));
         this.drawMarkers();
     }
 
-    public getMarkers(): ReadonlyArray<MapMarker> {
-        return this.markers;
+    public getMarkers(): ReadonlyArray<Readonly<MapMarker>> {
+        return this.markers.map((m) => ({...m}));
     }
 
     public setLegend(legend: readonly MapLegendItem[]): void {
-        this.legend = [...legend];
+        this.legend = legend.map((l) => ({...l}));
         this.drawLegend();
     }
 
@@ -122,7 +126,7 @@ export class WorldMap extends Widget<WorldMapEvents> {
         this.landLayer.replaceChildren();
 
         if (this.mode === 'fill') {
-            this.landLayer.appendChild(svgEl('path', {d: WorldMapGeometry.path(this.north), class: 'wg-land'}));
+            this.landLayer.appendChild(WidgetDom.svg('path', {d: WorldMapGeometry.path(this.north), class: 'wg-land'}));
             return;
         }
 
@@ -132,9 +136,9 @@ export class WorldMap extends Widget<WorldMapEvents> {
         // one path of tiny circles — thousands of dots stay one element
         for (const [lon, lat] of WorldMapGeometry.dots(this.spacing, this.north, this.south)) {
             const [x, y] = this.project(lon, lat);
-            parts.push(`M${round(x - r)} ${round(y)}a${round(r)} ${round(r)} 0 1 0 ${round(2 * r)} 0a${round(r)} ${round(r)} 0 1 0 ${round(-2 * r)} 0`);
+            parts.push(`M${WorldMap.round(x - r)} ${WorldMap.round(y)}a${WorldMap.round(r)} ${WorldMap.round(r)} 0 1 0 ${WorldMap.round(2 * r)} 0a${WorldMap.round(r)} ${WorldMap.round(r)} 0 1 0 ${WorldMap.round(-2 * r)} 0`);
         }
-        this.landLayer.appendChild(svgEl('path', {d: parts.join(''), class: 'wg-land-dot'}));
+        this.landLayer.appendChild(WidgetDom.svg('path', {d: parts.join(''), class: 'wg-land-dot'}));
     }
 
     private drawMarkers(): void {
@@ -143,21 +147,21 @@ export class WorldMap extends Widget<WorldMapEvents> {
         this.markers.forEach((m, i) => {
             const [x, y] = this.project(m.lon, m.lat);
             const r = m.size ?? 2.2;
-            const color = m.color ?? paletteColor(0);
-            const g = svgEl('g', {class: 'wg-marker', 'data-wg-marker': i});
+            const color = m.color ?? Widget.paletteColor(0);
+            const g = WidgetDom.svg('g', {class: 'wg-marker', 'data-wg-marker': i});
 
             if (m.label !== undefined) {
-                const title = svgEl('title');
+                const title = WidgetDom.svg('title');
                 title.textContent = m.label;
                 g.appendChild(title);
             }
             if (m.pulse === true) {
-                const ring = svgEl('circle', {cx: x, cy: y, r, class: 'wg-marker-pulse'});
+                const ring = WidgetDom.svg('circle', {cx: x, cy: y, r, class: 'wg-marker-pulse'});
                 ring.style.stroke = color;
                 g.appendChild(ring);
             }
 
-            const dot = svgEl('circle', {cx: x, cy: y, r, class: 'wg-marker-dot'});
+            const dot = WidgetDom.svg('circle', {cx: x, cy: y, r, class: 'wg-marker-dot'});
             dot.style.fill = color;
             g.appendChild(dot);
             this.markerLayer.appendChild(g);
@@ -214,8 +218,4 @@ export class WorldMap extends Widget<WorldMapEvents> {
         }
     };
 
-}
-
-function round(n: number): number {
-    return Math.round(n * 100) / 100;
 }

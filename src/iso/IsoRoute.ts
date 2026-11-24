@@ -19,8 +19,6 @@ export interface IsoRoutePoint {
     dv: number;
 }
 
-const DIRS: ReadonlyArray<[number, number]> = [[1, 0], [0, 1], [-1, 0], [0, -1]];
-
 /**
  * Pure connector routing on the tile grid: A* with 4 neighbours, a cost for
  * every turn and for crossing occupied tiles (the ends themselves are free),
@@ -28,6 +26,8 @@ const DIRS: ReadonlyArray<[number, number]> = [[1, 0], [0, 1], [-1, 0], [0, -1]]
  * tile centres, so on screen they follow the isometric axes.
  */
 export class IsoRoute {
+
+    private static readonly DIRS: ReadonlyArray<[number, number]> = [[1, 0], [0, 1], [-1, 0], [0, -1]];
 
     public static key(t: IsoTile): string {
         return `${t.x},${t.y}`;
@@ -80,7 +80,7 @@ export class IsoRoute {
                 break;
             }
             for (let nd = 0; nd < 4; nd++) {
-                const nx = cx + DIRS[nd]![0], ny = cy + DIRS[nd]![1];
+                const nx = cx + IsoRoute.DIRS[nd]![0], ny = cy + IsoRoute.DIRS[nd]![1];
                 if (nx < x0 || nx > x1 || ny < y0 || ny > y1) {
                     continue;
                 }
@@ -208,7 +208,7 @@ export class IsoRoute {
     private static dirOf(a: IsoTile, b: IsoTile): number {
         const dx = Math.sign(b.x - a.x), dy = Math.sign(b.y - a.y);
 
-        return DIRS.findIndex(([x, y]) => x === dx && y === dy);
+        return IsoRoute.DIRS.findIndex(([x, y]) => x === dx && y === dy);
     }
 
 }

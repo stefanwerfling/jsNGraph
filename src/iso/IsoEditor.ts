@@ -6,15 +6,11 @@ import { IsoIcons } from './IsoIcons';
 import { IsoFragment, IsoModel } from './IsoModel';
 import { IsoBounds, IsoProjection } from './IsoProjection';
 import { IsoRoute } from './IsoRoute';
-import { IsoStyles } from './IsoStyles';
+import { IsoStyles, IsoStyleVar } from './IsoStyles';
 import {
     IsoActor, IsoAnchor, IsoChangeKind, IsoConnector, IsoConnectorStatus, IsoDocument, IsoEditorEvents, IsoEditorOptions,
     IsoIconType, IsoItem, IsoItemStatus, IsoMode, IsoRegion, IsoText, IsoTile
 } from './IsoTypes';
-
-const SVG = 'http://www.w3.org/2000/svg';
-const CLIP_KEY = 'jsngraph-iso';
-const REGION_COLORS = ['#8b7cf6', '#2fb3a5', '#e0664f', '#f0a03c', '#5b8def', '#d062a8'];
 
 type Doc = Required<IsoDocument>;
 
@@ -48,6 +44,10 @@ type Gesture =
  */
 export class IsoEditor {
 
+    private static readonly SVG = 'http://www.w3.org/2000/svg';
+    private static readonly CLIP_KEY = 'jsngraph-iso';
+    private static readonly REGION_COLORS = ['#8b7cf6', '#2fb3a5', '#e0664f', '#f0a03c', '#5b8def', '#d062a8'];
+
     private readonly root: HTMLDivElement;
     private readonly stage: HTMLDivElement;
     private readonly floor: SVGSVGElement;
@@ -77,7 +77,7 @@ export class IsoEditor {
     private readonly history: RectHistory<Doc>;
     private doc: Doc = {items: [], connectors: [], regions: [], texts: []};
     private showGrid: boolean;
-    private readOnly: boolean;
+    private readOnlyMode: boolean;
     private mode: IsoMode;
     private selected = new Set<string>();
     private highlighted: Set<string> | null = null;
@@ -99,13 +99,13 @@ export class IsoEditor {
         this.proj = new IsoProjection(options.tileSize ?? 100);
         this.camera = new Camera(options.minScale ?? 0.15, options.maxScale ?? 3);
         this.showGrid = options.grid ?? true;
-        this.readOnly = options.readOnly ?? false;
+        this.readOnlyMode = options.readOnly ?? false;
         this.mode = options.mode ?? 'select';
         for (const t of IsoIcons.builtins()) {
             this.icons.set(t.id, t);
         }
         for (const t of options.icons ?? []) {
-            this.icons.set(t.id, t);
+            this.icons.set(t.id, {...t});
         }
 
         this.root = document.createElement('div');
@@ -115,26 +115,26 @@ export class IsoEditor {
         this.stage = document.createElement('div');
         this.stage.className = 'iso-stage';
 
-        this.floor = document.createElementNS(SVG, 'svg');
+        this.floor = document.createElementNS(IsoEditor.SVG, 'svg');
         this.floor.setAttribute('class', 'iso-floor');
-        this.floorG = document.createElementNS(SVG, 'g');
+        this.floorG = document.createElementNS(IsoEditor.SVG, 'g');
         this.floorG.setAttribute('transform', `matrix(${this.proj.floorMatrix().join(' ')})`);
-        this.gridPath = document.createElementNS(SVG, 'path');
+        this.gridPath = document.createElementNS(IsoEditor.SVG, 'path');
         this.gridPath.setAttribute('class', 'iso-grid');
-        this.regionG = document.createElementNS(SVG, 'g');
-        this.baseG = document.createElementNS(SVG, 'g');
-        this.textG = document.createElementNS(SVG, 'g');
-        this.connG = document.createElementNS(SVG, 'g');
-        this.handleG = document.createElementNS(SVG, 'g');
-        this.draftG = document.createElementNS(SVG, 'g');
-        this.statusG = document.createElementNS(SVG, 'g');
+        this.regionG = document.createElementNS(IsoEditor.SVG, 'g');
+        this.baseG = document.createElementNS(IsoEditor.SVG, 'g');
+        this.textG = document.createElementNS(IsoEditor.SVG, 'g');
+        this.connG = document.createElementNS(IsoEditor.SVG, 'g');
+        this.handleG = document.createElementNS(IsoEditor.SVG, 'g');
+        this.draftG = document.createElementNS(IsoEditor.SVG, 'g');
+        this.statusG = document.createElementNS(IsoEditor.SVG, 'g');
         // connectors lie under the base tiles, so a line meets an item at its tile edge
         this.floorG.append(this.gridPath, this.regionG, this.textG, this.connG, this.baseG, this.statusG, this.draftG);
         this.floor.appendChild(this.floorG);
         // handles get their own floor-plane SVG above every label, so nothing covers them
-        const handleSvg = document.createElementNS(SVG, 'svg');
+        const handleSvg = document.createElementNS(IsoEditor.SVG, 'svg');
         handleSvg.setAttribute('class', 'iso-floor iso-handles');
-        const handleMatrix = document.createElementNS(SVG, 'g');
+        const handleMatrix = document.createElementNS(IsoEditor.SVG, 'g');
         handleMatrix.setAttribute('transform', `matrix(${this.proj.floorMatrix().join(' ')})`);
         handleMatrix.appendChild(this.handleG);
         handleSvg.appendChild(handleMatrix);
@@ -189,12 +189,14 @@ export class IsoEditor {
         return this.root;
     }
 
-    public on<K extends keyof IsoEditorEvents>(event: K, listener: (payload: IsoEditorEvents[K]) => void): void {
+    public on<K extends keyof IsoEditorEvents>(event: K, listener: (payload: IsoEditorEvents[K]) => void): this {
         this.events.on(event, listener);
+        return this;
     }
 
-    public off<K extends keyof IsoEditorEvents>(event: K, listener: (payload: IsoEditorEvents[K]) => void): void {
+    public off<K extends keyof IsoEditorEvents>(event: K, listener: (payload: IsoEditorEvents[K]) => void): this {
         this.events.off(event, listener);
+        return this;
     }
 
     /** A copy of the document. */
@@ -227,7 +229,10 @@ export class IsoEditor {
     public addConnector(from: IsoAnchor, to: IsoAnchor, data: Partial<Omit<IsoConnector, 'id' | 'from' | 'to'>> & {id?: string} = {}): string {
         const id = data.id ?? IsoModel.uid(this.doc, 'link');
 
-        this.doc.connectors.push({...JSON.parse(JSON.stringify(data)) as Partial<IsoConnector>, id, from, to});
+        this.doc.connectors.push({
+            ...JSON.parse(JSON.stringify(data)) as Partial<IsoConnector>, id,
+            from: IsoEditor.cloneAnchor(from), to: IsoEditor.cloneAnchor(to)
+        });
         this.commit('connect', [id]);
 
         return id;
@@ -238,7 +243,8 @@ export class IsoEditor {
         const r = IsoProjection.rect(from, to);
 
         this.doc.regions.push({
-            color: REGION_COLORS[this.doc.regions.length % REGION_COLORS.length], ...data, id,
+            color: IsoEditor.REGION_COLORS[this.doc.regions.length % IsoEditor.REGION_COLORS.length],
+            ...JSON.parse(JSON.stringify(data)) as Partial<IsoRegion>, id,
             from: {x: r.x0, y: r.y0}, to: {x: r.x1, y: r.y1}
         });
         this.commit('region', [id]);
@@ -249,7 +255,7 @@ export class IsoEditor {
     public addText(tile: IsoTile, text: string, data: Partial<Omit<IsoText, 'id' | 'tile' | 'text'>> & {id?: string} = {}): string {
         const id = data.id ?? IsoModel.uid(this.doc, 'text');
 
-        this.doc.texts.push({...data, id, tile: {...tile}, text});
+        this.doc.texts.push({...JSON.parse(JSON.stringify(data)) as Partial<IsoText>, id, tile: {x: tile.x, y: tile.y}, text});
         this.commit('text', [id]);
 
         return id;
@@ -300,7 +306,7 @@ export class IsoEditor {
         const c = this.doc.connectors.find((x) => x.id === id);
         const r = c !== undefined ? this.route(c) : null;
 
-        return r === null ? [] : r.corners;
+        return r === null ? [] : r.corners.map((t) => ({x: t.x, y: t.y}));
     }
 
     public undo(): boolean {
@@ -321,15 +327,16 @@ export class IsoEditor {
 
     // ---- public API: clipboard, palette ---------------------------------------------------------------------
 
-    /** Copy the selection (also to the system clipboard when allowed). Returns the fragment. */
+    /** Copy the selection (also to the system clipboard when allowed). Returns a copy of the fragment. */
     public copy(): IsoFragment | null {
         if (this.selected.size === 0) {
             return null;
         }
         this.clipboard = IsoModel.fragment(this.doc, this.selected);
-        navigator.clipboard?.writeText(JSON.stringify({[CLIP_KEY]: this.clipboard})).catch(() => undefined);
+        const json = JSON.stringify(this.clipboard);
+        navigator.clipboard?.writeText(`{"${IsoEditor.CLIP_KEY}":${json}}`).catch(() => undefined);
 
-        return this.clipboard;
+        return JSON.parse(json) as IsoFragment;
     }
 
     public cut(): void {
@@ -507,12 +514,18 @@ export class IsoEditor {
 
     // ---- public API: view, mode ----------------------------------------------------------------------------
 
+    /** True while the editor is a viewer (no editing gestures). */
+    public get readOnly(): boolean {
+        return this.readOnlyMode;
+    }
+
+    /** @deprecated use the `readOnly` getter. */
     public isReadOnly(): boolean {
-        return this.readOnly;
+        return this.readOnlyMode;
     }
 
     public setReadOnly(readOnly: boolean): void {
-        this.readOnly = readOnly;
+        this.readOnlyMode = readOnly;
         this.cancelGesture();
         this.closeEditor(false);
         this.applyModeClass();
@@ -546,22 +559,26 @@ export class IsoEditor {
     }
 
     /** Add or replace icon types (re-renders). */
-    public registerIcons(types: IsoIconType[]): void {
+    public registerIcons(types: readonly IsoIconType[]): void {
         for (const t of types) {
-            this.icons.set(t.id, t);
+            this.icons.set(t.id, {...t});
         }
         this.render();
     }
 
-    /** All known icon types (built-in and registered), e.g. for a palette. */
+    /** All known icon types (built-in and registered), e.g. for a palette — copies. */
     public getIconTypes(): IsoIconType[] {
-        return [...this.icons.values()];
+        return [...this.icons.values()].map((t) => ({...t}));
     }
 
-    /** Override `--iso-*` custom properties on the root. */
-    public setStyleVars(vars: Record<string, string>): void {
-        for (const [k, v] of Object.entries(vars)) {
-            this.root.style.setProperty(`--iso-${k}`, v);
+    /** Override `--iso-*` custom properties on the root (null removes an override). */
+    public setStyleVars(vars: Partial<Record<IsoStyleVar, string | null>>): void {
+        for (const [k, v] of Object.entries<string | null | undefined>(vars)) {
+            if (v === null || v === undefined) {
+                this.root.style.removeProperty(`--iso-${k}`);
+            } else {
+                this.root.style.setProperty(`--iso-${k}`, v);
+            }
         }
     }
 
@@ -823,12 +840,12 @@ export class IsoEditor {
             };
             // the wall stands just outside the edge; its top is a thin cap
             const du = w.face === 'right' ? -t : 0, dv = w.face === 'left' ? -t : 0;
-            const svg = document.createElementNS(SVG, 'svg');
+            const svg = document.createElementNS(IsoEditor.SVG, 'svg');
             svg.setAttribute('class', 'iso-wall');
-            const face = document.createElementNS(SVG, 'polygon');
+            const face = document.createElementNS(IsoEditor.SVG, 'polygon');
             face.setAttribute('points', [pt(w.u0, w.v0, 0), pt(w.u1, w.v1, 0), pt(w.u1, w.v1, h), pt(w.u0, w.v0, h)].join(' '));
             face.setAttribute('fill', fill[w.face]);
-            const top = document.createElementNS(SVG, 'polygon');
+            const top = document.createElementNS(IsoEditor.SVG, 'polygon');
             top.setAttribute('points', [pt(w.u0, w.v0, h), pt(w.u1, w.v1, h), pt(w.u1 + du, w.v1 + dv, h), pt(w.u0 + du, w.v0 + dv, h)].join(' '));
             top.setAttribute('fill', cap);
             svg.append(face, top);
@@ -848,7 +865,7 @@ export class IsoEditor {
         if (st === undefined || it === undefined) {
             return;
         }
-        const ring = document.createElementNS(SVG, 'rect');
+        const ring = document.createElementNS(IsoEditor.SVG, 'rect');
         ring.setAttribute('class', `iso-status-ring iso-st-${st.state}`);
         ring.setAttribute('x', String(it.tile.x + 0.02));
         ring.setAttribute('y', String(it.tile.y + 0.02));
@@ -893,8 +910,8 @@ export class IsoEditor {
     private regionEl(r: IsoRegion): SVGGElement {
         const {x0, y0, x1, y1} = IsoProjection.rect(r.from, r.to);
         const color = r.color ?? '#8b7cf6';
-        const g = document.createElementNS(SVG, 'g');
-        const rect = document.createElementNS(SVG, 'rect');
+        const g = document.createElementNS(IsoEditor.SVG, 'g');
+        const rect = document.createElementNS(IsoEditor.SVG, 'rect');
 
         rect.setAttribute('class', 'iso-region');
         rect.setAttribute('x', String(x0 + 0.05));
@@ -928,13 +945,13 @@ export class IsoEditor {
 
     /** Text lying on the floor: drawn at 100× size and scaled down, so tiny font sizes never hit browser minimums. */
     private floorText(t: IsoText, du: number, dv: number): SVGGElement {
-        const g = document.createElementNS(SVG, 'g');
+        const g = document.createElementNS(IsoEditor.SVG, 'g');
         const size = t.size ?? 0.4;
         // along y the text reads towards the upper right (−v), its top towards the upper left — never mirrored
         const rot = t.axis === 'y' ? ' rotate(-90)' : '';
         const x = t.axis === 'y' ? t.tile.x + dv : t.tile.x + du;
         const y = t.axis === 'y' ? t.tile.y + 1 - du : t.tile.y + dv;
-        const text = document.createElementNS(SVG, 'text');
+        const text = document.createElementNS(IsoEditor.SVG, 'text');
 
         g.setAttribute('transform', `translate(${x} ${y})${rot} scale(0.01)`);
         text.setAttribute('class', 'iso-floortext');
@@ -956,7 +973,7 @@ export class IsoEditor {
         if (it.base === '') {
             return null;
         }
-        const rect = document.createElementNS(SVG, 'rect');
+        const rect = document.createElementNS(IsoEditor.SVG, 'rect');
 
         rect.setAttribute('class', 'iso-base');
         rect.setAttribute('x', String(it.tile.x + 0.08));
@@ -1058,6 +1075,10 @@ export class IsoEditor {
         return {tiles, corners, line: IsoRoute.centres(corners)};
     }
 
+    private static cloneAnchor(a: IsoAnchor): IsoAnchor {
+        return 'item' in a ? {item: a.item} : {tile: {x: a.tile.x, y: a.tile.y}};
+    }
+
     private static endGap(a: IsoAnchor): number {
         return 'item' in a ? 0.62 : 0.12;
     }
@@ -1072,9 +1093,9 @@ export class IsoEditor {
         const d = IsoRoute.pathData(line);
         const color = c.color ?? 'var(--iso-line)';
         const width = c.width ?? 6;
-        const g = document.createElementNS(SVG, 'g');
+        const g = document.createElementNS(IsoEditor.SVG, 'g');
         const path = (cls: string, w: number): SVGPathElement => {
-            const el = document.createElementNS(SVG, 'path');
+            const el = document.createElementNS(IsoEditor.SVG, 'path');
             el.setAttribute('class', cls);
             el.setAttribute('d', d);
             el.style.strokeWidth = String(w);
@@ -1106,7 +1127,7 @@ export class IsoEditor {
             heads.push(IsoRoute.arrow({u: p.u, v: p.v, du: -p.du, dv: -p.dv}, 0.3, 0.26));
         }
         for (const h of heads) {
-            const tri = document.createElementNS(SVG, 'polygon');
+            const tri = document.createElementNS(IsoEditor.SVG, 'polygon');
             tri.setAttribute('points', h.join(' '));
             tri.style.fill = color;
             g.appendChild(tri);
@@ -1114,7 +1135,7 @@ export class IsoEditor {
         // a free end (on a tile, not an item) gets a small ring
         for (const [a, i] of [[c.from, 0], [c.to, line.length - 2]] as const) {
             if ('tile' in a) {
-                const ring = document.createElementNS(SVG, 'circle');
+                const ring = document.createElementNS(IsoEditor.SVG, 'circle');
                 ring.setAttribute('class', 'iso-conn-end');
                 ring.setAttribute('cx', String(line[i]));
                 ring.setAttribute('cy', String(line[i + 1]));
@@ -1127,12 +1148,12 @@ export class IsoEditor {
             // dots on the floor travelling the route; three per connector, evenly spaced
             const dur = Math.max(0.8, total / 1.8);
             for (let k = 0; k < 3; k++) {
-                const dot = document.createElementNS(SVG, 'circle');
+                const dot = document.createElementNS(IsoEditor.SVG, 'circle');
                 dot.setAttribute('r', '0.1');
                 dot.style.fill = '#ffffff';
                 dot.style.opacity = '0.9';
                 dot.style.pointerEvents = 'none';
-                const anim = document.createElementNS(SVG, 'animateMotion');
+                const anim = document.createElementNS(IsoEditor.SVG, 'animateMotion');
                 anim.setAttribute('dur', `${dur}s`);
                 anim.setAttribute('begin', `${-k * dur / 3}s`);
                 anim.setAttribute('repeatCount', 'indefinite');
@@ -1171,7 +1192,7 @@ export class IsoEditor {
         if (!this.readOnly && this.mode === 'select' && this.selected.size === 1) {
             const id = [...this.selected][0]!;
             const dot = (u: number, v: number, h: Handle, cls = ''): void => {
-                const c = document.createElementNS(SVG, 'circle');
+                const c = document.createElementNS(IsoEditor.SVG, 'circle');
                 c.setAttribute('class', `iso-handle ${cls}`);
                 c.setAttribute('cx', String(u));
                 c.setAttribute('cy', String(v));
@@ -1209,7 +1230,7 @@ export class IsoEditor {
         if (tile === null) {
             return;
         }
-        const rect = document.createElementNS(SVG, 'rect');
+        const rect = document.createElementNS(IsoEditor.SVG, 'rect');
         rect.setAttribute('class', 'iso-cursor');
         rect.setAttribute('x', String(tile.x + 0.04));
         rect.setAttribute('y', String(tile.y + 0.04));
@@ -1229,7 +1250,7 @@ export class IsoEditor {
 
         if (g?.kind === 'region') {
             const {x0, y0, x1, y1} = IsoProjection.rect(g.start, g.end);
-            const rect = document.createElementNS(SVG, 'rect');
+            const rect = document.createElementNS(IsoEditor.SVG, 'rect');
             rect.setAttribute('class', 'iso-draft iso-draft-region');
             rect.setAttribute('x', String(x0 + 0.05));
             rect.setAttribute('y', String(y0 + 0.05));
@@ -1245,7 +1266,7 @@ export class IsoEditor {
         if (a !== null && toTile !== null) {
             const blocked = this.blocked();
             const line = IsoRoute.centres(IsoRoute.corners(IsoRoute.route(a, toTile, [], {blocked})));
-            const path = document.createElementNS(SVG, 'path');
+            const path = document.createElementNS(IsoEditor.SVG, 'path');
             path.setAttribute('class', 'iso-draft iso-draft-line');
             path.setAttribute('d', IsoRoute.pathData(line.length >= 4 ? line : [...line, ...line]));
             this.draftG.appendChild(path);
@@ -1965,7 +1986,7 @@ export class IsoEditor {
             return;
         }
         this.clipboard = IsoModel.fragment(this.doc, this.selected);
-        e.clipboardData?.setData('text/plain', JSON.stringify({[CLIP_KEY]: this.clipboard}));
+        e.clipboardData?.setData('text/plain', JSON.stringify({[IsoEditor.CLIP_KEY]: this.clipboard}));
         e.preventDefault();
     };
 
@@ -1985,8 +2006,9 @@ export class IsoEditor {
         const text = e.clipboardData?.getData('text/plain') ?? '';
         try {
             const parsed = JSON.parse(text) as Record<string, IsoFragment>;
-            if (parsed[CLIP_KEY] !== undefined) {
-                f = parsed[CLIP_KEY];
+            const ours = parsed[IsoEditor.CLIP_KEY];
+            if (ours !== undefined) {
+                f = ours;
             }
         } catch {
             // not ours: keep the internal clipboard

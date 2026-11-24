@@ -166,7 +166,7 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   Drawn in a fixed 290 view box (+16 px per side for the 06:00/18:00 labels). Pure part `DayClockGeometry.ts`
   (`place` = ring layout, arcs, wedge; `test/DayClock.test.ts`). Example: `examples/dayclock.html`.
   Dashboard widgets (same subpath) share `WidgetBase.ts`: `Widget` (root + `data-wg-theme` auto/light/dark, events,
-  `setStyleVars` over `--wg-*`: ink/muted/track/grid/knob/surface + palette c1…c6, `paletteColor(i)`), `Tween` (rAF
+  `setStyleVars` over `--wg-*`: ink/muted/track/grid/knob/surface + palette c1…c6, `Widget.paletteColor(i)`; a `prefix` ctor arg gives a widget its own vars — `DayClock` extends `Widget` with `dc`; SVG helpers in `WidgetDom`), `Tween` (rAF
   ease-out over a number list; new entries grow from 0; off for reduced motion), `WidgetStyles` (one `:where()` sheet).
   Widgets keep their elements and only repaint values (`build` on structure change, `paint` per tween frame):
   `RingGauge` (concentric arcs, values stacked in the centre, `sweep`/`startAngle`), `SegmentGauge` (radial ticks lit

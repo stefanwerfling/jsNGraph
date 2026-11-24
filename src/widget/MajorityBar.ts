@@ -1,4 +1,4 @@
-import { paletteColor, Tween, Widget, WidgetOptions } from './WidgetBase';
+import { Tween, Widget, WidgetOptions } from './WidgetBase';
 
 /** One side (or a middle part) of a majority bar. */
 export interface MajorityPart {
@@ -80,8 +80,8 @@ export class MajorityBar extends Widget<MajorityBarEvents> {
         this.tween.set(this.parts.map((p) => Math.max(0, p.value)), this.animate);
     }
 
-    public getParts(): ReadonlyArray<MajorityPart> {
-        return this.parts;
+    public getParts(): ReadonlyArray<Readonly<MajorityPart>> {
+        return this.parts.map((p) => ({...p}));
     }
 
     /** Count up from zero again. */
@@ -103,7 +103,7 @@ export class MajorityBar extends Widget<MajorityBarEvents> {
     }
 
     private color(i: number): string {
-        return this.parts[i]?.color ?? paletteColor(i);
+        return this.parts[i]?.color ?? Widget.paletteColor(i);
     }
 
     private build(): void {

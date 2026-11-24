@@ -48,8 +48,23 @@ export class WorkflowModel {
 
     // ---- types ---------------------------------------------------------
 
+    /** A copy of a node type: ports copied, functions (render, …) kept. */
+    public static copyType(type: WorkflowNodeType): WorkflowNodeType {
+        const copy: WorkflowNodeType = {...type};
+
+        if (type.inputs !== undefined) {
+            copy.inputs = type.inputs.map((p) => ({...p}));
+        }
+        if (type.outputs !== undefined) {
+            copy.outputs = type.outputs.map((p) => ({...p}));
+        }
+
+        return copy;
+    }
+
+    /** Register (or replace) a node type; the caller's object is copied. */
     public registerType(type: WorkflowNodeType): void {
-        this.types.set(type.type, type);
+        this.types.set(type.type, WorkflowModel.copyType(type));
     }
 
     public getType(type: string): WorkflowNodeType | undefined {

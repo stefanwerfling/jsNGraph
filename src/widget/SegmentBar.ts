@@ -1,4 +1,4 @@
-import { paletteColor, svgEl, Tween, Widget, WidgetOptions } from './WidgetBase';
+import { Tween, Widget, WidgetDom, WidgetOptions } from './WidgetBase';
 import { WidgetGeometry } from './WidgetGeometry';
 
 /** One row of a `SegmentBar`. */
@@ -23,17 +23,17 @@ export interface SegmentBarOptions extends WidgetOptions {
     format?: (value: number, row: SegmentRow) => string;
 }
 
-const LABEL_H = 15;
-const BAR_H = 13;
-const ROW_GAP = 11;
-const VALUE_W = 40;
-
 /**
  * LED-style bars: each row a label over a strip of slanted cells, lit up to
  * its value in the row's colour. SVG, zero dependencies; values ease (the lit
  * cells count up) when they change.
  */
 export class SegmentBar extends Widget<Record<string, never>> {
+
+    private static readonly LABEL_H = 15;
+    private static readonly BAR_H = 13;
+    private static readonly ROW_GAP = 11;
+    private static readonly VALUE_W = 40;
 
     private rows: SegmentRow[] = [];
     private readonly max: number;
@@ -55,7 +55,7 @@ export class SegmentBar extends Widget<Record<string, never>> {
         this.skew = options.skew ?? 0.35;
         this.showValue = options.showValue ?? false;
         this.format = options.format ?? ((v) => String(Math.round(v)));
-        this.svg = svgEl('svg', {class: 'wg-svg', role: 'img'});
+        this.svg = WidgetDom.svg('svg', {class: 'wg-svg', role: 'img'});
         this.root.appendChild(this.svg);
         this.tween = new Tween((v) => this.paint(v), this.duration);
         this.watchWidth((w) => {
@@ -87,7 +87,7 @@ export class SegmentBar extends Widget<Record<string, never>> {
     }
 
     public getRows(): ReadonlyArray<Readonly<SegmentRow>> {
-        return this.rows;
+        return this.rows.map((r) => ({...r}));
     }
 
     public override destroy(): void {
@@ -96,10 +96,10 @@ export class SegmentBar extends Widget<Record<string, never>> {
     }
 
     private build(): void {
-        const rowH = LABEL_H + BAR_H + ROW_GAP;
-        const h = Math.max(1, (this.rows.length * rowH) - ROW_GAP);
-        const barW = this.width - (this.showValue ? VALUE_W : 0);
-        const slant = BAR_H * this.skew;
+        const rowH = SegmentBar.LABEL_H + SegmentBar.BAR_H + SegmentBar.ROW_GAP;
+        const h = Math.max(1, (this.rows.length * rowH) - SegmentBar.ROW_GAP);
+        const barW = this.width - (this.showValue ? SegmentBar.VALUE_W : 0);
+        const slant = SegmentBar.BAR_H * this.skew;
         const pitch = (barW - slant) / this.segments;
         const cellW = pitch * 0.62;
 
@@ -110,22 +110,22 @@ export class SegmentBar extends Widget<Record<string, never>> {
 
         this.rows.forEach((row, i) => {
             const y = i * rowH;
-            const label = svgEl('text', {x: 0, y: y + 10, class: 'wg-seg-label'});
-            const title = svgEl('title');
+            const label = WidgetDom.svg('text', {x: 0, y: y + 10, class: 'wg-seg-label'});
+            const title = WidgetDom.svg('title');
             const cells: SVGPolygonElement[] = [];
 
             label.textContent = row.label;
-            label.style.fill = row.color ?? paletteColor(i);
+            label.style.fill = row.color ?? Widget.paletteColor(i);
             title.textContent = row.label;
             this.svg.append(label);
 
-            const g = svgEl('g');
+            const g = WidgetDom.svg('g');
             g.appendChild(title);
             for (let k = 0; k < this.segments; k++) {
                 const x = k * pitch;
-                const top = y + LABEL_H;
-                const pts = `${x + slant},${top} ${x + slant + cellW},${top} ${x + cellW},${top + BAR_H} ${x},${top + BAR_H}`;
-                const cell = svgEl('polygon', {points: pts});
+                const top = y + SegmentBar.LABEL_H;
+                const pts = `${x + slant},${top} ${x + slant + cellW},${top} ${x + cellW},${top + SegmentBar.BAR_H} ${x},${top + SegmentBar.BAR_H}`;
+                const cell = WidgetDom.svg('polygon', {points: pts});
 
                 g.appendChild(cell);
                 cells.push(cell);
@@ -134,7 +134,7 @@ export class SegmentBar extends Widget<Record<string, never>> {
             this.cells.push(cells);
 
             if (this.showValue) {
-                const t = svgEl('text', {x: this.width, y: y + LABEL_H + (BAR_H / 2), class: 'wg-text', 'text-anchor': 'end',
+                const t = WidgetDom.svg('text', {x: this.width, y: y + SegmentBar.LABEL_H + (SegmentBar.BAR_H / 2), class: 'wg-text', 'text-anchor': 'end',
                     'dominant-baseline': 'central', 'font-size': 12, 'font-weight': 700});
                 this.svg.appendChild(t);
                 this.values.push(t);
@@ -146,7 +146,7 @@ export class SegmentBar extends Widget<Record<string, never>> {
         this.rows.forEach((row, i) => {
             const v = values[i] ?? 0;
             const lit = WidgetGeometry.litCount(v, row.max ?? this.max, this.segments);
-            const color = row.color ?? paletteColor(i);
+            const color = row.color ?? Widget.paletteColor(i);
 
             this.cells[i]?.forEach((cell, k) => {
                 if (k < lit) {

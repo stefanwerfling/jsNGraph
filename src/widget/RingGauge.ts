@@ -1,4 +1,4 @@
-import { paletteColor, setAttrs, svgEl, Tween, Widget, WidgetOptions } from './WidgetBase';
+import { Tween, Widget, WidgetDom, WidgetOptions } from './WidgetBase';
 import { WidgetGeometry } from './WidgetGeometry';
 
 /** One ring of a `RingGauge`, outermost first. */
@@ -35,8 +35,6 @@ export interface RingGaugeEvents extends Record<string, unknown> {
     ringClick: {ring: GaugeRing; index: number; originalEvent: MouseEvent};
 }
 
-const VIEW = 200;
-
 /**
  * Concentric progress rings — the "30 / 45" donut of a dashboard: each ring
  * is a track with a value arc on it, values stacked in the centre. SVG, zero
@@ -46,6 +44,8 @@ const VIEW = 200;
  *     g.setValues([35, 50]);
  */
 export class RingGauge extends Widget<RingGaugeEvents> {
+
+    private static readonly VIEW = 200;
 
     private rings: GaugeRing[] = [];
     private readonly thickness: number;
@@ -70,7 +70,7 @@ export class RingGauge extends Widget<RingGaugeEvents> {
         this.rounded = options.rounded ?? false;
         this.center = options.center ?? 'values';
         this.format = options.format ?? ((v) => String(Math.round(v)));
-        this.svg = svgEl('svg', {viewBox: `0 0 ${VIEW} ${VIEW}`, class: 'wg-svg', role: 'img'});
+        this.svg = WidgetDom.svg('svg', {viewBox: `0 0 ${RingGauge.VIEW} ${RingGauge.VIEW}`, class: 'wg-svg', role: 'img'});
         this.svg.style.maxWidth = `${options.size ?? 220}px`;
         this.svg.style.margin = '0 auto';
         this.root.appendChild(this.svg);
@@ -102,12 +102,12 @@ export class RingGauge extends Widget<RingGaugeEvents> {
     }
 
     public getRings(): ReadonlyArray<Readonly<GaugeRing>> {
-        return this.rings;
+        return this.rings.map((r) => ({...r}));
     }
 
     /** Radius of ring `i` in view units. */
     public radius(i: number): number {
-        return (VIEW / 2) - 2 - (this.thickness / 2) - (i * (this.thickness + this.gap));
+        return (RingGauge.VIEW / 2) - 2 - (this.thickness / 2) - (i * (this.thickness + this.gap));
     }
 
     public override destroy(): void {
@@ -117,7 +117,7 @@ export class RingGauge extends Widget<RingGaugeEvents> {
     }
 
     private build(): void {
-        const c = VIEW / 2;
+        const c = RingGauge.VIEW / 2;
         const cap = this.rounded ? 'round' : 'butt';
 
         this.svg.replaceChildren();
@@ -127,14 +127,14 @@ export class RingGauge extends Widget<RingGaugeEvents> {
 
         this.rings.forEach((ring, i) => {
             const r = this.radius(i);
-            const g = svgEl('g', {'data-wg-ring': i});
-            const title = svgEl('title');
-            const arc = svgEl('path', {class: 'wg-ring-value', 'stroke-width': this.thickness, 'stroke-linecap': cap});
+            const g = WidgetDom.svg('g', {'data-wg-ring': i});
+            const title = WidgetDom.svg('title');
+            const arc = WidgetDom.svg('path', {class: 'wg-ring-value', 'stroke-width': this.thickness, 'stroke-linecap': cap});
 
-            arc.style.stroke = ring.color ?? paletteColor(i);
+            arc.style.stroke = ring.color ?? Widget.paletteColor(i);
             g.append(
                 title,
-                svgEl('path', {
+                WidgetDom.svg('path', {
                     d: WidgetGeometry.arcPath(c, c, r, this.start, this.start + this.sweep),
                     class: 'wg-track', 'stroke-width': this.thickness, 'stroke-linecap': cap
                 }),
@@ -152,7 +152,7 @@ export class RingGauge extends Widget<RingGaugeEvents> {
         const inner = Math.max(10, this.radius(this.rings.length - 1) - (this.thickness / 2));
 
         if (this.center !== 'values') {
-            const t = svgEl('text', {x: c, y: c, class: 'wg-center wg-text', 'font-size': Math.min(34, inner * 0.55)});
+            const t = WidgetDom.svg('text', {x: c, y: c, class: 'wg-center wg-text', 'font-size': Math.min(34, inner * 0.55)});
             t.textContent = this.center;
             this.svg.appendChild(t);
             return;
@@ -163,16 +163,16 @@ export class RingGauge extends Widget<RingGaugeEvents> {
 
         this.rings.forEach((ring, i) => {
             const y = c + ((i - ((n - 1) / 2)) * size * 1.05);
-            const t = svgEl('text', {x: c, y, class: 'wg-center', 'font-size': size});
+            const t = WidgetDom.svg('text', {x: c, y, class: 'wg-center', 'font-size': size});
 
-            t.style.fill = ring.color ?? paletteColor(i);
+            t.style.fill = ring.color ?? Widget.paletteColor(i);
             this.svg.appendChild(t);
             this.texts.push(t);
         });
     }
 
     private paint(values: number[]): void {
-        const c = VIEW / 2;
+        const c = RingGauge.VIEW / 2;
 
         this.rings.forEach((ring, i) => {
             const v = values[i] ?? 0;
@@ -182,7 +182,7 @@ export class RingGauge extends Widget<RingGaugeEvents> {
             const title = this.titles[i];
 
             if (arc !== undefined) {
-                setAttrs(arc, {d: WidgetGeometry.arcPath(c, c, this.radius(i), this.start, this.start + (this.sweep * k))});
+                WidgetDom.setAttrs(arc, {d: WidgetGeometry.arcPath(c, c, this.radius(i), this.start, this.start + (this.sweep * k))});
             }
             if (text !== undefined) {
                 text.textContent = this.format(v, ring);

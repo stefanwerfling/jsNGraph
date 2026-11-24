@@ -1,7 +1,7 @@
 /** Names of the editor's CSS custom properties, without the `--iso-` prefix. */
 export type IsoStyleVar =
     | 'bg' | 'grid' | 'base' | 'base-border' | 'label-bg' | 'label-border' | 'label-text' | 'subtext'
-    | 'leader' | 'accent' | 'text' | 'region' | 'line';
+    | 'leader' | 'accent' | 'text' | 'region' | 'line' | 'ok' | 'warn' | 'down' | 'idle';
 
 /**
  * Default look of the isometric editor, injected once: zero-specificity
