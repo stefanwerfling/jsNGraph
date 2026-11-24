@@ -646,20 +646,20 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
         }
         if (f.kind === 'actor') {
             const p = this.pa.find((q) => q.data.id === f.id);
-            return p === undefined ? null : {kind: 'actor', actor: p.data, categories: p.cats.map((i) => this.categories[i]!)};
+            return p === undefined ? null : {kind: 'actor', actor: RootsChart.copyActor(p.data), categories: p.cats.map((i) => ({...this.categories[i]!}))};
         }
         if (f.kind === 'category') {
             const i = this.categories.findIndex((c) => c.id === f.id);
             return i < 0 ? null : {
-                kind: 'category', category: this.categories[i]!,
-                actors: this.pa.filter((p) => this.shown(p) && p.cats.includes(i)).map((p) => p.data)
+                kind: 'category', category: {...this.categories[i]!},
+                actors: this.pa.filter((p) => this.shown(p) && p.cats.includes(i)).map((p) => RootsChart.copyActor(p.data))
             };
         }
         const a = this.categories.findIndex((c) => c.id === f.a), b = this.categories.findIndex((c) => c.id === f.b);
 
         return a < 0 || b < 0 ? null : {
-            kind: 'link', a: this.categories[a]!, b: this.categories[b]!,
-            actors: this.pa.filter((p) => this.shown(p) && p.cats.includes(a) && p.cats.includes(b)).map((p) => p.data)
+            kind: 'link', a: {...this.categories[a]!}, b: {...this.categories[b]!},
+            actors: this.pa.filter((p) => this.shown(p) && p.cats.includes(a) && p.cats.includes(b)).map((p) => RootsChart.copyActor(p.data))
         };
     }
 
@@ -861,6 +861,15 @@ export class RootsChart extends ChartSurface<RootsChartEvents> {
         this.canvas.removeEventListener('wheel', this.onWheel);
         this.canvas.removeEventListener('dblclick', this.onDblClick);
         super.destroy();
+    }
+
+    /** An actor for a listener: own `categories` and `contribution`. */
+    private static copyActor(actor: RootsActor): RootsActor {
+        const copy: RootsActor = {...actor, categories: actor.categories.slice()};
+        if (actor.contribution !== undefined) {
+            copy.contribution = {...actor.contribution};
+        }
+        return copy;
     }
 
 }

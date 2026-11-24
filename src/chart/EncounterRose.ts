@@ -824,7 +824,13 @@ export class EncounterRose extends ChartSurface<EncounterRoseEvents> {
     }
 
     private toHover(p: Prepared): EncounterHover {
-        return {encounter: p.data, category: this.categories[p.ci], stats: p.stats};
+        const category = this.categories[p.ci];
+
+        return {
+            encounter: {...p.data, fixes: p.data.fixes.map((f) => ({...f}))},
+            category: category === undefined ? undefined : {...category},
+            stats: {...p.stats}
+        };
     }
 
 }

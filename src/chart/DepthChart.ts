@@ -127,7 +127,7 @@ export class DepthChart extends ChartSurface<DepthChartEvents> {
 
     public setRange(range: ChartRange | null): void {
         this.view = range === null ? null : {...range};
-        this.events.emit('rangeChange', this.priceRange());
+        this.events.emit('rangeChange', {...this.priceRange()});
         this.redraw();
     }
 
@@ -467,7 +467,7 @@ export class DepthChart extends ChartSurface<DepthChartEvents> {
             const moved = ChartScale.pan(this.press.view, -(pt.x - this.press.x) / this.plot.w * span);
             this.view = moved;
             this.hoverX = null;
-            this.events.emit('rangeChange', moved);
+            this.events.emit('rangeChange', {...moved});
             this.redraw();
             return;
         }
@@ -511,7 +511,7 @@ export class DepthChart extends ChartSurface<DepthChartEvents> {
         const full = this.fullRange();
 
         this.view = ChartScale.zoom(range, at, Math.exp(e.deltaY * 0.0015), full, (full.max - full.min) / 200);
-        this.events.emit('rangeChange', this.view);
+        this.events.emit('rangeChange', {...this.view});
         this.redraw();
     };
 

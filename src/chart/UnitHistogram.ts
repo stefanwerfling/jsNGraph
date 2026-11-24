@@ -478,7 +478,7 @@ export class UnitHistogram extends ChartSurface<UnitHistogramEvents> {
             this.redraw();
         }
         if (hit !== before) {
-            this.events.emit('hover', hit === null ? null : {unit: this.units[hit.unit]!, index: hit.unit});
+            this.events.emit('hover', hit === null ? null : {unit: {...this.units[hit.unit]!}, index: hit.unit});
         }
     };
 
@@ -496,7 +496,7 @@ export class UnitHistogram extends ChartSurface<UnitHistogramEvents> {
         const hit = this.hitAt(p.x, p.y);
 
         if (hit !== null) {
-            this.events.emit('unitClick', {unit: this.units[hit.unit]!, index: hit.unit});
+            this.events.emit('unitClick', {unit: {...this.units[hit.unit]!}, index: hit.unit});
         }
     };
 

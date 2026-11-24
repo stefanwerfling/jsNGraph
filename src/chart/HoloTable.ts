@@ -976,7 +976,7 @@ export class HoloTable extends ChartSurface<HoloTableEvents> {
 
         this.hover = hit;
         if (changed) {
-            this.events.emit('hover', hit);
+            this.events.emit('hover', hit === null ? null : {...hit});
         }
         this.root.style.cursor = hit !== null && hit.kind !== 'panel' ? 'pointer' : this.interactive ? 'grab' : '';
         this.redraw();
@@ -993,7 +993,7 @@ export class HoloTable extends ChartSurface<HoloTableEvents> {
         if (d !== null && !d.moved && e.type === 'pointerup') {
             const hit = this.pick(this.local(e).x, this.local(e).y);
             if (hit !== null) {
-                this.events.emit('click', hit);
+                this.events.emit('click', {...hit});
             }
         }
     };

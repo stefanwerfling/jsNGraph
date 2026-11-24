@@ -248,9 +248,9 @@ export class LineageChart extends ChartSurface<LineageChartEvents> {
         }
 
         return {
-            node: n,
-            parent: n.parent !== undefined ? this.byId.get(n.parent)?.node ?? null : null,
-            children,
+            node: {...n},
+            parent: LineageChart.copyNode(n.parent !== undefined ? this.byId.get(n.parent)?.node ?? null : null),
+            children: children.map((c) => ({...c})),
             descendants: desc.size - 1 - anc
         };
     }
@@ -708,5 +708,9 @@ export class LineageChart extends ChartSurface<LineageChartEvents> {
     private readonly onDblClick = (): void => {
         this.fit(true);
     };
+
+    private static copyNode(node: LineageNode | null): LineageNode | null {
+        return node === null ? null : {...node};
+    }
 
 }

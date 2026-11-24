@@ -728,7 +728,7 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
         };
 
         if ((hit === null) !== (this.hit === null) || hit !== null) {
-            this.events.emit('hover', hit);
+            this.events.emit('hover', VolumeView.copyHit(hit));
         }
         this.hit = hit;
     }
@@ -777,7 +777,7 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
         if (d !== null && !d.moved && e.type === 'pointerup') {
             const p = this.local(e);
             this.pick(p.x, p.y);
-            this.events.emit('click', this.hit);
+            this.events.emit('click', VolumeView.copyHit(this.hit));
         }
         this.redraw();
     };
@@ -819,6 +819,11 @@ export class VolumeView extends ChartSurface<VolumeViewEvents> {
 
         const background = ChartTheme.resolve(theme).background;
         return typeof theme === 'object' && theme.background === undefined ? null : background;
+    }
+
+    /** A hit for a listener: its own `values` array. */
+    private static copyHit(hit: VolumeHit | null): VolumeHit | null {
+        return hit === null ? null : {...hit, values: hit.values.slice()};
     }
 
 }

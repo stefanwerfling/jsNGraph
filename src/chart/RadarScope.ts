@@ -731,11 +731,11 @@ export class RadarScope extends ChartSurface<RadarScopeEvents> {
         this.root.style.cursor = h.target >= 0 || h.cluster >= 0 ? 'pointer' : '';
         if (tChanged) {
             const t = this.targets[h.target];
-            this.events.emit('targetHover', t === undefined ? null : {target: t});
+            this.events.emit('targetHover', t === undefined ? null : {target: {...t}});
         }
         if (cChanged) {
             const g = this.clusters[h.cluster];
-            this.events.emit('clusterHover', g === undefined ? null : {targets: g.map((i) => this.targets[i]!)});
+            this.events.emit('clusterHover', g === undefined ? null : {targets: g.map((i) => ({...this.targets[i]!}))});
         }
         this.redraw();
     };
@@ -759,9 +759,9 @@ export class RadarScope extends ChartSurface<RadarScopeEvents> {
         const t = this.targets[h.target];
 
         if (t !== undefined) {
-            this.events.emit('targetClick', {target: t});
+            this.events.emit('targetClick', {target: {...t}});
         } else if (h.cluster >= 0) {
-            this.events.emit('clusterClick', {targets: this.clusters[h.cluster]!.map((i) => this.targets[i]!)});
+            this.events.emit('clusterClick', {targets: this.clusters[h.cluster]!.map((i) => ({...this.targets[i]!}))});
         }
     };
 

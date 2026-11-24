@@ -255,7 +255,7 @@ export class TimeSeriesChart extends ChartSurface<TimeSeriesChartEvents> {
 
         this.view = to;
         this.anim = animate ? {from, to: to ?? this.full, start: 0} : null;
-        this.events.emit('rangeChange', to ?? this.full);
+        this.events.emit('rangeChange', {...(to ?? this.full)});
         this.redraw();
     }
 
@@ -726,7 +726,7 @@ export class TimeSeriesChart extends ChartSurface<TimeSeriesChartEvents> {
             this.activePreset = null;
             this.syncPresets();
         }
-        this.events.emit('rangeChange', range);
+        this.events.emit('rangeChange', {...range});
         this.redraw();
     }
 

@@ -209,7 +209,7 @@ export class RootsFans extends ChartSurface<RootsFansEvents> {
         this.canvas.style.cursor = i >= 0 ? 'pointer' : 'default';
         if (i !== this.hover) {
             this.hover = i;
-            this.events.emit('hover', i >= 0 ? this.fans[i]!.ids : null);
+            this.events.emit('hover', i >= 0 ? this.fans[i]!.ids.slice() : null);
             this.redraw();
         }
     };
@@ -226,7 +226,7 @@ export class RootsFans extends ChartSurface<RootsFansEvents> {
         const p = this.local(e);
         const i = this.pick(p.x, p.y);
 
-        this.events.emit('click', i >= 0 ? this.fans[i]!.ids : null);
+        this.events.emit('click', i >= 0 ? this.fans[i]!.ids.slice() : null);
     };
 
 }

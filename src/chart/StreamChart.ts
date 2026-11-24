@@ -244,7 +244,7 @@ export class StreamChart extends ChartSurface<StreamChartEvents> {
     public setRange(range: ChartRange | null): void {
         this.range = range === null ? null : {...range};
         this.redraw();
-        this.events.emit('rangeChange', this.viewRange());
+        this.events.emit('rangeChange', {...this.viewRange()});
     }
 
     /** Show the whole x extent again. */
@@ -860,7 +860,7 @@ export class StreamChart extends ChartSurface<StreamChartEvents> {
                 this.range = ChartScale.pan(this.press.range, shift, this.result.domain);
                 this.hovered = null;
                 this.redraw();
-                this.events.emit('rangeChange', this.viewRange());
+                this.events.emit('rangeChange', {...this.viewRange()});
                 return;
             }
         }
@@ -895,7 +895,7 @@ export class StreamChart extends ChartSurface<StreamChartEvents> {
         const idx = StreamLayout.nearest(this.data.x, xv);
 
         this.events.emit('hover', {
-            layer: this.data.layers[h.layer]!,
+            layer: {...this.data.layers[h.layer]!},
             panel: h.panel,
             x: this.data.x[idx] ?? xv,
             value: this.data.panels[h.panel]?.values[h.layer]?.[idx] ?? 0
@@ -915,7 +915,7 @@ export class StreamChart extends ChartSurface<StreamChartEvents> {
 
         if (hit !== null) {
             const x = ChartScale.fromPx(p.x, this.viewRange(), this.plotLeft(), this.plotRight());
-            this.events.emit('layerClick', {layer: this.data.layers[hit.layer]!, panel: hit.panel, x});
+            this.events.emit('layerClick', {layer: {...this.data.layers[hit.layer]!}, panel: hit.panel, x});
         }
     };
 
@@ -941,7 +941,7 @@ export class StreamChart extends ChartSurface<StreamChartEvents> {
 
         this.range = ChartScale.zoom(this.viewRange(), at, factor, domain, (domain.max - domain.min) / 200);
         this.redraw();
-        this.events.emit('rangeChange', this.viewRange());
+        this.events.emit('rangeChange', {...this.viewRange()});
     };
 
     private readonly onDblClick = (): void => {
