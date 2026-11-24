@@ -1,5 +1,5 @@
 import { ChoroplethGeometry, ColorScale, MapFit, MapProjection, MapRegion } from './ChoroplethGeometry';
-import { svgEl, Widget, WidgetOptions } from './WidgetBase';
+import { Widget, WidgetDom, WidgetOptions } from './WidgetBase';
 
 /** One legend row: a label and its colour steps (e.g. "Dem" light → dark). */
 export interface ChoroplethLegendRow {
@@ -87,9 +87,9 @@ export class ChoroplethMap extends Widget<ChoroplethMapEvents> {
         this.zoomOn = options.zoom ?? true;
         this.outlines = options.outlines ?? [];
 
-        this.svg = svgEl('svg', {class: 'wg-svg wg-choro-svg', role: 'img'});
-        this.regionLayer = svgEl('g');
-        this.outlineLayer = svgEl('g', {class: 'wg-choro-outlines'});
+        this.svg = WidgetDom.svg('svg', {class: 'wg-svg wg-choro-svg', role: 'img'});
+        this.regionLayer = WidgetDom.svg('g');
+        this.outlineLayer = WidgetDom.svg('g', {class: 'wg-choro-outlines'});
         this.svg.append(this.regionLayer, this.outlineLayer);
         this.tip = document.createElement('div');
         this.tip.className = 'wg-choro-tip';
@@ -114,7 +114,7 @@ export class ChoroplethMap extends Widget<ChoroplethMapEvents> {
     }
 
     public setRegions(regions: MapRegion[], outlines = this.outlines): void {
-        this.regions = regions;
+        this.regions = regions.map((r) => ({...r}));
         this.outlines = outlines;
         this.fit = ChoroplethGeometry.fit(ChoroplethGeometry.bounds(regions, this.projection));
         this.view = {x: 0, y: 0, w: this.fit.width, h: this.fit.height};
@@ -122,19 +122,19 @@ export class ChoroplethMap extends Widget<ChoroplethMapEvents> {
         this.regionLayer.replaceChildren();
         this.paths.clear();
         for (const r of regions) {
-            const p = svgEl('path', {class: 'wg-choro-region', d: ChoroplethGeometry.path(r.polygons, this.projection, this.fit)});
+            const p = WidgetDom.svg('path', {class: 'wg-choro-region', d: ChoroplethGeometry.path(r.polygons, this.projection, this.fit)});
 
             p.dataset['region'] = r.id;
             this.regionLayer.appendChild(p);
             this.paths.set(r.id, p);
         }
         this.outlineLayer.replaceChildren(...outlines.map((r) =>
-            svgEl('path', {class: 'wg-choro-outline', d: ChoroplethGeometry.path(r.polygons, this.projection, this.fit)})));
+            WidgetDom.svg('path', {class: 'wg-choro-outline', d: ChoroplethGeometry.path(r.polygons, this.projection, this.fit)})));
         this.paint();
     }
 
-    public getRegions(): ReadonlyArray<MapRegion> {
-        return this.regions;
+    public getRegions(): ReadonlyArray<Readonly<MapRegion>> {
+        return this.regions.map((r) => ({...r}));
     }
 
     /** New values (and optionally a new scale); fills fade over. */

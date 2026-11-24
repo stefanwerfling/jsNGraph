@@ -1,5 +1,5 @@
-import { EventEmitter } from '../util/EventEmitter';
 import { DayClockGeometry, DayClockItem, DayClockPlaced, DayClockState } from './DayClockGeometry';
+import { Widget, WidgetDom } from './WidgetBase';
 
 export interface DayClockOptions {
     /** 'auto' (default) follows the OS colour scheme; 'light' / 'dark' fix it. */
@@ -30,14 +30,6 @@ export interface DayClockEvents extends Record<string, unknown> {
 export type DayClockStyleVar =
     | 'surface' | 'surface2' | 'ink' | 'muted' | 'hair' | 'hair-strong' | 'grid' | 'past' | 'running' | 'upcoming';
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
-const OUTER = 104;
-const RING_GAP = 14;
-const LIVE_MS = 30000;
-const VIEW = 290;
-/** Extra width left and right for the 06:00 / 18:00 labels. */
-const SIDE = 16;
-
 /**
  * Day clock — a whole day on one 24 h dial (00:00 top, 06:00 right, 12:00
  * bottom, 18:00 left). The elapsed part of the day is shaded and a hand marks
@@ -45,15 +37,22 @@ const SIDE = 16;
  * its end on a ring — overlapping items get separate rings — with a dot at
  * its start, coloured by state: done (muted), running (green), upcoming
  * (accent). SVG, zero dependencies; colours are `--dc-*` CSS variables.
+ * Built on the shared `Widget` shell with its own prefix (`dc-root`,
+ * `data-dc-theme`, `--dc-*`).
  *
  *     const clock = new DayClock(el, {live: true});
  *     clock.setItems([{start, end, label: 'Site visit'}]);
  *     clock.on('itemClick', (e) => open(e.item.id));
  */
-export class DayClock {
+export class DayClock extends Widget<DayClockEvents, DayClockStyleVar> {
 
-    private readonly root: HTMLDivElement;
-    private readonly events = new EventEmitter<DayClockEvents>();
+    private static readonly OUTER = 104;
+    private static readonly RING_GAP = 14;
+    private static readonly LIVE_MS = 30000;
+    private static readonly VIEW = 290;
+    /** Extra width left and right for the 06:00 / 18:00 labels. */
+    private static readonly SIDE = 16;
+
     private readonly size: number;
     private readonly maxRings: number;
     private readonly locale: string | string[] | undefined;
@@ -65,6 +64,8 @@ export class DayClock {
     private placed: DayClockPlaced[] = [];
 
     public constructor(container: HTMLElement, options: DayClockOptions = {}) {
+        // The accessible name goes on the dial (with the counts), not on the root.
+        super(container, '', {theme: options.theme ?? 'auto', animate: false}, 'dc');
         DayClockStyles.ensure();
 
         this.size = options.size ?? 290;
@@ -72,12 +73,7 @@ export class DayClock {
         this.locale = options.locale;
         this.nowLabel = options.nowLabel ?? 'Now';
         this.ariaLabel = options.ariaLabel ?? 'Day clock';
-        this.fixedNow = options.now ?? null;
-
-        this.root = document.createElement('div');
-        this.root.className = 'dc-root';
-        this.root.dataset.dcTheme = options.theme ?? 'auto';
-        container.appendChild(this.root);
+        this.fixedNow = options.now === undefined ? null : new Date(options.now.getTime());
 
         this.root.addEventListener('click', this.onClick);
         this.root.addEventListener('pointerover', this.onOver);
@@ -92,25 +88,21 @@ export class DayClock {
         return DayClockGeometry.state(item, now);
     }
 
-    public get element(): HTMLElement {
-        return this.root;
-    }
-
     /** The items to show; only those touching the day of "now" are drawn. */
     public setItems(items: readonly DayClockItem[]): void {
-        this.items = [...items];
+        this.items = items.map((i) => ({...i}));
         this.render();
     }
 
     /** Fix "now" (e.g. to show another day), or null for the current time. */
     public setNow(now: Date | null): void {
-        this.fixedNow = now;
+        this.fixedNow = now === null ? null : new Date(now.getTime());
         this.render();
     }
 
-    /** The "now" the dial is drawn for. */
+    /** The "now" the dial is drawn for (a copy). */
     public get now(): Date {
-        return this.fixedNow ?? new Date();
+        return this.fixedNow === null ? new Date() : new Date(this.fixedNow.getTime());
     }
 
     /** Redraw every 30 s with the current time (has no effect while `now` is fixed). */
@@ -124,44 +116,28 @@ export class DayClock {
                 if (this.fixedNow === null) {
                     this.render();
                 }
-            }, LIVE_MS);
+            }, DayClock.LIVE_MS);
         }
     }
 
-    public setTheme(theme: 'auto' | 'light' | 'dark'): void {
-        this.root.dataset.dcTheme = theme;
-    }
-
-    /** Override `--dc-*` colours on this clock (null removes an override). */
-    public setStyleVars(vars: Partial<Record<DayClockStyleVar, string | null>>): void {
-        for (const [key, value] of Object.entries(vars)) {
-            if (value === null || value === undefined) {
-                this.root.style.removeProperty(`--dc-${key}`);
-            } else {
-                this.root.style.setProperty(`--dc-${key}`, value);
-            }
-        }
-    }
-
-    public on<K extends keyof DayClockEvents>(event: K, handler: (payload: DayClockEvents[K]) => void): this {
-        this.events.on(event, handler);
+    public override on<K extends keyof DayClockEvents>(event: K, handler: (payload: DayClockEvents[K]) => void): this {
+        super.on(event, handler);
         this.root.classList.toggle('dc-clickable', this.events.has('itemClick'));
         return this;
     }
 
-    public off<K extends keyof DayClockEvents>(event: K, handler: (payload: DayClockEvents[K]) => void): this {
-        this.events.off(event, handler);
+    public override off<K extends keyof DayClockEvents>(event: K, handler: (payload: DayClockEvents[K]) => void): this {
+        super.off(event, handler);
         this.root.classList.toggle('dc-clickable', this.events.has('itemClick'));
         return this;
     }
 
-    public destroy(): void {
+    public override destroy(): void {
         this.setLive(false);
         this.root.removeEventListener('click', this.onClick);
         this.root.removeEventListener('pointerover', this.onOver);
         this.root.removeEventListener('pointerout', this.onOut);
-        this.events.clear();
-        this.root.remove();
+        super.destroy();
     }
 
     /** "08:30" in the clock's locale. */
@@ -172,34 +148,34 @@ export class DayClock {
     /** Draw the dial again (setters call it; for a host that changed something else). */
     public render(): void {
         const now = this.now;
-        const c = VIEW / 2;
+        const c = DayClock.VIEW / 2;
         const day = DayClockGeometry.dayStart(now);
         const nowMin = DayClockGeometry.minutes(now, day);
         // Drawn in a fixed 290 × 290 view box (plus room for the side labels); `size` caps the dial width.
-        const svg = el('svg', {viewBox: `${-SIDE} 0 ${VIEW + (2 * SIDE)} ${VIEW}`, width: '100%', role: 'img', class: 'dc-svg'});
+        const svg = WidgetDom.svg('svg', {viewBox: `${-DayClock.SIDE} 0 ${DayClock.VIEW + (2 * DayClock.SIDE)} ${DayClock.VIEW}`, width: '100%', role: 'img', class: 'dc-svg'});
 
-        svg.style.maxWidth = `${Math.round(this.size * (VIEW + (2 * SIDE)) / VIEW)}px`;
+        svg.style.maxWidth = `${Math.round(this.size * (DayClock.VIEW + (2 * DayClock.SIDE)) / DayClock.VIEW)}px`;
 
         // face + elapsed part of the day
-        svg.appendChild(el('circle', {cx: c, cy: c, r: OUTER + 8, class: 'dc-face'}));
-        const wedge = DayClockGeometry.wedgePath(nowMin, OUTER + 8, c);
+        svg.appendChild(WidgetDom.svg('circle', {cx: c, cy: c, r: DayClock.OUTER + 8, class: 'dc-face'}));
+        const wedge = DayClockGeometry.wedgePath(nowMin, DayClock.OUTER + 8, c);
         if (wedge !== '') {
-            svg.appendChild(el('path', {d: wedge, class: 'dc-elapsed'}));
+            svg.appendChild(WidgetDom.svg('path', {d: wedge, class: 'dc-elapsed'}));
         }
 
         // hour ticks + labels
         for (let h = 0; h < 24; h++) {
             const major = h % 6 === 0;
-            const [x1, y1] = DayClockGeometry.point(h * 60, OUTER + 8, c);
-            const [x2, y2] = DayClockGeometry.point(h * 60, OUTER + (major ? 15 : 12), c);
+            const [x1, y1] = DayClockGeometry.point(h * 60, DayClock.OUTER + 8, c);
+            const [x2, y2] = DayClockGeometry.point(h * 60, DayClock.OUTER + (major ? 15 : 12), c);
 
-            svg.appendChild(el('line', {x1, y1, x2, y2, class: major ? 'dc-tick dc-tick-major' : 'dc-tick'}));
+            svg.appendChild(WidgetDom.svg('line', {x1, y1, x2, y2, class: major ? 'dc-tick dc-tick-major' : 'dc-tick'}));
 
             if (major) {
                 // Top/bottom labels centre on their tick; 06:00 / 18:00 start beside it, outward.
                 const side = h === 6 ? 'start' : h === 18 ? 'end' : 'middle';
-                const [lx, ly] = DayClockGeometry.point(h * 60, OUTER + (side === 'middle' ? 23 : 19), c);
-                const label = el('text', {x: lx, y: ly, class: 'dc-hour', 'text-anchor': side, 'dominant-baseline': 'middle'});
+                const [lx, ly] = DayClockGeometry.point(h * 60, DayClock.OUTER + (side === 'middle' ? 23 : 19), c);
+                const label = WidgetDom.svg('text', {x: lx, y: ly, class: 'dc-hour', 'text-anchor': side, 'dominant-baseline': 'middle'});
 
                 label.textContent = this.formatTime(new Date(day.getFullYear(), day.getMonth(), day.getDate(), h));
                 svg.appendChild(label);
@@ -208,17 +184,17 @@ export class DayClock {
 
         // ring guides
         for (let i = 0; i < this.maxRings; i++) {
-            svg.appendChild(el('circle', {cx: c, cy: c, r: OUTER - (i * RING_GAP), class: 'dc-ring'}));
+            svg.appendChild(WidgetDom.svg('circle', {cx: c, cy: c, r: DayClock.OUTER - (i * DayClock.RING_GAP), class: 'dc-ring'}));
         }
 
         // items
         this.placed = DayClockGeometry.place(this.items, now, this.maxRings);
         this.placed.forEach((p, index) => {
-            const r = OUTER - (p.lane * RING_GAP);
+            const r = DayClock.OUTER - (p.lane * DayClock.RING_GAP);
             const d = DayClockGeometry.arcPath(p.from, p.to, r, c);
             const [dx, dy] = DayClockGeometry.point(p.from, r, c);
-            const item = el('g', {class: `dc-item dc-${p.state}`, 'data-dc-item': index});
-            const title = el('title', {});
+            const item = WidgetDom.svg('g', {class: `dc-item dc-${p.state}`, 'data-dc-item': index});
+            const title = WidgetDom.svg('title', {});
 
             if (p.item.color !== undefined) {
                 item.style.setProperty('--dc-c', p.item.color);
@@ -226,26 +202,26 @@ export class DayClock {
             title.textContent = `${this.formatTime(p.item.start)}–${this.formatTime(p.item.end)} ${p.item.label}`;
             item.append(
                 title,
-                el('path', {d, class: 'dc-hit'}),
-                el('path', {d, class: 'dc-arc'}),
-                el('circle', {cx: dx, cy: dy, r: 5, class: 'dc-dot'})
+                WidgetDom.svg('path', {d, class: 'dc-hit'}),
+                WidgetDom.svg('path', {d, class: 'dc-arc'}),
+                WidgetDom.svg('circle', {cx: dx, cy: dy, r: 5, class: 'dc-dot'})
             );
             svg.appendChild(item);
         });
 
         // hand + centre
-        const [hx, hy] = DayClockGeometry.point(nowMin, OUTER + 8, c);
+        const [hx, hy] = DayClockGeometry.point(nowMin, DayClock.OUTER + 8, c);
 
-        svg.appendChild(el('line', {x1: c, y1: c, x2: hx, y2: hy, class: 'dc-hand'}));
-        svg.appendChild(el('circle', {cx: hx, cy: hy, r: 3, class: 'dc-hand-tip'}));
-        svg.appendChild(el('circle', {cx: c, cy: c, r: 30, class: 'dc-center'}));
+        svg.appendChild(WidgetDom.svg('line', {x1: c, y1: c, x2: hx, y2: hy, class: 'dc-hand'}));
+        svg.appendChild(WidgetDom.svg('circle', {cx: hx, cy: hy, r: 3, class: 'dc-hand-tip'}));
+        svg.appendChild(WidgetDom.svg('circle', {cx: c, cy: c, r: 30, class: 'dc-center'}));
 
-        const time = el('text', {x: c, y: c - 2, class: 'dc-time', 'text-anchor': 'middle'});
+        const time = WidgetDom.svg('text', {x: c, y: c - 2, class: 'dc-time', 'text-anchor': 'middle'});
         time.textContent = this.formatTime(now);
         svg.appendChild(time);
 
         if (this.nowLabel !== '') {
-            const sub = el('text', {x: c, y: c + 13, class: 'dc-sub', 'text-anchor': 'middle'});
+            const sub = WidgetDom.svg('text', {x: c, y: c + 13, class: 'dc-sub', 'text-anchor': 'middle'});
             sub.textContent = this.nowLabel;
             svg.appendChild(sub);
         }
@@ -288,16 +264,6 @@ export class DayClock {
         return g === null ? null : this.placed[Number(g.getAttribute('data-dc-item'))] ?? null;
     }
 
-}
-
-function el(tag: string, attrs: Record<string, string | number>): SVGElement {
-    const node = document.createElementNS(SVG_NS, tag);
-
-    for (const [key, value] of Object.entries(attrs)) {
-        node.setAttribute(key, String(value));
-    }
-
-    return node;
 }
 
 /** Default look, injected once: zero-specificity `:where()` rules over `--dc-*` variables. */

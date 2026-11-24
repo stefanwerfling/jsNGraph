@@ -1,5 +1,5 @@
 import { SkylineBox, SkylineCell, SkylineDay, SkylineGeometry as G, SkylineGrid, SkylineScale, SkylineView } from './SkylineGeometry';
-import { svgEl, Tween, Widget, WidgetOptions } from './WidgetBase';
+import { Tween, Widget, WidgetDom, WidgetOptions } from './WidgetBase';
 
 export type SkylineColorMode = 'season' | 'level' | 'category' | ((day: SkylineCell, level: number) => string);
 
@@ -55,10 +55,6 @@ export interface CalendarSkylineEvents extends Record<string, unknown> {
     rangeChange: SkylineRange | null;
 }
 
-const S = 10;
-const TILE = 1.2;
-const PALETTE = ['#5b8def', '#e0664f', '#2fb3a5', '#e8b400', '#8b7cf6', '#d062a8', '#7fb07a', '#8d97ad'];
-
 interface Placed extends SkylineCell {
     a: number;
     b: number;
@@ -71,6 +67,10 @@ interface Placed extends SkylineCell {
  * activity stay flat floor tiles. SVG; boxes grow in, `setDays` morphs.
  */
 export class CalendarSkyline extends Widget<CalendarSkylineEvents> {
+
+    private static readonly S = 10;
+    private static readonly TILE = 1.2;
+    private static readonly PALETTE = ['#5b8def', '#e0664f', '#2fb3a5', '#e8b400', '#8b7cf6', '#d062a8', '#7fb07a', '#8d97ad'];
 
     private readonly svg: SVGSVGElement;
     private readonly layer: SVGGElement;
@@ -126,9 +126,9 @@ export class CalendarSkyline extends Widget<CalendarSkylineEvents> {
         this.showWeekdays = options.labels?.weekdays ?? true;
         this.locale = options.locale;
 
-        this.svg = svgEl('svg', {class: 'wg-svg wg-sky-svg', role: 'img'});
-        this.labelLayer = svgEl('g', {class: 'wg-sky-labels'});
-        this.layer = svgEl('g');
+        this.svg = WidgetDom.svg('svg', {class: 'wg-svg wg-sky-svg', role: 'img'});
+        this.labelLayer = WidgetDom.svg('g', {class: 'wg-sky-labels'});
+        this.layer = WidgetDom.svg('g');
         this.svg.append(this.labelLayer, this.layer);
         this.format = options.format;
         this.showTip = options.tooltip ?? true;
@@ -171,8 +171,8 @@ export class CalendarSkyline extends Widget<CalendarSkylineEvents> {
         this.tween.set(this.targets, this.animate);
     }
 
-    public getCells(): ReadonlyArray<SkylineCell> {
-        return this.grid.cells;
+    public getCells(): ReadonlyArray<Readonly<SkylineCell>> {
+        return this.grid.cells.map((c) => ({...c}));
     }
 
     public setScale(scale: SkylineScale): void {
@@ -266,15 +266,15 @@ export class CalendarSkyline extends Widget<CalendarSkylineEvents> {
         this.indexOf = new Map(this.placed.map((p, i) => [p.date, i]));
         this.layer.replaceChildren();
         for (const p of this.placed) {
-            const g = svgEl('g', {class: 'wg-sky-day'});
+            const g = WidgetDom.svg('g', {class: 'wg-sky-day'});
             g.dataset['day'] = p.date;
-            const tile = G.box(p.a, p.b, 0, TILE, S, 0.06);
+            const tile = G.box(p.a, p.b, 0, CalendarSkyline.TILE, CalendarSkyline.S, 0.06);
             g.append(
-                svgEl('polygon', {class: 'wg-sky-tile-l', points: tile.left.join(' ')}),
-                svgEl('polygon', {class: 'wg-sky-tile-r', points: tile.right.join(' ')}),
-                svgEl('polygon', {class: 'wg-sky-tile-t', points: tile.top.join(' ')})
+                WidgetDom.svg('polygon', {class: 'wg-sky-tile-l', points: tile.left.join(' ')}),
+                WidgetDom.svg('polygon', {class: 'wg-sky-tile-r', points: tile.right.join(' ')}),
+                WidgetDom.svg('polygon', {class: 'wg-sky-tile-t', points: tile.top.join(' ')})
             );
-            const faces = [svgEl('polygon', {class: 'wg-sky-l'}), svgEl('polygon', {class: 'wg-sky-r'}), svgEl('polygon', {class: 'wg-sky-t'})];
+            const faces = [WidgetDom.svg('polygon', {class: 'wg-sky-l'}), WidgetDom.svg('polygon', {class: 'wg-sky-r'}), WidgetDom.svg('polygon', {class: 'wg-sky-t'})];
             g.append(...faces);
             this.layer.appendChild(g);
             this.boxes.push(faces);
@@ -282,8 +282,8 @@ export class CalendarSkyline extends Widget<CalendarSkylineEvents> {
         }
         this.applyState();
 
-        const top = this.maxHeight * S;
-        const b = G.bounds(na, nb, top + TILE, S);
+        const top = this.maxHeight * CalendarSkyline.S;
+        const b = G.bounds(na, nb, top + CalendarSkyline.TILE, CalendarSkyline.S);
         const pad = 26;
         this.svg.setAttribute('viewBox', `${b.minX - pad} ${b.minY - 4} ${b.maxX - b.minX + pad * 2} ${b.maxY - b.minY + pad + 8}`);
         this.buildLabels();
@@ -295,7 +295,7 @@ export class CalendarSkyline extends Widget<CalendarSkylineEvents> {
         const level = G.levels(values);
         const cats = [...new Set(this.placed.map((p) => p.category).filter((c): c is string => c !== undefined))];
 
-        this.targets = this.placed.map((p) => height(p.value) * this.maxHeight * S);
+        this.targets = this.placed.map((p) => height(p.value) * this.maxHeight * CalendarSkyline.S);
         this.colors = this.placed.map((p) => {
             const lv = level(p.value);
             const mode = this.colorMode;
@@ -307,7 +307,7 @@ export class CalendarSkyline extends Widget<CalendarSkylineEvents> {
             }
             if (mode === 'category') {
                 const c = p.category;
-                const base = c === undefined ? '#8d97ad' : this.categoryColors[c] ?? PALETTE[cats.indexOf(c) % PALETTE.length]!;
+                const base = c === undefined ? '#8d97ad' : this.categoryColors[c] ?? CalendarSkyline.PALETTE[cats.indexOf(c) % CalendarSkyline.PALETTE.length]!;
                 return G.byLevel(base, Math.max(2, lv));
             }
             return G.byLevel(G.seasonColor(p.date, this.hemisphere), lv);
@@ -323,7 +323,7 @@ export class CalendarSkyline extends Widget<CalendarSkylineEvents> {
             }
             const hi = h[i] ?? 0;
             const visible = hi > 0.05;
-            const box: SkylineBox | null = visible ? G.box(p.a, p.b, TILE, TILE + hi, S, 0.12) : null;
+            const box: SkylineBox | null = visible ? G.box(p.a, p.b, CalendarSkyline.TILE, CalendarSkyline.TILE + hi, CalendarSkyline.S, 0.12) : null;
             const sh = G.shades(this.colors[i] ?? '#888888');
             const [l, r, t] = faces as [SVGPolygonElement, SVGPolygonElement, SVGPolygonElement];
             for (const [el, pts, fill] of [[l, box?.left, sh.left], [r, box?.right, sh.right], [t, box?.top, sh.top]] as const) {
@@ -371,8 +371,8 @@ export class CalendarSkyline extends Widget<CalendarSkylineEvents> {
                 yx = -yx;
                 yy = -yy;
             }
-            const [x, y] = G.project(p.a, p.b, 0, S);
-            const el = svgEl('text', {
+            const [x, y] = G.project(p.a, p.b, 0, CalendarSkyline.S);
+            const el = WidgetDom.svg('text', {
                 class: 'wg-muted wg-sky-label', 'font-size': size, 'text-anchor': anchor, 'dominant-baseline': 'middle',
                 transform: `matrix(${xx.toFixed(4)} ${xy.toFixed(4)} ${yx.toFixed(4)} ${yy.toFixed(4)} ${x.toFixed(2)} ${y.toFixed(2)})`
             });

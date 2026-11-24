@@ -9,7 +9,7 @@ export { DayClock, DayClockStyles } from './widget/DayClock';
 export type { DayClockOptions, DayClockEvents, DayClockStyleVar } from './widget/DayClock';
 export { DayClockGeometry, DAY_MINUTES } from './widget/DayClockGeometry';
 export type { DayClockItem, DayClockState, DayClockPlaced } from './widget/DayClockGeometry';
-export { Widget, WidgetStyles, Tween, paletteColor } from './widget/WidgetBase';
+export { Widget, WidgetDom, WidgetStyles, Tween, paletteColor } from './widget/WidgetBase';
 export type { WidgetOptions, WidgetStyleVar } from './widget/WidgetBase';
 export { WidgetGeometry } from './widget/WidgetGeometry';
 export { RingGauge } from './widget/RingGauge';

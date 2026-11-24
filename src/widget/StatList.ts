@@ -1,4 +1,4 @@
-import { paletteColor, Tween, Widget, WidgetOptions } from './WidgetBase';
+import { Tween, Widget, WidgetOptions } from './WidgetBase';
 
 /** One figure of a `StatList`. */
 export interface StatItem {
@@ -80,7 +80,7 @@ export class StatList extends Widget<Record<string, never>> {
     }
 
     public getItems(): ReadonlyArray<Readonly<StatItem>> {
-        return this.items;
+        return this.items.map((it) => ({...it}));
     }
 
     public override destroy(): void {
@@ -98,7 +98,7 @@ export class StatList extends Widget<Record<string, never>> {
         this.secondaries = [];
 
         this.items.forEach((item, i) => {
-            const color = item.color ?? paletteColor(i);
+            const color = item.color ?? Widget.paletteColor(i);
             const cell = document.createElement('div');
             const line = document.createElement('div');
             const value = document.createElement('span');

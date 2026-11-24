@@ -14,15 +14,14 @@ export interface WorkflowPath {
     mid: RectPoint;
 }
 
-/** Curve shape of forward connections. */
-export const WORKFLOW_CURVE: RectCurveShape = {factor: 0.5, min: 40, max: 220};
-
 /**
  * Pure geometry of the workflow editor: node sizes, port placement and
  * connection paths. No DOM, so it is unit-testable.
  */
 export class WorkflowGeometry {
 
+    /** Curve shape of forward connections. */
+    public static readonly CURVE: Readonly<RectCurveShape> = {factor: 0.5, min: 40, max: 220};
     public static readonly DEFAULT_WIDTH = 200;
     public static readonly MIN_HEIGHT = 64;
     /** Vertical room per port on the left/right sides. */
@@ -114,8 +113,8 @@ export class WorkflowGeometry {
 
         if (!backward) {
             return {
-                d: RectBoardGeometry.curvePath(a, b, WORKFLOW_CURVE),
-                mid: RectBoardGeometry.curveMidpoint(a, b, WORKFLOW_CURVE)
+                d: RectBoardGeometry.curvePath(a, b, WorkflowGeometry.CURVE),
+                mid: RectBoardGeometry.curveMidpoint(a, b, WorkflowGeometry.CURVE)
             };
         }
 
@@ -272,3 +271,6 @@ export class WorkflowGeometry {
     }
 
 }
+
+/** @deprecated use `WorkflowGeometry.CURVE`. */
+export const WORKFLOW_CURVE: RectCurveShape = WorkflowGeometry.CURVE;

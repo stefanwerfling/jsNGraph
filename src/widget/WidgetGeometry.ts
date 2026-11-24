@@ -4,6 +4,10 @@
  */
 export class WidgetGeometry {
 
+    private static f(n: number): string {
+        return String(Math.round(n * 100) / 100);
+    }
+
     /** Point at `deg` on a circle around (cx, cy). */
     public static polar(cx: number, cy: number, r: number, deg: number): [number, number] {
         const a = (deg - 90) * Math.PI / 180;
@@ -17,6 +21,7 @@ export class WidgetGeometry {
      * an empty sweep gives ''.
      */
     public static arcPath(cx: number, cy: number, r: number, from: number, to: number): string {
+        const f = WidgetGeometry.f;
         const sweep = to - from;
 
         if (sweep <= 0.001 || r <= 0) {
@@ -123,8 +128,4 @@ export class WidgetGeometry {
         return step > 0 ? Math.round(v / step) * step : v;
     }
 
-}
-
-function f(n: number): string {
-    return String(Math.round(n * 100) / 100);
 }

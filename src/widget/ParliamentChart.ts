@@ -1,5 +1,5 @@
 import { ParliamentGeometry, Seat } from './ParliamentGeometry';
-import { paletteColor, svgEl, Widget, WidgetOptions } from './WidgetBase';
+import { Widget, WidgetDom, WidgetOptions } from './WidgetBase';
 
 /** A party (or bloc) and its seats, filled into the hemicycle in the given order (left → right). */
 export interface ParliamentParty {
@@ -31,8 +31,6 @@ export interface ParliamentChartEvents extends Record<string, unknown> {
     partyClick: {party: ParliamentParty; index: number; originalEvent: MouseEvent};
 }
 
-const R = 100;
-
 /**
  * Parliament chart: seats on a hemicycle, coloured by party in wedges from
  * left to right, with the majority in the centre and a legend with seat
@@ -40,6 +38,8 @@ const R = 100;
  * the colours across the seats. SVG, zero dependencies.
  */
 export class ParliamentChart extends Widget<ParliamentChartEvents> {
+
+    private static readonly R = 100;
 
     private parties: ParliamentParty[] = [];
     private total: number | undefined;
@@ -65,10 +65,10 @@ export class ParliamentChart extends Widget<ParliamentChartEvents> {
         this.majority = options.majority ?? true;
         this.centerLabel = options.centerLabel;
 
-        this.svg = svgEl('svg', {class: 'wg-svg', viewBox: `${-R - 4} ${-R - 4} ${2 * R + 8} ${R + 8}`, role: 'img'});
-        this.seatLayer = svgEl('g');
-        this.center = svgEl('text', {class: 'wg-text wg-parl-total', x: 0, y: -14});
-        this.sub = svgEl('text', {class: 'wg-muted wg-parl-sub', x: 0, y: -2});
+        this.svg = WidgetDom.svg('svg', {class: 'wg-svg', viewBox: `${-ParliamentChart.R - 4} ${-ParliamentChart.R - 4} ${2 * ParliamentChart.R + 8} ${ParliamentChart.R + 8}`, role: 'img'});
+        this.seatLayer = WidgetDom.svg('g');
+        this.center = WidgetDom.svg('text', {class: 'wg-text wg-parl-total', x: 0, y: -14});
+        this.sub = WidgetDom.svg('text', {class: 'wg-muted wg-parl-sub', x: 0, y: -2});
         this.svg.append(this.seatLayer, this.center, this.sub);
         this.root.appendChild(this.svg);
 
@@ -103,8 +103,8 @@ export class ParliamentChart extends Widget<ParliamentChartEvents> {
         this.updateCenter(seats);
     }
 
-    public getParties(): ReadonlyArray<ParliamentParty> {
-        return this.parties;
+    public getParties(): ReadonlyArray<Readonly<ParliamentParty>> {
+        return this.parties.map((p) => ({...p}));
     }
 
     public setMajority(majority: number | boolean): void {
@@ -141,7 +141,7 @@ export class ParliamentChart extends Widget<ParliamentChartEvents> {
     }
 
     private color(i: number): string {
-        return this.parties[i]?.color ?? paletteColor(i);
+        return this.parties[i]?.color ?? Widget.paletteColor(i);
     }
 
     private build(total: number): void {
@@ -150,8 +150,8 @@ export class ParliamentChart extends Widget<ParliamentChartEvents> {
         this.builtFor = total;
         this.seatLayer.replaceChildren();
         this.circles = seats.map((s: Seat, i) => {
-            const c = svgEl('circle', {
-                class: 'wg-parl-seat', cx: (s.x * R).toFixed(2), cy: (-s.y * R).toFixed(2), r: (radius * R).toFixed(2)
+            const c = WidgetDom.svg('circle', {
+                class: 'wg-parl-seat', cx: (s.x * ParliamentChart.R).toFixed(2), cy: (-s.y * ParliamentChart.R).toFixed(2), r: (radius * ParliamentChart.R).toFixed(2)
             });
 
             c.dataset['seat'] = String(i);

@@ -1,4 +1,4 @@
-import { paletteColor, svgEl, Tween, Widget, WidgetOptions } from './WidgetBase';
+import { Tween, Widget, WidgetDom, WidgetOptions } from './WidgetBase';
 import { WidgetGeometry } from './WidgetGeometry';
 
 /** One slice of a `DonutChart`. */
@@ -34,8 +34,6 @@ export interface DonutChartEvents extends Record<string, unknown> {
     segmentClick: {slice: DonutSlice; index: number; share: number; originalEvent: MouseEvent};
 }
 
-const VIEW = 200;
-
 /**
  * Shares as a ring of slices with small gaps, the total in the middle and an
  * HTML legend (value + percent). Hovering a slice or its legend row lifts it,
@@ -45,6 +43,8 @@ const VIEW = 200;
  *     const d = new DonutChart(el, {slices: [{label: 'TS', value: 40}, {label: 'Go', value: 12}]});
  */
 export class DonutChart extends Widget<DonutChartEvents> {
+
+    private static readonly VIEW = 200;
 
     private slices: DonutSlice[] = [];
     private readonly thickness: number;
@@ -74,10 +74,10 @@ export class DonutChart extends Widget<DonutChartEvents> {
         this.format = options.format ?? ((v) => Math.round(v).toLocaleString());
         this.root.classList.add(`wg-donut-${options.legend ?? 'right'}`);
 
-        this.svg = svgEl('svg', {viewBox: `0 0 ${VIEW} ${VIEW}`, class: 'wg-svg wg-donut-svg', role: 'img'});
+        this.svg = WidgetDom.svg('svg', {viewBox: `0 0 ${DonutChart.VIEW} ${DonutChart.VIEW}`, class: 'wg-svg wg-donut-svg', role: 'img'});
         this.svg.style.maxWidth = `${options.size ?? 220}px`;
-        this.valueText = svgEl('text', {x: VIEW / 2, y: VIEW / 2 - 2, class: 'wg-donut-value'});
-        this.labelText = svgEl('text', {x: VIEW / 2, y: VIEW / 2 + 20, class: 'wg-muted wg-donut-label'});
+        this.valueText = WidgetDom.svg('text', {x: DonutChart.VIEW / 2, y: DonutChart.VIEW / 2 - 2, class: 'wg-donut-value'});
+        this.labelText = WidgetDom.svg('text', {x: DonutChart.VIEW / 2, y: DonutChart.VIEW / 2 + 20, class: 'wg-muted wg-donut-label'});
         this.legendBox = document.createElement('div');
         this.legendBox.className = 'wg-donut-legend';
         if (options.legend === 'none') {
@@ -117,7 +117,7 @@ export class DonutChart extends Widget<DonutChartEvents> {
     }
 
     public getSlices(): ReadonlyArray<Readonly<DonutSlice>> {
-        return this.slices;
+        return this.slices.map((s) => ({...s}));
     }
 
     /** Lift a slice by label from outside (null clears); hover wins. */
@@ -139,16 +139,16 @@ export class DonutChart extends Widget<DonutChartEvents> {
     }
 
     private color(i: number): string {
-        return this.slices[i]?.color ?? paletteColor(i);
+        return this.slices[i]?.color ?? Widget.paletteColor(i);
     }
 
     private build(): void {
         this.svg.replaceChildren();
         this.legendBox.replaceChildren();
         this.arcs = this.slices.map((s, i) => {
-            const p = svgEl('path', {class: 'wg-donut-slice', 'stroke-width': this.thickness, 'data-wg-slice': i});
+            const p = WidgetDom.svg('path', {class: 'wg-donut-slice', 'stroke-width': this.thickness, 'data-wg-slice': i});
             p.style.stroke = this.color(i);
-            const t = svgEl('title');
+            const t = WidgetDom.svg('title');
             t.textContent = s.label;
             p.appendChild(t);
             return p;
@@ -177,10 +177,10 @@ export class DonutChart extends Widget<DonutChartEvents> {
 
     private paint(values: readonly number[]): void {
         this.shown = [...values];
-        const r = VIEW / 2 - 2 - this.thickness / 2 - 4;
+        const r = DonutChart.VIEW / 2 - 2 - this.thickness / 2 - 4;
         const spans = WidgetGeometry.donut(values, this.pad, this.start);
         spans.forEach((sp, i) => {
-            this.arcs[i]?.setAttribute('d', WidgetGeometry.arcPath(VIEW / 2, VIEW / 2, r, sp.from, sp.to));
+            this.arcs[i]?.setAttribute('d', WidgetGeometry.arcPath(DonutChart.VIEW / 2, DonutChart.VIEW / 2, r, sp.from, sp.to));
             const row = this.rows[i];
             if (row !== undefined) {
                 row.children[2]!.textContent = this.format(values[i] ?? 0);

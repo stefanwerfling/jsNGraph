@@ -23,17 +23,6 @@ export interface WorkflowReplayEvents extends Record<string, unknown> {
     close: Record<string, never>;
 }
 
-const SPEEDS = [0.5, 1, 2, 4];
-
-/** 12×12 icons (fill = currentColor) — glyphs like ⏮ come out as colour emoji in some fonts. */
-const ICONS = {
-    prev: 'M2 2h2v8H2zM10 2v8L4.5 6z',
-    next: 'M8 2h2v8H8zM2 2v8l5.5-4z',
-    play: 'M3 1.5v9l7.5-4.5z',
-    pause: 'M2.5 2h2.5v8H2.5zM7 2h2.5v8H7z',
-    close: 'M2.5 1.5 6 5l3.5-3.5 1 1L7 6l3.5 3.5-1 1L6 7l-3.5 3.5-1-1L5 6 1.5 2.5z'
-};
-
 /**
  * Plays a recorded run back on an editor: it feeds the editor's status API
  * (`setNodeStatus`, `setConnectionStatus`, `setRunPath`) the state the run
@@ -287,6 +276,16 @@ export class WorkflowReplay {
 /** The built-in control bar; lives in the editor's root, keeps its input to itself. */
 class ReplayBar {
 
+    private static readonly SPEEDS = [0.5, 1, 2, 4];
+    /** 12×12 icons (fill = currentColor) — glyphs like ⏮ come out as colour emoji in some fonts. */
+    private static readonly ICONS = {
+        prev: 'M2 2h2v8H2zM10 2v8L4.5 6z',
+        next: 'M8 2h2v8H8zM2 2v8l5.5-4z',
+        play: 'M3 1.5v9l7.5-4.5z',
+        pause: 'M2.5 2h2.5v8H2.5zM7 2h2.5v8H7z',
+        close: 'M2.5 1.5 6 5l3.5-3.5 1 1L7 6l3.5 3.5-1 1L6 7l-3.5 3.5-1-1L5 6 1.5 2.5z'
+    };
+
     private readonly el: HTMLDivElement;
     private readonly playBtn: HTMLButtonElement;
     private readonly speedBtn: HTMLButtonElement;
@@ -307,8 +306,8 @@ class ReplayBar {
 
             b.type = 'button';
             b.className = 'wf-replay-btn';
-            if (label in ICONS) {
-                ReplayBar.icon(b, label as keyof typeof ICONS);
+            if (label in ReplayBar.ICONS) {
+                ReplayBar.icon(b, label as keyof typeof ReplayBar.ICONS);
             } else {
                 b.textContent = label;
             }
@@ -355,9 +354,9 @@ class ReplayBar {
         this.el.appendChild(this.timeEl);
 
         this.speedBtn = button('1×', 'Speed', () => {
-            const i = SPEEDS.indexOf(replay.speed);
+            const i = ReplayBar.SPEEDS.indexOf(replay.speed);
 
-            replay.setSpeed(SPEEDS[(i + 1) % SPEEDS.length]!);
+            replay.setSpeed(ReplayBar.SPEEDS[(i + 1) % ReplayBar.SPEEDS.length]!);
         });
         button('close', 'Close replay', () => replay.close());
 
@@ -393,12 +392,12 @@ class ReplayBar {
         this.timeEl.textContent = `${WorkflowReplay.format(time)} / ${WorkflowReplay.format(this.total)}`;
     }
 
-    private static icon(b: HTMLButtonElement, name: keyof typeof ICONS): void {
+    private static icon(b: HTMLButtonElement, name: keyof typeof ReplayBar.ICONS): void {
         if (b.dataset.icon === name) {
             return;
         }
         b.dataset.icon = name;
-        b.innerHTML = `<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="${ICONS[name]}"/></svg>`;
+        b.innerHTML = `<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="${ReplayBar.ICONS[name]}"/></svg>`;
     }
 
     public remove(): void {

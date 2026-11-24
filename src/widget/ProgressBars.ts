@@ -1,4 +1,4 @@
-import { paletteColor, setAttrs, svgEl, Tween, Widget, WidgetOptions } from './WidgetBase';
+import { Tween, Widget, WidgetDom, WidgetOptions } from './WidgetBase';
 import { WidgetGeometry } from './WidgetGeometry';
 
 /** One row of `ProgressBars`. */
@@ -33,19 +33,19 @@ export interface ProgressBarsEvents extends Record<string, unknown> {
     rowClick: {index: number; row: ProgressRow; originalEvent: MouseEvent};
 }
 
-const LABEL_W = 46;
-const RIGHT = 12;
-const ROW_H = 32;
-const AXIS_H = 22;
-const BAR = 7;
-const KNOB = 7;
-
 /**
  * Horizontal progress bars with a knob at the tip, on a shared axis — the
  * "slider" bars of a dashboard. Optionally editable (drag a bar). SVG, zero
  * dependencies; values ease when they change.
  */
 export class ProgressBars extends Widget<ProgressBarsEvents> {
+
+    private static readonly LABEL_W = 46;
+    private static readonly RIGHT = 12;
+    private static readonly ROW_H = 32;
+    private static readonly AXIS_H = 22;
+    private static readonly BAR = 7;
+    private static readonly KNOB = 7;
 
     private rows: ProgressRow[] = [];
     private readonly min: number;
@@ -73,7 +73,7 @@ export class ProgressBars extends Widget<ProgressBarsEvents> {
         this.editable = options.editable ?? false;
         this.step = options.step ?? 1;
         this.format = options.format ?? ((v) => String(Math.round(v)));
-        this.svg = svgEl('svg', {class: 'wg-svg', role: 'img'});
+        this.svg = WidgetDom.svg('svg', {class: 'wg-svg', role: 'img'});
         this.root.appendChild(this.svg);
         this.root.addEventListener('pointerdown', this.onDown);
         this.root.addEventListener('click', this.onClick);
@@ -107,7 +107,7 @@ export class ProgressBars extends Widget<ProgressBarsEvents> {
     }
 
     public getRows(): ReadonlyArray<Readonly<ProgressRow>> {
-        return this.rows;
+        return this.rows.map((r) => ({...r}));
     }
 
     public override destroy(): void {
@@ -120,11 +120,11 @@ export class ProgressBars extends Widget<ProgressBarsEvents> {
     }
 
     private get x0(): number {
-        return LABEL_W + KNOB;
+        return ProgressBars.LABEL_W + ProgressBars.KNOB;
     }
 
     private get x1(): number {
-        return this.width - RIGHT - KNOB;
+        return this.width - ProgressBars.RIGHT - ProgressBars.KNOB;
     }
 
     private xOf(value: number): number {
@@ -133,8 +133,8 @@ export class ProgressBars extends Widget<ProgressBarsEvents> {
 
     private build(): void {
         const hasAxis = this.axis !== false;
-        const plotH = this.rows.length * ROW_H;
-        const h = plotH + (hasAxis ? AXIS_H : 0);
+        const plotH = this.rows.length * ProgressBars.ROW_H;
+        const h = plotH + (hasAxis ? ProgressBars.AXIS_H : 0);
 
         this.svg.setAttribute('viewBox', `0 0 ${this.width} ${Math.max(1, h)}`);
         this.svg.replaceChildren();
@@ -156,30 +156,30 @@ export class ProgressBars extends Widget<ProgressBarsEvents> {
         }
         for (const t of ticks) {
             if (this.grid) {
-                this.svg.appendChild(svgEl('line', {x1: t.x, y1: 0, x2: t.x, y2: plotH, class: 'wg-grid'}));
+                this.svg.appendChild(WidgetDom.svg('line', {x1: t.x, y1: 0, x2: t.x, y2: plotH, class: 'wg-grid'}));
             }
-            const label = svgEl('text', {x: t.x, y: plotH + 15, class: 'wg-axis', 'text-anchor': 'middle'});
+            const label = WidgetDom.svg('text', {x: t.x, y: plotH + 15, class: 'wg-axis', 'text-anchor': 'middle'});
             label.textContent = t.label;
             this.svg.appendChild(label);
         }
 
         this.rows.forEach((row, i) => {
-            const y = (i + 0.5) * ROW_H;
-            const color = row.color ?? paletteColor(i);
-            const g = svgEl('g', {class: 'wg-pb-row', 'data-wg-row': i});
-            const title = svgEl('title');
-            const label = svgEl('text', {x: 0, y, class: 'wg-muted', 'font-size': 11, 'dominant-baseline': 'central'});
-            const bar = svgEl('line', {x1: this.x0, y1: y, x2: this.x0, y2: y, 'stroke-width': BAR, 'stroke-linecap': 'round'});
-            const knob = svgEl('circle', {cx: this.x0, cy: y, r: KNOB, class: 'wg-pb-knob'});
+            const y = (i + 0.5) * ProgressBars.ROW_H;
+            const color = row.color ?? Widget.paletteColor(i);
+            const g = WidgetDom.svg('g', {class: 'wg-pb-row', 'data-wg-row': i});
+            const title = WidgetDom.svg('title');
+            const label = WidgetDom.svg('text', {x: 0, y, class: 'wg-muted', 'font-size': 11, 'dominant-baseline': 'central'});
+            const bar = WidgetDom.svg('line', {x1: this.x0, y1: y, x2: this.x0, y2: y, 'stroke-width': ProgressBars.BAR, 'stroke-linecap': 'round'});
+            const knob = WidgetDom.svg('circle', {cx: this.x0, cy: y, r: ProgressBars.KNOB, class: 'wg-pb-knob'});
 
             label.textContent = row.label;
             bar.style.stroke = color;
             knob.style.fill = color;
             g.append(
                 title,
-                svgEl('rect', {x: 0, y: y - (ROW_H / 2), width: this.width, height: ROW_H, fill: 'transparent'}),
+                WidgetDom.svg('rect', {x: 0, y: y - (ProgressBars.ROW_H / 2), width: this.width, height: ProgressBars.ROW_H, fill: 'transparent'}),
                 label,
-                svgEl('line', {x1: this.x0, y1: y, x2: this.x1, y2: y, class: 'wg-track', 'stroke-width': 2, 'stroke-linecap': 'round'}),
+                WidgetDom.svg('line', {x1: this.x0, y1: y, x2: this.x1, y2: y, class: 'wg-track', 'stroke-width': 2, 'stroke-linecap': 'round'}),
                 bar,
                 knob
             );
@@ -198,10 +198,10 @@ export class ProgressBars extends Widget<ProgressBarsEvents> {
             const title = this.titles[i];
 
             if (bar !== undefined) {
-                setAttrs(bar, {x2: x});
+                WidgetDom.setAttrs(bar, {x2: x});
             }
             if (knob !== undefined) {
-                setAttrs(knob, {cx: x});
+                WidgetDom.setAttrs(knob, {cx: x});
             }
             if (title !== undefined) {
                 title.textContent = `${row.label}: ${this.format(row.value)}`;

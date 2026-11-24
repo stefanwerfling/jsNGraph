@@ -1,5 +1,5 @@
 import { CalendarGeometry } from './CalendarGeometry';
-import { paletteColor, svgEl, Widget, WidgetOptions } from './WidgetBase';
+import { Widget, WidgetDom, WidgetOptions } from './WidgetBase';
 
 /** A kind of day (working day, holiday …) with its tile colour. */
 export interface TileCategory {
@@ -40,12 +40,6 @@ export interface TileCalendarEvents extends Record<string, unknown> {
     dayHover: {date: Date; category: string | null} | null;
 }
 
-const CELL = 22;
-const GAP = 2;
-const MONTH_GAP = 18;
-const TITLE = 24;
-const FOOT = 18;
-
 /**
  * Tile calendar: months side by side, every day a square tile coloured by its
  * category (working day, weekend, holiday …), weekday letters under each
@@ -53,6 +47,12 @@ const FOOT = 18;
  * "how many X days are left" pictures. SVG, zero dependencies.
  */
 export class TileCalendar extends Widget<TileCalendarEvents> {
+
+    private static readonly CELL = 22;
+    private static readonly GAP = 2;
+    private static readonly MONTH_GAP = 18;
+    private static readonly TITLE = 24;
+    private static readonly FOOT = 18;
 
     private start: {year: number; month: number};
     private months: number;
@@ -79,8 +79,8 @@ export class TileCalendar extends Widget<TileCalendarEvents> {
         this.months = options.months ?? 3;
         this.columns = options.columns;
         this.weekStart = options.weekStart ?? 1;
-        this.categories = options.categories ?? [];
-        this.days = options.days;
+        this.categories = (options.categories ?? []).map((c) => ({...c}));
+        this.days = TileCalendar.copyDays(options.days);
         this.labels = options.labels ?? {};
         this.from = options.from ?? null;
         this.to = options.to ?? null;
@@ -95,12 +95,17 @@ export class TileCalendar extends Widget<TileCalendarEvents> {
         } else {
             this.legendBox = null;
         }
-        this.svg = svgEl('svg', {class: 'wg-svg', role: 'img'});
+        this.svg = WidgetDom.svg('svg', {class: 'wg-svg', role: 'img'});
         this.root.appendChild(this.svg);
         this.svg.addEventListener('click', this.onClick);
         this.svg.addEventListener('pointerover', this.onOver);
         this.svg.addEventListener('pointerleave', this.onLeave);
         this.render();
+    }
+
+    /** A day map is copied (a function is kept as is). */
+    private static copyDays(days: TileCalendarOptions['days']): TileCalendarOptions['days'] {
+        return days === undefined || typeof days === 'function' ? days : {...days};
     }
 
     /** 'YYYY-MM-DD' of a local date. */
@@ -109,13 +114,13 @@ export class TileCalendar extends Widget<TileCalendarEvents> {
     }
 
     public setDays(days: TileCalendarOptions['days'], labels = this.labels): void {
-        this.days = days;
-        this.labels = labels;
+        this.days = TileCalendar.copyDays(days);
+        this.labels = {...labels};
         this.render();
     }
 
     public setCategories(categories: TileCategory[]): void {
-        this.categories = categories;
+        this.categories = categories.map((c) => ({...c}));
         this.render();
     }
 
@@ -170,20 +175,20 @@ export class TileCalendar extends Widget<TileCalendarEvents> {
 
         const i = this.categories.findIndex((c) => c.id === id);
 
-        return i < 0 ? null : this.categories[i]!.color ?? paletteColor(i);
+        return i < 0 ? null : this.categories[i]!.color ?? Widget.paletteColor(i);
     }
 
     private render(): void {
         const cols = Math.max(1, Math.min(this.months, this.columns ?? this.months));
-        const monthW = 7 * CELL + 6 * GAP;
+        const monthW = 7 * TileCalendar.CELL + 6 * TileCalendar.GAP;
         const grids = Array.from({length: this.months}, (_, i) => {
             const m = CalendarGeometry.shift(this.start.year, this.start.month, i);
             return {...m, cells: CalendarGeometry.grid(m.year, m.month, this.weekStart)};
         });
         const rowsPer = Math.max(...grids.map((g) => g.cells[g.cells.length - 1]!.row + 1));
-        const monthH = TITLE + rowsPer * (CELL + GAP) + FOOT;
+        const monthH = TileCalendar.TITLE + rowsPer * (TileCalendar.CELL + TileCalendar.GAP) + TileCalendar.FOOT;
         const lines = Math.ceil(this.months / cols);
-        const width = cols * monthW + (cols - 1) * MONTH_GAP;
+        const width = cols * monthW + (cols - 1) * TileCalendar.MONTH_GAP;
         const height = lines * monthH + (lines - 1) * 10;
         const monthName = new Intl.DateTimeFormat(this.locale, {month: 'long'});
         const dayName = new Intl.DateTimeFormat(this.locale, {weekday: 'narrow'});
@@ -196,9 +201,9 @@ export class TileCalendar extends Widget<TileCalendarEvents> {
         this.cells.clear();
 
         grids.forEach((g, gi) => {
-            const ox = (gi % cols) * (monthW + MONTH_GAP);
+            const ox = (gi % cols) * (monthW + TileCalendar.MONTH_GAP);
             const oy = Math.floor(gi / cols) * (monthH + 10);
-            const title = svgEl('text', {class: 'wg-tiles-month', x: ox, y: oy + 15});
+            const title = WidgetDom.svg('text', {class: 'wg-tiles-month', x: ox, y: oy + 15});
 
             title.textContent = monthName.format(new Date(g.year, g.month, 1));
             this.svg.appendChild(title);
@@ -220,10 +225,10 @@ export class TileCalendar extends Widget<TileCalendarEvents> {
                 }
 
                 const key = TileCalendar.key(cell.date);
-                const x = ox + cell.col * (CELL + GAP);
-                const y = oy + TITLE + cell.row * (CELL + GAP);
-                const rect = svgEl('rect', {class: 'wg-tile', x, y, width: CELL, height: CELL, rx: 1.5});
-                const tip = svgEl('title');
+                const x = ox + cell.col * (TileCalendar.CELL + TileCalendar.GAP);
+                const y = oy + TileCalendar.TITLE + cell.row * (TileCalendar.CELL + TileCalendar.GAP);
+                const rect = WidgetDom.svg('rect', {class: 'wg-tile', x, y, width: TileCalendar.CELL, height: TileCalendar.CELL, rx: 1.5});
+                const tip = WidgetDom.svg('title');
                 const name = this.categories.find((c) => c.id === category)?.label;
 
                 rect.style.fill = color ?? 'var(--wg-track)';
@@ -237,13 +242,13 @@ export class TileCalendar extends Widget<TileCalendarEvents> {
                 const text = this.labels[key];
 
                 if (text !== undefined) {
-                    labelled.push({x: x + CELL + 5, y: y + CELL / 2, text});
+                    labelled.push({x: x + TileCalendar.CELL + 5, y: y + TileCalendar.CELL / 2, text});
                 }
             }
 
             CalendarGeometry.weekdays(this.weekStart).forEach((wd, col) => {
-                const t = svgEl('text', {
-                    class: 'wg-tiles-weekday', x: ox + col * (CELL + GAP) + CELL / 2, y: oy + monthH - 4
+                const t = WidgetDom.svg('text', {
+                    class: 'wg-tiles-weekday', x: ox + col * (TileCalendar.CELL + TileCalendar.GAP) + TileCalendar.CELL / 2, y: oy + monthH - 4
                 });
 
                 // 2027-02-07 is a Sunday: +wd gives that weekday
@@ -254,7 +259,7 @@ export class TileCalendar extends Widget<TileCalendarEvents> {
 
         // labels last, over neighbouring tiles
         for (const l of labelled) {
-            const t = svgEl('text', {class: 'wg-tiles-label', x: l.x, y: l.y});
+            const t = WidgetDom.svg('text', {class: 'wg-tiles-label', x: l.x, y: l.y});
 
             t.textContent = l.text;
             this.svg.appendChild(t);
@@ -278,7 +283,7 @@ export class TileCalendar extends Widget<TileCalendarEvents> {
 
             item.className = 'wg-tiles-item';
             sw.className = 'wg-tiles-swatch';
-            sw.style.background = c.color ?? paletteColor(i);
+            sw.style.background = c.color ?? Widget.paletteColor(i);
             item.append(sw, document.createTextNode(this.counts ? `${c.label} (${counts.get(c.id) ?? 0})` : c.label));
             box.appendChild(item);
         });

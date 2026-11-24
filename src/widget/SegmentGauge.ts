@@ -1,4 +1,4 @@
-import { paletteColor, setAttrs, svgEl, Tween, Widget, WidgetOptions } from './WidgetBase';
+import { Tween, Widget, WidgetDom, WidgetOptions } from './WidgetBase';
 import { WidgetGeometry } from './WidgetGeometry';
 
 /** One stacked share of a `SegmentGauge`. */
@@ -30,14 +30,14 @@ export interface SegmentGaugeOptions extends WidgetOptions {
     size?: number;
 }
 
-const VIEW = 200;
-
 /**
  * A dial made of radial ticks, lit in the colours of stacked parts (30 % +
  * 40 % + 10 %), the rest dim — the segmented gauge of a dashboard. SVG, zero
  * dependencies; values ease when they change.
  */
 export class SegmentGauge extends Widget<Record<string, never>> {
+
+    private static readonly VIEW = 200;
 
     private parts: GaugePart[] = [];
     private readonly max: number;
@@ -63,7 +63,7 @@ export class SegmentGauge extends Widget<Record<string, never>> {
         this.fill = Math.max(0.1, Math.min(1, options.fill ?? 0.55));
         this.center = options.center ?? 'values';
         this.format = options.format ?? ((v) => `${Math.round(v)}%`);
-        this.svg = svgEl('svg', {viewBox: `0 0 ${VIEW} ${VIEW}`, class: 'wg-svg', role: 'img'});
+        this.svg = WidgetDom.svg('svg', {viewBox: `0 0 ${SegmentGauge.VIEW} ${SegmentGauge.VIEW}`, class: 'wg-svg', role: 'img'});
         this.svg.style.maxWidth = `${options.size ?? 220}px`;
         this.svg.style.margin = '0 auto';
         this.root.appendChild(this.svg);
@@ -92,7 +92,7 @@ export class SegmentGauge extends Widget<Record<string, never>> {
     }
 
     public getParts(): ReadonlyArray<Readonly<GaugePart>> {
-        return this.parts;
+        return this.parts.map((p) => ({...p}));
     }
 
     public override destroy(): void {
@@ -101,8 +101,8 @@ export class SegmentGauge extends Widget<Record<string, never>> {
     }
 
     private build(): void {
-        const c = VIEW / 2;
-        const r1 = (VIEW / 2) - 2;
+        const c = SegmentGauge.VIEW / 2;
+        const r1 = (SegmentGauge.VIEW / 2) - 2;
         const r0 = r1 - this.length;
         const full = this.sweep >= 360;
         const step = this.sweep / (full ? this.segments : this.segments - 1);
@@ -116,7 +116,7 @@ export class SegmentGauge extends Widget<Record<string, never>> {
             const a = this.start + (k * step) + (full ? step / 2 : 0);
             const [x1, y1] = WidgetGeometry.polar(c, c, r0, a);
             const [x2, y2] = WidgetGeometry.polar(c, c, r1, a);
-            const tick = svgEl('line', {x1, y1, x2, y2, 'stroke-width': width});
+            const tick = WidgetDom.svg('line', {x1, y1, x2, y2, 'stroke-width': width});
 
             this.svg.appendChild(tick);
             this.ticks.push(tick);
@@ -132,9 +132,9 @@ export class SegmentGauge extends Widget<Record<string, never>> {
 
         for (let i = 0; i < lines; i++) {
             const y = c + ((i - ((lines - 1) / 2)) * size * 1.08);
-            const t = svgEl('text', {x: c, y, class: 'wg-center', 'font-size': size});
+            const t = WidgetDom.svg('text', {x: c, y, class: 'wg-center', 'font-size': size});
 
-            t.style.fill = this.center === 'total' ? 'var(--wg-ink)' : this.parts[i]?.color ?? paletteColor(i);
+            t.style.fill = this.center === 'total' ? 'var(--wg-ink)' : this.parts[i]?.color ?? Widget.paletteColor(i);
             this.svg.appendChild(t);
             this.texts.push(t);
         }
@@ -148,11 +148,11 @@ export class SegmentGauge extends Widget<Record<string, never>> {
             const part = this.parts[owner];
 
             if (part === undefined) {
-                setAttrs(tick, {class: 'wg-track'});
+                WidgetDom.setAttrs(tick, {class: 'wg-track'});
                 tick.style.stroke = '';
             } else {
-                setAttrs(tick, {class: ''});
-                tick.style.stroke = part.color ?? paletteColor(owner);
+                WidgetDom.setAttrs(tick, {class: ''});
+                tick.style.stroke = part.color ?? Widget.paletteColor(owner);
             }
         });
 

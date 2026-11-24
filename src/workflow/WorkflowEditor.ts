@@ -36,12 +36,6 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 /** Node data as a palette or picker hands it in: everything but id/position is optional. */
 export type WorkflowNodeInput = Omit<WorkflowNodeData, 'id' | 'x' | 'y'> & {id?: string; x?: number; y?: number};
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
-/** Screen px a press may travel before it counts as a drag instead of a click. */
-const CLICK_SLOP = 3;
-/** Pull the arrow tip back from the port centre so it ends at the port's edge. */
-const ARROW_INSET = 8;
-
 interface PortView {
     place: WorkflowPortPlace;
     el: HTMLDivElement;
@@ -114,6 +108,12 @@ type Gesture =
  * stage element transformed by the shared {@link Camera}.
  */
 export class WorkflowEditor {
+
+    private static readonly SVG_NS = 'http://www.w3.org/2000/svg';
+    /** Screen px a press may travel before it counts as a drag instead of a click. */
+    private static readonly CLICK_SLOP = 3;
+    /** Pull the arrow tip back from the port centre so it ends at the port's edge. */
+    private static readonly ARROW_INSET = 8;
 
     private static instances = 0;
 
@@ -218,13 +218,13 @@ export class WorkflowEditor {
         this.stage = document.createElement('div');
         this.stage.className = 'wf-stage';
 
-        this.svg = document.createElementNS(SVG_NS, 'svg');
+        this.svg = document.createElementNS(WorkflowEditor.SVG_NS, 'svg');
         this.svg.classList.add('wf-edges');
         this.svg.innerHTML =
             `<defs><marker id="${this.arrowId}" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" ` +
             'markerWidth="10" markerHeight="10" orient="auto"><path class="wf-arrow" d="M0 1 L10 5 L0 9 z"/></marker></defs>';
-        this.connLayer = document.createElementNS(SVG_NS, 'g');
-        this.draftPath = document.createElementNS(SVG_NS, 'path');
+        this.connLayer = document.createElementNS(WorkflowEditor.SVG_NS, 'g');
+        this.draftPath = document.createElementNS(WorkflowEditor.SVG_NS, 'path');
         this.draftPath.classList.add('wf-conn-draft');
         this.draftPath.style.display = 'none';
         this.svg.append(this.connLayer, this.draftPath);
@@ -313,8 +313,11 @@ export class WorkflowEditor {
         this.renderAll();
     }
 
+    /** A copy of a registered node type. */
     public getType(type: string): WorkflowNodeType | undefined {
-        return this.model.getType(type);
+        const t = this.model.getType(type);
+
+        return t === undefined ? undefined : WorkflowModel.copyType(t);
     }
 
     public getNode(id: string): WorkflowNodeData | undefined {
@@ -2323,11 +2326,11 @@ export class WorkflowEditor {
 
         if (cv.dots === null) {
             // Three dots a third of a lap apart, each moving along the path (SMIL, no rAF needed).
-            cv.dots = document.createElementNS(SVG_NS, 'g');
+            cv.dots = document.createElementNS(WorkflowEditor.SVG_NS, 'g');
             cv.dots.classList.add('wf-dots');
             for (let i = 0; i < 3; i++) {
-                const dot = document.createElementNS(SVG_NS, 'circle');
-                const motion = document.createElementNS(SVG_NS, 'animateMotion');
+                const dot = document.createElementNS(WorkflowEditor.SVG_NS, 'circle');
+                const motion = document.createElementNS(WorkflowEditor.SVG_NS, 'animateMotion');
                 dot.setAttribute('r', '3.5');
                 motion.setAttribute('dur', '1.2s');
                 motion.setAttribute('repeatCount', 'indefinite');
@@ -2370,9 +2373,9 @@ export class WorkflowEditor {
     }
 
     private createConnView(id: string): ConnView {
-        const g = document.createElementNS(SVG_NS, 'g');
-        const hit = document.createElementNS(SVG_NS, 'path');
-        const path = document.createElementNS(SVG_NS, 'path');
+        const g = document.createElementNS(WorkflowEditor.SVG_NS, 'g');
+        const hit = document.createElementNS(WorkflowEditor.SVG_NS, 'path');
+        const path = document.createElementNS(WorkflowEditor.SVG_NS, 'path');
 
         g.classList.add('wf-conn-g');
         g.dataset.wfConn = id;
@@ -2392,7 +2395,7 @@ export class WorkflowEditor {
     private static inset(place: WorkflowPortPlace): WorkflowPortPlace {
         const n = RectBoardGeometry.normal(place.side);
 
-        return {...place, x: place.x + n.x * ARROW_INSET, y: place.y + n.y * ARROW_INSET};
+        return {...place, x: place.x + n.x * WorkflowEditor.ARROW_INSET, y: place.y + n.y * WorkflowEditor.ARROW_INSET};
     }
 
     private applyCamera(): void {
@@ -2830,7 +2833,7 @@ export class WorkflowEditor {
 
         switch (g.kind) {
             case 'pan': {
-                if (!g.moved && Math.hypot(p.x - g.startX, p.y - g.startY) < CLICK_SLOP) {
+                if (!g.moved && Math.hypot(p.x - g.startX, p.y - g.startY) < WorkflowEditor.CLICK_SLOP) {
                     return;
                 }
                 g.moved = true;
@@ -2846,7 +2849,7 @@ export class WorkflowEditor {
                 if (this.readOnlyFlag || g.origins.size === 0) {
                     return;
                 }
-                if (!g.moved && Math.hypot(p.x - g.startX, p.y - g.startY) < CLICK_SLOP) {
+                if (!g.moved && Math.hypot(p.x - g.startX, p.y - g.startY) < WorkflowEditor.CLICK_SLOP) {
                     return;
                 }
                 g.moved = true;

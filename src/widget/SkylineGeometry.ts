@@ -44,10 +44,6 @@ export interface SkylineBox {
     right: number[];
 }
 
-const DAY_MS = 86400000;
-/** Season anchors (day of year in the northern hemisphere → colour): mid-winter, -spring, -summer, -autumn. */
-const SEASONS: ReadonlyArray<[number, string]> = [[15, '#9aa1ad'], [105, '#d278b6'], [196, '#5fae4c'], [288, '#e8b400']];
-
 /**
  * Pure geometry of the calendar skyline: dates → week columns and weekday
  * rows, the grid turned for one of four views, the 2:1 isometric projection
@@ -56,15 +52,19 @@ const SEASONS: ReadonlyArray<[number, string]> = [[15, '#9aa1ad'], [105, '#d278b
  */
 export class SkylineGeometry {
 
+    private static readonly DAY_MS = 86400000;
+    /** Season anchors (day of year in the northern hemisphere → colour): mid-winter, -spring, -summer, -autumn. */
+    private static readonly SEASONS: ReadonlyArray<[number, string]> = [[15, '#9aa1ad'], [105, '#d278b6'], [196, '#5fae4c'], [288, '#e8b400']];
+
     /** Days since 1970-01-01 of a 'YYYY-MM-DD' (UTC, so no daylight-saving gaps). */
     public static dayOf(date: string): number {
         const [y, m, d] = date.split('-').map(Number);
 
-        return Math.round(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1) / DAY_MS);
+        return Math.round(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1) / SkylineGeometry.DAY_MS);
     }
 
     public static dateOf(day: number): string {
-        return new Date(day * DAY_MS).toISOString().slice(0, 10);
+        return new Date(day * SkylineGeometry.DAY_MS).toISOString().slice(0, 10);
     }
 
     /** 0 = Sunday … 6 = Saturday. */
@@ -84,7 +84,7 @@ export class SkylineGeometry {
         }
         const known = [...byDay.keys()];
         const last = options.to !== undefined ? SkylineGeometry.dayOf(options.to)
-            : known.length > 0 ? Math.max(...known) : Math.floor(Date.now() / DAY_MS);
+            : known.length > 0 ? Math.max(...known) : Math.floor(Date.now() / SkylineGeometry.DAY_MS);
         const first = options.from !== undefined ? SkylineGeometry.dayOf(options.from) : last - 364;
         const ws = options.weekStart ?? 0;
         const offset = (SkylineGeometry.weekday(first) - ws + 7) % 7;
@@ -204,9 +204,9 @@ export class SkylineGeometry {
         if (hemisphere === 'south') {
             d = (d + 182) % 365;
         }
-        for (let i = 0; i < SEASONS.length; i++) {
-            const [d0, c0] = SEASONS[i]!;
-            const [d1raw, c1] = SEASONS[(i + 1) % SEASONS.length]!;
+        for (let i = 0; i < SkylineGeometry.SEASONS.length; i++) {
+            const [d0, c0] = SkylineGeometry.SEASONS[i]!;
+            const [d1raw, c1] = SkylineGeometry.SEASONS[(i + 1) % SkylineGeometry.SEASONS.length]!;
             const d1 = d1raw <= d0 ? d1raw + 365 : d1raw;
             const x = d < d0 ? d + 365 : d;
             if (x >= d0 && x < d1) {
@@ -216,7 +216,7 @@ export class SkylineGeometry {
             }
         }
 
-        return SEASONS[0]![1];
+        return SkylineGeometry.SEASONS[0]![1];
     }
 
     /** A day's colour by its level: pale for level 1, the full colour for level 4. */

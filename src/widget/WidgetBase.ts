@@ -1,7 +1,5 @@
 import { EventEmitter } from '../util/EventEmitter';
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
-
 /** Options every dashboard widget understands. */
 export interface WidgetOptions {
     /** 'auto' (default) follows the OS colour scheme; 'light' / 'dark' fix it. */
@@ -18,27 +16,29 @@ export interface WidgetOptions {
 export type WidgetStyleVar =
     | 'ink' | 'muted' | 'track' | 'grid' | 'knob' | 'surface' | 'c1' | 'c2' | 'c3' | 'c4' | 'c5' | 'c6';
 
-/** Default colour of the i-th item: one of the six palette variables. */
-export function paletteColor(i: number): string {
-    return `var(--wg-c${(i % 6) + 1})`;
-}
+/** SVG element helpers shared by the widgets. */
+export class WidgetDom {
 
-/** Create an SVG element with attributes. */
-export function svgEl<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number> = {}): SVGElementTagNameMap[K] {
-    const node = document.createElementNS(SVG_NS, tag);
+    public static readonly SVG_NS = 'http://www.w3.org/2000/svg';
 
-    for (const [key, value] of Object.entries(attrs)) {
-        node.setAttribute(key, String(value));
+    /** Create an SVG element with attributes. */
+    public static svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number> = {}): SVGElementTagNameMap[K] {
+        const node = document.createElementNS(WidgetDom.SVG_NS, tag);
+
+        for (const [key, value] of Object.entries(attrs)) {
+            node.setAttribute(key, String(value));
+        }
+
+        return node;
     }
 
-    return node;
-}
-
-/** Set attributes on an existing element (numbers rounded to 0.01). */
-export function setAttrs(node: Element, attrs: Record<string, string | number>): void {
-    for (const [key, value] of Object.entries(attrs)) {
-        node.setAttribute(key, typeof value === 'number' ? String(Math.round(value * 100) / 100) : value);
+    /** Set attributes on an existing element (numbers rounded to 0.01). */
+    public static setAttrs(node: Element, attrs: Record<string, string | number>): void {
+        for (const [key, value] of Object.entries(attrs)) {
+            node.setAttribute(key, typeof value === 'number' ? String(Math.round(value * 100) / 100) : value);
+        }
     }
+
 }
 
 /**
@@ -105,25 +105,35 @@ export class Tween {
 
 /**
  * Shared shell of the dashboard widgets (`RingGauge`, `SegmentGauge`,
- * `SegmentBar`, `ProgressBars`, `MonthCalendar`, `StatList`, `WorldMap`): a
+ * `SegmentBar`, `ProgressBars`, `MonthCalendar`, `StatList`, `WorldMap`, …): a
  * root element carrying the theme, typed events and the `--wg-*` colours.
+ * A widget with its own variable set (`DayClock`: `--dc-*`, `data-dc-theme`)
+ * passes its `prefix` and style-variable names.
  */
-export abstract class Widget<Events extends Record<string, unknown>> {
+export abstract class Widget<Events extends Record<string, unknown>, StyleVar extends string = WidgetStyleVar> {
+
+    /** Default colour of the i-th item: one of the six palette variables. */
+    public static paletteColor(i: number): string {
+        return `var(--wg-c${(i % 6) + 1})`;
+    }
 
     protected readonly root: HTMLDivElement;
     protected readonly events = new EventEmitter<Events>();
     protected readonly animate: boolean;
     protected readonly duration: number;
+    /** CSS prefix of the root class (`<prefix>-root`), theme attribute and style variables. */
+    protected readonly prefix: string;
     private resizeObserver: ResizeObserver | null = null;
     private lastWidth = 0;
 
-    protected constructor(container: HTMLElement, className: string, options: WidgetOptions) {
+    protected constructor(container: HTMLElement, className: string, options: WidgetOptions, prefix = 'wg') {
         WidgetStyles.ensure();
+        this.prefix = prefix;
         this.animate = options.animate ?? true;
         this.duration = options.duration ?? 650;
         this.root = document.createElement('div');
-        this.root.className = `wg-root ${className}`;
-        this.root.dataset.wgTheme = options.theme ?? 'auto';
+        this.root.className = className === '' ? `${prefix}-root` : `${prefix}-root ${className}`;
+        this.root.setAttribute(`data-${prefix}-theme`, options.theme ?? 'auto');
         if (options.ariaLabel !== undefined) {
             this.root.setAttribute('aria-label', options.ariaLabel);
         }
@@ -154,16 +164,16 @@ export abstract class Widget<Events extends Record<string, unknown>> {
     }
 
     public setTheme(theme: 'auto' | 'light' | 'dark'): void {
-        this.root.dataset.wgTheme = theme;
+        this.root.setAttribute(`data-${this.prefix}-theme`, theme);
     }
 
     /** Override `--wg-*` colours on this widget (null removes an override). */
-    public setStyleVars(vars: Partial<Record<WidgetStyleVar, string | null>>): void {
-        for (const [key, value] of Object.entries(vars)) {
+    public setStyleVars(vars: Partial<Record<StyleVar, string | null>>): void {
+        for (const [key, value] of Object.entries<string | null | undefined>(vars)) {
             if (value === null || value === undefined) {
-                this.root.style.removeProperty(`--wg-${key}`);
+                this.root.style.removeProperty(`--${this.prefix}-${key}`);
             } else {
-                this.root.style.setProperty(`--wg-${key}`, value);
+                this.root.style.setProperty(`--${this.prefix}-${key}`, value);
             }
         }
     }
@@ -356,3 +366,6 @@ export class WidgetStyles {
     }
 
 }
+
+/** @deprecated use `Widget.paletteColor`. */
+export const paletteColor = (i: number): string => Widget.paletteColor(i);
