@@ -382,6 +382,18 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   `examples/roots.html` (75 people of data-visualization history, Priestley → Lupi, 22 disciplines, year slider + play,
   fans and legend linked; layout idea after Fabrice Sabatier's poster, own data/drawing; `?year=`).
 
+  `LineageChart` (canvas, `jsngraph/chart`): a family tree on a time axis (`LineageNode` id/label/year/parent/end/
+  trunk/side/band/mark/labelPosition). Pure `LineageLayout`: `timeScale` linear | compressed (every distinct year a knot,
+  gaps weighted gap^0.5), `trunks` (explicit `trunk`, else the child with the largest family continues the parent's row;
+  `trunk: false` opts out), `rows` = nested blocks (branches above/below the parent's block, the earlier nearer, side by
+  fewer rows so far; risers at the parent's x so blocks never cross), bands stacked below with a gap, each node's
+  `incoming` (riser + row) and `tail` (to `end` with a bar, else to the axis end), `lineage` (ancestors + descendants),
+  `tags` (orange year pills, staggered on two levels), `colorAt`, `distanceToPath`; `test/Lineage.test.ts`. Chart:
+  rounded risers, year tags + grid, band with a year ruler, colour early → modern, `mark` = ring in the dot, label halo,
+  Camera pan/zoom/fit, hover/click a dot or line = light its lineage + tooltip, `highlight(ids)`, `select`, `focusNode`,
+  `setTime(year)` (lines grow, dashed cursor; a pinned node not yet born lights nothing), `setScale`, canvas legend.
+  Example: `examples/lineage.html` (the Unix family, ~45 systems, families, search, replay, detail + year stats).
+
 - `records/` — `RecordGraph` (subpath `jsngraph/records`): cards with a header (icon, title, subtitle) and a table of
   rows (`label`, `value`), links run row → row (`RecordLink {from: {node,row}, to}`), cards may sit in group frames
   (`RecordGroup`, `collapsed` folds a group into one box; merged links keep all `ids`). Pure `RecordLayout`: columns =

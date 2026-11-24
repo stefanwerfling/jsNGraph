@@ -100,3 +100,9 @@ export { RootsFans } from './chart/RootsFans';
 export type { RootsFansOptions, RootsFansEvents } from './chart/RootsFans';
 export { RootsLayout } from './chart/RootsLayout';
 export type { RootsPlaceInput, RootsPlaceOptions, RootsPlaced, RootsBar, RootsLink } from './chart/RootsLayout';
+export { LineageChart } from './chart/LineageChart';
+export type { LineageChartOptions, LineageChartEvents, LineageHover } from './chart/LineageChart';
+export { LineageLayout } from './chart/LineageLayout';
+export type {
+    LineageNode, LineageBand, LineageScale, LineageLayoutOptions, LineagePlaced, LineagePoint, LineageBandSpan, LineageResult
+} from './chart/LineageLayout';

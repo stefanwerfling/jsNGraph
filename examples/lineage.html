@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — family tree</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    html, body { background: #0f1d33; }
+    body.light { background: #f3f6fb; }
+    main { box-sizing: border-box; width: 100%; padding: 12px 16px 20px; color: #e3e9f4; font-family: system-ui, sans-serif; }
+    body.light main { color: #273142; }
+    h1 { font-size: 22px; margin: 4px 0 2px; font-weight: 700; }
+    .sub { margin: 0 0 10px; color: #8fa0bd; font-size: 13px; max-width: 1050px; line-height: 1.45; }
+    .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; font-size: 12px; }
+    .bar .lab { color: #8fa0bd; margin-left: 6px; }
+    button, input[type=search] { background: #17294a; color: #e3e9f4; border: 1px solid #2c4570; border-radius: 4px;
+        padding: 5px 10px; font: 12px system-ui, sans-serif; }
+    button { cursor: pointer; }
+    button.on { border-color: #ff8a42; background: #3a2a2a; }
+    body.light button, body.light input[type=search] { background: #fff; color: #273142; border-color: #c8cfdc; }
+    body.light button.on { background: #fff0e6; }
+    input[type=range] { width: 220px; accent-color: #ff8a42; }
+    #year { font-variant-numeric: tabular-nums; min-width: 34px; display: inline-block; font-weight: 600; }
+    .lt-wrap { display: grid; grid-template-columns: 1fr 270px; gap: 14px; }
+    #tree { height: calc(100vh - 190px); min-height: 520px; border: 1px solid #23395f; border-radius: 6px; overflow: hidden; }
+    body.light #tree { border-color: #d7deea; }
+    aside { font-size: 13px; line-height: 1.5; }
+    aside h2 { font-size: 15px; margin: 0 0 4px; }
+    .lt-card { background: #142542; border: 1px solid #23395f; border-radius: 6px; padding: 12px; margin-bottom: 12px; }
+    body.light .lt-card { background: #fff; border-color: #d7deea; }
+    .muted { color: #8fa0bd; }
+    .kids a { color: #4fd0f0; cursor: pointer; margin-right: 8px; text-decoration: none; white-space: nowrap; }
+    body.light .kids a { color: #1b7fb0; }
+    .stat { display: flex; justify-content: space-between; border-bottom: 1px solid rgba(143,160,189,0.2); padding: 3px 0; }
+    @media (max-width: 900px) { .lt-wrap { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="lineage.html" class="active">Family tree</a>
+</nav>
+
+<main>
+    <h1>The Unix family tree</h1>
+    <p class="sub">Fifty-odd years of operating systems on one time axis: every system appears as a dot in the year of its
+        first release, a successor continues its parent's line, offshoots branch off, and a line ends where a system was
+        discontinued. Hover a system to light its ancestry and descendants. Years are approximate first releases and the
+        tree is simplified to one parent per system.</p>
+
+    <div class="bar">
+        <span class="lab">Family</span>
+        <button class="fam on" data-v="">All</button>
+        <button class="fam" data-v="bsd">BSD</button>
+        <button class="fam" data-v="sysv">System V</button>
+        <button class="fam" data-v="redhat">Red Hat</button>
+        <button class="fam" data-v="debian">Debian</button>
+        <button class="fam" data-v="suse">SUSE</button>
+        <button class="fam" data-v="arch">Arch</button>
+        <input type="search" id="q" placeholder="Find a system…">
+        <span class="lab">Time</span>
+        <button id="play">▶ Play</button>
+        <input type="range" id="time" min="1968" max="2026" step="0.25" value="2026"><span id="year">2026</span>
+        <span class="lab">Axis</span>
+        <button class="scale on" data-v="compressed">Compressed</button>
+        <button class="scale" data-v="linear">Linear</button>
+        <button id="fit">Fit</button>
+        <button id="theme">Light</button>
+    </div>
+
+    <div class="lt-wrap">
+        <div id="tree"></div>
+        <aside>
+            <div class="lt-card" id="detail"><h2>Pick a system</h2><span class="muted">Click a dot or a line — the panel shows where it
+                came from and what grew out of it. Drag to pan, wheel to zoom, double-click to fit.</span></div>
+            <div class="lt-card" id="stats"></div>
+        </aside>
+    </div>
+</main>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+(() => {
+    const J = window.JSNGraph;
+    const $ = (id) => document.getElementById(id);
+    const N = (id, label, year, parent, extra = {}) => ({id, label, year, ...(parent ? {parent} : {}), ...extra});
+
+    const nodes = [
+        N('unix', 'UNIX', 1969, null, {labelPosition: 'above', description: 'Bell Labs'}),
+        N('bsd', 'BSD', 1978, 'unix', {labelPosition: 'above', description: 'Berkeley Software Distribution'}),
+        N('freebsd', 'FreeBSD', 1993, 'bsd', {trunk: true}),
+        N('netbsd', 'NetBSD', 1993, 'bsd'),
+        N('openbsd', 'OpenBSD', 1996, 'netbsd'),
+        N('dragonfly', 'DragonFly BSD', 2003, 'freebsd'),
+        N('darwin', 'Darwin', 2000, 'freebsd', {description: 'the open core under Apple\'s systems'}),
+        N('sysv', 'System V', 1983, 'unix'),
+        N('aix', 'AIX', 1986, 'sysv'),
+        N('solaris', 'Solaris', 1992, 'sysv', {trunk: true}),
+        N('illumos', 'illumos', 2010, 'solaris'),
+        N('linux', 'Linux', 1991, 'unix', {labelPosition: 'above', description: 'the kernel'}),
+        N('slackware', 'Slackware', 1993, 'linux', {labelPosition: 'above'}),
+        N('suse', 'SUSE', 1994, 'slackware', {trunk: true}),
+        N('sles', 'SLES', 2000, 'suse', {mark: true, labelPosition: 'right'}),
+        N('opensuse', 'openSUSE', 2005, 'suse', {labelPosition: 'right'}),
+        N('debian', 'Debian', 1993, 'linux', {labelPosition: 'above'}),
+        N('ubuntu', 'Ubuntu', 2004, 'debian', {mark: true, trunk: true, labelPosition: 'above'}),
+        N('mint', 'Linux Mint', 2006, 'ubuntu'),
+        N('elementary', 'elementary OS', 2011, 'ubuntu'),
+        N('popos', 'Pop!_OS', 2017, 'ubuntu'),
+        N('proxmox', 'Proxmox VE', 2008, 'debian', {mark: true}),
+        N('kali', 'Kali', 2013, 'debian'),
+        N('redhat', 'Red Hat', 1995, 'linux', {end: 2004, labelPosition: 'above', description: 'Red Hat Linux'}),
+        N('rhel', 'RHEL', 2002, 'redhat', {mark: true, trunk: true, labelPosition: 'above', description: 'Red Hat Enterprise Linux'}),
+        N('fedora', 'Fedora', 2003, 'redhat'),
+        N('mandrake', 'Mandrake', 1998, 'redhat', {end: 2005}),
+        N('mandriva', 'Mandriva', 2005, 'mandrake', {end: 2011, trunk: true}),
+        N('mageia', 'Mageia', 2010, 'mandriva', {trunk: false, description: 'community fork'}),
+        N('centos', 'CentOS\n(2004–2021)', 2004, 'rhel', {end: 2021}),
+        N('oracle', 'Oracle Linux', 2006, 'rhel', {mark: true, labelPosition: 'right'}),
+        N('amazon', 'Amazon Linux', 2010, 'rhel', {labelPosition: 'right'}),
+        N('stream', 'CentOS Stream', 2019, 'rhel', {labelPosition: 'right'}),
+        N('rocky', 'Rocky Linux', 2021, 'rhel', {mark: true, labelPosition: 'right'}),
+        N('alma', 'AlmaLinux', 2021, 'rhel', {mark: true, labelPosition: 'right'}),
+        N('gentoo', 'Gentoo', 2002, 'linux'),
+        N('chromeos', 'ChromeOS', 2011, 'gentoo'),
+        N('arch', 'Arch', 2002, 'linux'),
+        N('manjaro', 'Manjaro', 2011, 'arch'),
+        N('steamos', 'SteamOS 3', 2022, 'arch', {labelPosition: 'right'}),
+        N('alpine', 'Alpine', 2005, 'linux'),
+        N('openwrt', 'OpenWrt', 2004, 'linux', {band: 'iot'}),
+        N('windriver', 'Wind River Linux', 2005, 'linux', {band: 'iot', mark: true}),
+        N('android', 'Android', 2008, 'linux', {band: 'iot'}),
+        N('yocto', 'Yocto Project', 2010, 'linux', {band: 'iot'}),
+        N('raspbian', 'Raspberry Pi OS', 2012, 'debian', {band: 'iot'})
+    ];
+
+    const tree = new J.LineageChart($('tree'), {nodes, bands: [{id: 'iot', label: 'Embedded / IoT focused'}],
+        from: 1968, to: 2026, width: 1700, rowHeight: 30, markLabel: 'Enterprise support', theme: {background: '#0f1d33'}});
+    window.tree = tree;
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+
+    // ---- detail panel ---------------------------------------------------------------------------------------------
+    const show = (info) => {
+        if (!info) {
+            $('detail').innerHTML = '<h2>Pick a system</h2><span class="muted">Click a dot or a line.</span>';
+            return;
+        }
+        const n = info.node;
+        const name = (x) => x.label.replace(/\n.*/, '');
+        const chain = [];
+        for (let p = info.parent; p; p = p.parent ? byId.get(p.parent) : null) chain.unshift(name(p));
+        $('detail').innerHTML = `<h2>${name(n)}</h2>
+            <div class="muted">${n.end ? `${n.year} – ${n.end}` : `since ${n.year}`}${n.description ? ` · ${n.description}` : ''}</div>
+            ${n.mark ? '<div>● enterprise support available</div>' : ''}
+            <p>${chain.length ? `${chain.join(' → ')} → <b>${name(n)}</b>` : 'a root'}</p>
+            ${info.children.length ? `<div class="kids">Directly from it: ${info.children.map((c) => `<a data-id="${c.id}">${name(c)}</a>`).join('')}</div>` : ''}
+            <div class="muted">${info.descendants} descendant${info.descendants === 1 ? '' : 's'} in this tree</div>`;
+        $('detail').querySelectorAll('a[data-id]').forEach((a) => a.onclick = () => {
+            tree.select(a.dataset.id);
+            tree.focusNode(a.dataset.id);
+            show(infoOf(a.dataset.id));
+        });
+    };
+    const infoOf = (id) => {
+        const n = byId.get(id);
+        const kids = nodes.filter((c) => c.parent === id);
+        const lin = tree.lineage(id);
+        let anc = 0;
+        for (let p = n.parent && byId.get(n.parent); p; p = p.parent && byId.get(p.parent)) anc++;
+        return {node: n, parent: n.parent ? byId.get(n.parent) : null, children: kids, descendants: lin.size - 1 - anc};
+    };
+    tree.on('click', show);
+
+    // ---- stats for the visible year -----------------------------------------------------------------------------------
+    const stats = (year) => {
+        const alive = nodes.filter((n) => n.year <= year && (n.end === undefined || n.end > year));
+        const ended = nodes.filter((n) => n.end !== undefined && n.end <= year).length;
+        const linux = alive.filter((n) => tree.lineage('linux').has(n.id) && n.id !== 'unix').length;
+        $('stats').innerHTML = `<h2>In ${Math.floor(year)}</h2>
+            <div class="stat"><span>Systems around</span><b>${alive.length}</b></div>
+            <div class="stat"><span>of them Linux based</span><b>${linux}</b></div>
+            <div class="stat"><span>Discontinued so far</span><b>${ended}</b></div>
+            <div class="stat"><span>With enterprise support</span><b>${alive.filter((n) => n.mark).length}</b></div>`;
+    };
+    stats(2026);
+
+    // ---- families and search -----------------------------------------------------------------------------------
+    const famRoot = {bsd: 'bsd', sysv: 'sysv', redhat: 'redhat', debian: 'debian', suse: 'slackware', arch: 'arch'};
+    const descendants = (id) => {
+        const out = new Set([id]);
+        let grew = true;
+        while (grew) {
+            grew = false;
+            for (const n of nodes) if (n.parent && out.has(n.parent) && !out.has(n.id)) { out.add(n.id); grew = true; }
+        }
+        return out;
+    };
+    document.querySelectorAll('.fam').forEach((b) => b.onclick = () => {
+        document.querySelectorAll('.fam').forEach((x) => x.classList.toggle('on', x === b));
+        $('q').value = '';
+        tree.highlight(b.dataset.v ? descendants(famRoot[b.dataset.v]) : null);
+    });
+    $('q').oninput = () => {
+        const q = $('q').value.trim().toLowerCase();
+        const hit = nodes.filter((n) => n.label.toLowerCase().includes(q));
+        if (!q) { tree.highlight(null); return; }
+        tree.highlight(hit.flatMap((n) => [...tree.lineage(n.id)]));
+        if (hit.length === 1) tree.focusNode(hit[0].id, 1.3);
+    };
+
+    // ---- time ------------------------------------------------------------------------------------------------------
+    let playing = null;
+    const setYear = (y) => {
+        $('time').value = y;
+        $('year').textContent = Math.floor(y);
+        tree.setTime(y >= 2026 ? null : y);
+        stats(y);
+    };
+    $('time').oninput = () => { stopPlay(); setYear(Number($('time').value)); };
+    const stopPlay = () => { clearInterval(playing); playing = null; $('play').textContent = '▶ Play'; };
+    $('play').onclick = () => {
+        if (playing) return stopPlay();
+        let y = Number($('time').value) >= 2026 ? 1968 : Number($('time').value);
+        $('play').textContent = '❚❚ Pause';
+        playing = setInterval(() => {
+            y = Math.min(2026, y + 0.25);
+            setYear(y);
+            if (y >= 2026) stopPlay();
+        }, 70);
+    };
+
+    document.querySelectorAll('.scale').forEach((b) => b.onclick = () => {
+        document.querySelectorAll('.scale').forEach((x) => x.classList.toggle('on', x === b));
+        tree.setScale(b.dataset.v);
+    });
+    $('fit').onclick = () => tree.fit();
+    let light = false;
+    $('theme').onclick = (e) => {
+        light = !light;
+        document.body.classList.toggle('light', light);
+        tree.setTheme(light ? 'light' : {background: '#0f1d33'});
+        e.target.textContent = light ? 'Dark' : 'Light';
+    };
+
+    const q = new URLSearchParams(location.search);
+    if (q.get('theme') === 'light') $('theme').click();
+    if (q.get('year')) setYear(Number(q.get('year')));
+})();
+</script>
+</body>
+</html>
