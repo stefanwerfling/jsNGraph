@@ -163,6 +163,12 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   Example: `examples/audio.html` — a Web Audio patch editor (11 unit types, live sliders, bypass/collapse, groups,
   generated drum loop + reverb impulse, Save/Load via localStorage, offline WAV bounce); the page keeps an `Engine`
   that `sync`s the document into a Web Audio graph (units persist across syncs so sources keep playing).
+  Example: `examples/storyboard.html` — an invented film storyboard in two views (tabs) over two editors that share node
+  ids and keep label + meta in sync: glowing cards + a diamond decision node (transparent `.wf-node` via `:has()`, the
+  body draws the rotated square), details panel bound to `meta`, simulated run; and an infinite canvas of shot cards with
+  frames painted once per art key into data URLs, port-less `scribble` nodes as handwritten notes (double-click =
+  contenteditable), own fit around the floating bars (`fitOnLoad: false`). Connection colours by id prefix in page CSS
+  (`ok-`/`no-`/`dash-`).
 
 - `widget/` — small standalone dashboard widgets (SVG, no canvas), subpath `jsngraph/widget`. `DayClock`
   (taken over from kavula's dashboard, without d3/jQuery): a day on one 24 h dial (00:00 top, clockwise), elapsed

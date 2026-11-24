@@ -1,0 +1,1148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — storyboard</title>
+<link rel="stylesheet" href="shared.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600&display=swap">
+<style>
+    :root {
+        --sb-bg: #060a13;
+        --sb-panel: #0a111f;
+        --sb-panel-2: #0d1628;
+        --sb-line: #18253d;
+        --sb-line-2: #22355a;
+        --sb-blue: #2f7cff;
+        --sb-blue-2: #5aa0ff;
+        --sb-text: #dbe6ff;
+        --sb-dim: #7385a8;
+        --sb-ok: #2fd08a;
+        --sb-bad: #ff4d4d;
+    }
+    html, body { height: 100%; overflow: hidden; background: var(--sb-bg); color-scheme: dark; }
+    body { font: 13px Inter, system-ui, -apple-system, sans-serif; color: var(--sb-text); }
+    button, input, select, textarea { font: inherit; color: inherit; }
+
+    /* ---- page header: the two views ---- */
+    #views { position: absolute; top: 45px; left: 0; right: 0; height: 46px; display: flex; justify-content: center;
+        align-items: center; gap: 4px; border-bottom: 1px solid var(--sb-line); background: #04070e; }
+    #views button { background: none; border: 0; padding: 0 18px; height: 46px; cursor: pointer; color: var(--sb-dim);
+        font-weight: 800; letter-spacing: .08em; text-transform: uppercase; font-size: 15px; border-bottom: 2px solid transparent; }
+    #views button.on { color: #fff; border-bottom-color: var(--sb-blue); }
+    .view { position: absolute; top: 91px; left: 0; right: 0; bottom: 0; display: none; }
+    .view.on { display: block; }
+
+    /* ---- shared chrome ---- */
+    .chrome { position: absolute; z-index: 20; background: rgba(9, 15, 28, .92); border: 1px solid var(--sb-line);
+        border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+    .icon { width: 16px; height: 16px; flex: none; }
+    .ibtn { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 7px; background: none;
+        color: var(--sb-dim); cursor: pointer; }
+    .ibtn:hover { color: var(--sb-text); background: rgba(90,160,255,.1); }
+    .ibtn.on { color: #fff; background: rgba(47,124,255,.22); }
+    .primary { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 14px; border-radius: 7px; border: 0;
+        background: var(--sb-blue); color: #fff; font-weight: 600; cursor: pointer; box-shadow: 0 0 18px rgba(47,124,255,.35); }
+    .primary:hover { background: #4189ff; }
+    .ghost { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 7px;
+        border: 1px solid var(--sb-line-2); background: var(--sb-panel-2); cursor: pointer; }
+    .ghost:hover { border-color: var(--sb-blue); }
+    #toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%) translateY(10px); z-index: 80; opacity: 0;
+        padding: 8px 14px; border-radius: 8px; background: #0e1830; border: 1px solid var(--sb-line-2); pointer-events: none;
+        transition: opacity .2s, transform .2s; white-space: nowrap; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; }
+    #toast.show { opacity: 1; transform: translateX(-50%); }
+
+    /* ================= workflow view ================= */
+    #wf-top { left: 0; right: 0; top: 0; height: 52px; border-radius: 0; border-width: 0 0 1px; display: flex; align-items: center;
+        gap: 14px; padding: 0 14px; background: #070c18; box-shadow: none; }
+    .logo { width: 26px; height: 26px; color: var(--sb-blue); filter: drop-shadow(0 0 6px rgba(47,124,255,.7)); }
+    .crumb { color: var(--sb-dim); white-space: nowrap; }
+    .crumb b { color: var(--sb-text); font-weight: 600; }
+    .spacer { flex: 1; }
+    .saved { display: flex; align-items: center; gap: 8px; color: var(--sb-dim); white-space: nowrap; }
+    .saved .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--sb-blue); box-shadow: 0 0 8px var(--sb-blue); }
+    .saved b { color: var(--sb-text); font-weight: 500; }
+
+    #wf-side { left: 0; top: 52px; bottom: 0; width: 176px; border-radius: 0; border-width: 0 1px 0 0; padding: 14px 10px;
+        overflow: auto; background: #070c18; box-shadow: none; }
+    #wf-side h4 { margin: 14px 8px 6px; font-size: 10.5px; letter-spacing: .1em; color: var(--sb-blue-2); font-weight: 700; }
+    #wf-side h4:first-child { margin-top: 0; }
+    #wf-side button { display: flex; align-items: center; gap: 10px; width: 100%; height: 30px; padding: 0 8px; border: 0;
+        border-radius: 6px; background: none; color: var(--sb-dim); cursor: pointer; text-align: left; }
+    #wf-side button:hover { color: var(--sb-text); background: rgba(90,160,255,.07); }
+    #wf-side button.on { color: #fff; background: rgba(47,124,255,.18); box-shadow: inset 2px 0 0 var(--sb-blue); }
+    #wf-side button .n { margin-left: auto; font-size: 11px; color: var(--sb-dim); }
+
+    #wf-editor { position: absolute; left: 176px; right: 290px; top: 52px; bottom: 0; }
+    #wf-panel { right: 0; top: 52px; bottom: 0; width: 290px; border-radius: 0; border-width: 0 0 0 1px; display: flex;
+        flex-direction: column; background: #080e1b; box-shadow: none; }
+    #wf-panel .head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 6px;
+        font-size: 10.5px; letter-spacing: .1em; color: var(--sb-blue-2); font-weight: 700; }
+    #wf-panel .body { flex: 1; overflow: auto; padding: 4px 16px 16px; }
+    #wf-panel .empty { color: var(--sb-dim); padding: 30px 6px; text-align: center; line-height: 1.6; }
+    .pn-title { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 9px; background: var(--sb-panel-2);
+        border: 1px solid var(--sb-line-2); margin-bottom: 14px; }
+    .pn-title .ic { width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; color: var(--sb-blue-2);
+        background: rgba(47,124,255,.14); flex: none; }
+    .pn-title input { width: 100%; min-width: 0; border: 0; background: none; font-weight: 700; text-transform: uppercase;
+        letter-spacing: .03em; outline: none; padding: 0; }
+    .pn-title .code { font-size: 11px; color: var(--sb-blue-2); }
+    .field { margin-bottom: 12px; }
+    .field > label { display: block; font-size: 11px; color: var(--sb-dim); margin-bottom: 5px; }
+    .field select, .field input, .field textarea { width: 100%; height: 32px; padding: 0 10px; border-radius: 7px;
+        border: 1px solid var(--sb-line-2); background: var(--sb-panel-2); outline: none; }
+    .field textarea { height: 72px; padding: 8px 10px; resize: vertical; line-height: 1.45; }
+    .field select:focus, .field input:focus, .field textarea:focus { border-color: var(--sb-blue); }
+    .sect { margin: 18px 0 8px; font-size: 10.5px; letter-spacing: .1em; color: var(--sb-dim); font-weight: 700; }
+    .outs { display: grid; gap: 6px; }
+    .outs button { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 7px; cursor: pointer;
+        border: 1px solid var(--sb-line); background: none; text-align: left; }
+    .outs button:hover { border-color: var(--sb-blue); }
+    .outs .pt { width: 8px; height: 8px; border-radius: 50%; border: 2px solid var(--sb-blue-2); flex: none; }
+    .outs .add { justify-content: center; color: var(--sb-blue-2); border-style: dashed; }
+    .tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 5px; font-size: 11px;
+        color: var(--sb-blue-2); background: rgba(47,124,255,.14); border: 1px solid rgba(47,124,255,.3); }
+    .tag button { border: 0; background: none; padding: 0; cursor: pointer; color: var(--sb-dim); }
+    .tags input { width: 90px; height: 24px; padding: 0 6px; border-radius: 5px; border: 1px dashed var(--sb-line-2); background: none;
+        font-size: 11px; outline: none; }
+    #wf-panel .foot { padding: 14px 16px; border-top: 1px solid var(--sb-line); }
+    #wf-panel .foot .primary { width: 100%; justify-content: center; height: 36px; }
+
+    #wf-zoom { left: 192px; bottom: 14px; display: flex; align-items: center; gap: 2px; padding: 4px; }
+    #wf-zoom .sep, #cv-bottom .sep { width: 1px; height: 20px; background: var(--sb-line-2); margin: 0 4px; }
+    .pct { min-width: 48px; text-align: center; color: var(--sb-dim); font-variant-numeric: tabular-nums; }
+
+    /* workflow nodes: glowing story cards */
+    .sb-wf .wf-root { --wf-bg: #050912; --wf-grid: #111c31; --wf-node-bg: #0a1222; --wf-node-border: #1d4f9e;
+        --wf-text: var(--sb-text); --wf-subtext: var(--sb-dim); --wf-edge: #2f7cff; --wf-sel: #79b4ff; --wf-port-bg: #050912;
+        --wf-ok: var(--sb-ok); --wf-bad: var(--sb-bad); --wf-band: rgba(47,124,255,.1); background-size: 22px 22px; }
+    .sb-wf .wf-node { padding: 0; border-radius: 9px; border-color: #1f5bc0;
+        background: linear-gradient(180deg, #0c1730, #08101f);
+        box-shadow: 0 0 0 1px rgba(47,124,255,.12), 0 0 22px rgba(47,124,255,.28), inset 0 1px 0 rgba(140,190,255,.08); }
+    .sb-wf .wf-node:hover { border-color: #3f8bff; }
+    .sb-wf .wf-node.wf-selected { border-color: #7db6ff;
+        box-shadow: 0 0 0 1px #7db6ff, 0 0 34px rgba(80,150,255,.6), inset 0 0 18px rgba(47,124,255,.18); }
+    .sb-wf .wf-node:has(.sb-diamond) { background: none; border: 0; box-shadow: none; }
+    .sb-wf .wf-node:has(.sb-diamond).wf-selected .sb-diamond::before { border-color: #7db6ff;
+        box-shadow: 0 0 0 1px #7db6ff, 0 0 34px rgba(80,150,255,.6); }
+    .sb-wf .wf-port { width: 9px; height: 9px; margin: -6px 0 0 -6px; border-radius: 50% !important; border-color: #4a95ff;
+        background: #050912; box-shadow: 0 0 8px rgba(47,124,255,.8); }
+    .sb-wf .wf-port.wf-connected { background: #6fb0ff; }
+    .sb-wf .wf-add { opacity: 0; border-color: #2f7cff; color: #6fb0ff; background: #07101f; }
+    .sb-wf .wf-node:hover .wf-add { opacity: .9; }
+    .sb-wf .wf-conn { stroke-width: 1.8; marker-end: none; filter: drop-shadow(0 0 3px rgba(47,124,255,.9)); }
+    .sb-wf .wf-arrow { display: none; }
+    .sb-wf .wf-node.wf-st-success { border-color: var(--sb-ok); }
+
+    .sb .wf-node-body { align-self: stretch; height: 100%; }
+    .card { display: flex; flex-direction: column; width: 100%; height: 100%; padding: 11px 12px 10px; box-sizing: border-box; }
+    .card .hd { display: flex; align-items: flex-start; gap: 8px; }
+    .card .hd .ic { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; flex: none; color: #78b2ff;
+        background: rgba(47,124,255,.16); }
+    .card .tt { min-width: 0; }
+    .card .ti { font-weight: 700; font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis; color: #eef4ff; }
+    .card .ki { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: #4f93ff; }
+    .card .ds { margin-top: 9px; font-size: 11px; line-height: 1.45; color: #a7b5d1; overflow: hidden; display: -webkit-box;
+        -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+    .card .cd { margin-top: auto; font-size: 10px; letter-spacing: .05em; color: #4f93ff; font-variant-numeric: tabular-nums; }
+
+    .sb-diamond { position: relative; width: 100%; height: 100%; display: grid; place-items: center; text-align: center; }
+    .sb-diamond::before { content: ''; position: absolute; inset: 14.6%; transform: rotate(45deg); border-radius: 12px;
+        border: 1.5px solid #1f5bc0; background: linear-gradient(135deg, #0c1730, #08101f);
+        box-shadow: 0 0 0 1px rgba(47,124,255,.12), 0 0 22px rgba(47,124,255,.3); }
+    .wf-st-success .sb-diamond::before { border-color: var(--sb-ok); }
+    .wf-st-running .sb-diamond::before { border-color: #7db6ff; }
+    .sb-diamond .in { position: relative; width: 62%; }
+    .sb-diamond .q { width: 26px; height: 26px; margin: 0 auto 6px; border-radius: 50%; display: grid; place-items: center;
+        border: 1.5px solid #4f93ff; color: #78b2ff; font-weight: 700; }
+    .sb-diamond .ti { font-weight: 700; font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; }
+    .sb-diamond .ds { font-size: 10px; line-height: 1.4; color: #a7b5d1; margin-top: 4px; }
+    .sb-diamond .cd { font-size: 9.5px; color: #4f93ff; margin-top: 5px; }
+
+    /* connection colours by id prefix: ok- = TRUE/YES, no- = FALSE/NO, dash- = loose link */
+    .sb [data-wf-conn^="ok-"] .wf-conn { stroke: var(--sb-ok); filter: drop-shadow(0 0 3px rgba(47,208,138,.8)); }
+    .sb [data-wf-conn^="no-"] .wf-conn { stroke: var(--sb-bad); filter: drop-shadow(0 0 3px rgba(255,77,77,.8)); }
+    .sb [data-wf-conn^="dash-"] .wf-conn { stroke-dasharray: 5 6; animation: sb-flow 1.2s linear infinite; }
+    @keyframes sb-flow { to { stroke-dashoffset: -22; } }
+    @media (prefers-reduced-motion: reduce) { .sb [data-wf-conn^="dash-"] .wf-conn { animation: none; } }
+    .sb .wf-conn-text { font: 700 10px/16px system-ui; letter-spacing: .08em; border-radius: 4px; background: #06101e; }
+    .sb .wf-conn-text[data-wf-conn^="ok-"] { color: var(--sb-ok); border-color: rgba(47,208,138,.55); background: #052016; }
+    .sb .wf-conn-text[data-wf-conn^="no-"] { color: var(--sb-bad); border-color: rgba(255,77,77,.55); background: #22080b; }
+    .sb .wf-minimap { left: 12px; right: auto; bottom: 64px; }
+
+    /* ================= canvas view ================= */
+    #stars { position: absolute; inset: 0; width: 100%; height: 100%; }
+    #cv-editor { position: absolute; inset: 0; }
+    .sb-cv .wf-root { --wf-bg: transparent; --wf-node-bg: #0b111d; --wf-node-border: #26324a; --wf-text: var(--sb-text);
+        --wf-subtext: var(--sb-dim); --wf-edge: #c9d3e6; --wf-sel: #5aa0ff; --wf-port-bg: #0b111d; --wf-band: rgba(90,160,255,.1);
+        background-image: none; }
+    .sb-cv .wf-node { padding: 0; border-radius: 10px; border: 1px solid #27334b; background: rgba(12,18,30,.94);
+        box-shadow: 0 14px 34px rgba(0,0,0,.5); overflow: visible; }
+    .sb-cv .wf-node:hover { border-color: #3a4c70; }
+    .sb-cv .wf-node.wf-selected { border-color: #5aa0ff; box-shadow: 0 0 0 1px #5aa0ff, 0 0 30px rgba(90,160,255,.35); }
+    .sb-cv .wf-node:has(.scribble) { background: none; border: 1px dashed transparent; box-shadow: none; }
+    .sb-cv .wf-node:has(.scribble).wf-selected { border-color: rgba(90,160,255,.6); }
+    .sb-cv .wf-node.decision { border-color: #7b5cff; box-shadow: 0 0 0 1px rgba(123,92,255,.4), 0 0 30px rgba(123,92,255,.3); }
+    .sb-cv .wf-port { width: 8px; height: 8px; margin: -5px 0 0 -5px; border-radius: 50% !important; background: #0b111d;
+        border-color: #c9d3e6; }
+    .sb-cv .wf-port.wf-connected { background: #fff; }
+    .sb-cv .wf-add { opacity: 0; }
+    .sb-cv .wf-node:hover .wf-add { opacity: .9; }
+    .sb-cv .wf-conn { stroke-width: 1.6; marker-end: none; opacity: .85; }
+    .sb-cv .wf-arrow { display: none; }
+
+    .shot { display: flex; flex-direction: column; width: 100%; height: 100%; padding: 10px; box-sizing: border-box; }
+    .shot .hd { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+        text-transform: uppercase; color: #eef4ff; white-space: nowrap; overflow: hidden; }
+    .shot .num { color: var(--sb-blue-2); font-variant-numeric: tabular-nums; }
+    .shot .hd .ic { color: var(--sb-blue-2); display: grid; }
+    .shot .hd .tx { overflow: hidden; text-overflow: ellipsis; }
+    .shot .more { margin-left: auto; color: var(--sb-dim); letter-spacing: 0; }
+    .shot img { display: block; width: 100%; aspect-ratio: 480 / 260; margin-top: 8px; border-radius: 6px; object-fit: cover;
+        background: #000; -webkit-user-drag: none; }
+    .shot .ds { margin-top: 9px; font-size: 11px; line-height: 1.45; color: #a7b5d1; overflow: hidden; display: -webkit-box;
+        -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .shot .ft { margin-top: auto; display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--sb-dim); }
+    .shot .ft .ic { display: grid; }
+    .shot .ft .r { margin-left: auto; }
+
+    .scribble { position: relative; width: 100%; height: 100%; }
+    .scribble .tx { position: absolute; font: 600 21px/1.05 Caveat, 'Segoe Print', 'Comic Sans MS', cursive; color: #6fa8ff;
+        text-align: center; white-space: pre-wrap; outline: none; text-shadow: 0 0 10px rgba(47,124,255,.35); }
+    .scribble .tx[contenteditable="true"] { background: rgba(10,20,40,.7); border-radius: 6px; box-shadow: 0 0 0 1px #5aa0ff; cursor: text; }
+    .scribble svg { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+    .scribble path { fill: none; stroke: #6fa8ff; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+    .scribble.boxed .tx { border: 1px solid rgba(111,168,255,.4); border-radius: 6px; background: rgba(8,16,32,.55); }
+
+    #cv-top { left: 70px; right: 14px; top: 12px; height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 8px 0 10px; }
+    .proj { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-radius: 7px;
+        border: 1px solid var(--sb-line-2); white-space: nowrap; }
+    .proj .sq { width: 20px; height: 20px; border-radius: 5px; background: var(--sb-blue); display: grid; place-items: center; color: #fff; }
+    .avatars { display: flex; align-items: center; }
+    .avatars span { width: 26px; height: 26px; margin-left: -6px; border-radius: 50%; display: grid; place-items: center;
+        font-size: 10.5px; font-weight: 700; color: #fff; border: 2px solid #0a111f; }
+    .avatars .more { background: #1b2840; color: var(--sb-dim); }
+    #cv-tools { left: 12px; top: 12px; width: 46px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; }
+    #cv-mini { right: 14px; top: 72px; width: 170px; padding: 8px; }
+    #cv-mini canvas { display: block; width: 100%; height: 100px; border-radius: 6px; background: #070c16; cursor: pointer; }
+    #cv-mini .z { display: flex; align-items: center; justify-content: center; margin-top: 6px; }
+    #cv-bottom { left: 12px; bottom: 12px; display: flex; align-items: center; gap: 2px; padding: 4px; }
+    #cv-add { position: absolute; z-index: 20; right: 18px; bottom: 18px; width: 46px; height: 46px; border-radius: 10px; border: 0;
+        background: var(--sb-blue); color: #fff; font-size: 26px; cursor: pointer; box-shadow: 0 0 24px rgba(47,124,255,.6); }
+    #cv-add:hover { background: #4189ff; }
+    #cv-hint { right: 76px; bottom: 18px; padding: 8px 12px; color: var(--sb-dim); font-size: 12px; }
+
+    @media (max-width: 1100px) { #wf-side { display: none; } #wf-editor { left: 0; } #wf-zoom { left: 14px; } }
+    @media (max-width: 820px) {
+        #wf-editor { right: 0; }
+        #wf-panel { top: auto; height: 46%; width: auto; left: 0; border-width: 1px 0 0; display: none; }
+        #wf-panel.open { display: flex; }
+        .crumb, .saved, #cv-hint, #cv-mini, .avatars { display: none; }
+        #views button { font-size: 12px; padding: 0 10px; }
+    }
+</style>
+</head>
+<body class="sb">
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="workflow.html">Workflow</a>
+    <a href="audio.html">Audio patcher</a>
+    <a href="storyboard.html" class="active">Storyboard</a>
+</nav>
+<div id="views">
+    <button data-view="wf" class="on">Node-based workflow</button>
+    <button data-view="cv">Infinite canvas</button>
+</div>
+
+<!-- ================= Node-based workflow ================= -->
+<section class="view on sb-wf" id="view-wf">
+    <header id="wf-top" class="chrome">
+        <svg class="logo" viewBox="0 0 24 24"><path d="M3 4h18l-9 16z M7.5 6.6 12 15l4.5-8.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        <span class="crumb">Project: <b>Eclipse Protocol</b> ▾</span>
+        <span class="spacer"></span>
+        <span class="saved"><span class="dot"></span><b>Auto Save</b> · <span id="saved">Saved just now</span></span>
+        <button class="ibtn" id="wf-play" title="Run the whole sequence"><svg class="icon" viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
+        <button class="primary" id="wf-publish">Publish</button>
+    </header>
+    <aside id="wf-side" class="chrome">
+        <h4>PROJECT</h4>
+        <button data-side="overview">Overview</button>
+        <button data-side="assets">Assets</button>
+        <button data-side="characters">Characters</button>
+        <button data-side="locations">Locations</button>
+        <button data-side="audio">Audio <span class="n" id="n-audio"></span></button>
+        <h4>WORKFLOW</h4>
+        <button data-side="nodes" class="on">Nodes <span class="n" id="n-nodes"></span></button>
+        <button data-side="tidy">Tidy up</button>
+        <button data-side="undo">Undo</button>
+        <h4>TOOLS</h4>
+        <button data-side="search">Search</button>
+        <button data-side="validate">Validate</button>
+    </aside>
+    <div id="wf-editor"></div>
+    <aside id="wf-panel" class="chrome">
+        <div class="head">NODE DETAILS <button class="ibtn" id="wf-close" title="Close">✕</button></div>
+        <div class="body" id="wf-details"></div>
+        <div class="foot"><button class="primary" id="wf-run"><svg class="icon" viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z" fill="currentColor"/></svg>Run from Here</button></div>
+    </aside>
+    <div id="wf-zoom" class="chrome">
+        <button class="ibtn" id="wf-fit" title="Fit"><svg class="icon" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
+        <button class="ibtn" id="wf-mini" title="Minimap"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="12" y="11" width="6" height="5" fill="currentColor"/></svg></button>
+        <span class="sep"></span>
+        <button class="ibtn" id="wf-out" title="Zoom out">−</button>
+        <span class="pct" id="wf-pct">100%</span>
+        <button class="ibtn" id="wf-in" title="Zoom in">+</button>
+        <span class="sep"></span>
+        <button class="ibtn" id="wf-lock" title="Lock editing"><svg class="icon" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
+    </div>
+</section>
+
+<!-- ================= Infinite canvas ================= -->
+<section class="view sb-cv" id="view-cv">
+    <canvas id="stars"></canvas>
+    <div id="cv-editor"></div>
+    <div id="cv-tools" class="chrome">
+        <button class="ibtn on" title="Select" data-tool="select"><svg class="icon" viewBox="0 0 24 24"><path d="M5 3l14 8-6 2-3 6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
+        <button class="ibtn" title="Fit" data-tool="fit"><svg class="icon" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
+        <button class="ibtn" title="Add a shot" data-tool="shot"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 16l5-5 4 4 3-3 6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
+        <button class="ibtn" title="Add a handwritten note" data-tool="note"><svg class="icon" viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
+        <button class="ibtn" title="Tidy up" data-tool="tidy"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="14" y="14" width="7" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 7h4v10" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
+        <button class="ibtn" title="Undo" data-tool="undo">↶</button>
+    </div>
+    <header id="cv-top" class="chrome">
+        <span class="proj"><span class="sq"><svg class="icon" style="width:12px;height:12px" viewBox="0 0 24 24"><path d="M3 4h18l-9 16z" fill="currentColor"/></svg></span>Eclipse Protocol ▾</span>
+        <span class="crumb">Story · <b>v12</b></span>
+        <span class="spacer"></span>
+        <span class="avatars"><span style="background:#e0795a">MK</span><span style="background:#4bb38a">JR</span><span style="background:#c74f6d">AL</span><span class="more">+3</span></span>
+        <button class="primary" id="cv-share">Share</button>
+    </header>
+    <div id="cv-mini" class="chrome">
+        <canvas id="cv-mini-c" width="308" height="200"></canvas>
+        <div class="z"><button class="ibtn" id="cv-out">−</button><span class="pct" id="cv-pct">80%</span><button class="ibtn" id="cv-in">+</button></div>
+    </div>
+    <div id="cv-bottom" class="chrome">
+        <button class="ibtn" id="cv-fit" title="Fit"><svg class="icon" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
+        <span class="sep"></span>
+        <button class="ibtn" id="cv-reroll" title="Repaint the shots"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="9" cy="10" r="2" fill="currentColor"/></svg></button>
+    </div>
+    <div id="cv-hint" class="chrome">double-click a note to write · drag ports to link shots</div>
+    <button id="cv-add" title="Add a shot">+</button>
+</section>
+<div id="toast"></div>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+(() => {
+    const { WorkflowEditor } = window.JSNGraph;
+    const $ = (id) => document.getElementById(id);
+
+    // ---------------------------------------------------------------- icons
+    const svg = (d, extra = '') => `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ${extra}>${d}</svg>`;
+    const ICONS = {
+        station: svg('<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 6l2 4M12 6l2 4M17 6l2 4"/>'),
+        logic: svg('<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>'),
+        crew: svg('<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14c3 0 5 2.2 5 5"/>'),
+        audio: svg('<path d="M3 12h2M7 8v8M11 5v14M15 9v6M19 11v2"/>'),
+        anomaly: svg('<path d="M12 12m-2 0a2 2 0 1 0 4 0a4 4 0 1 0-8 0a6 6 0 1 0 12 0a8 8 0 1 0-16 0"/>'),
+        exit: svg('<path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h10"/>'),
+        search: svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'),
+        shield: svg('<path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/>'),
+        decision: svg('<path d="M12 2l10 10-10 10L2 12z"/>'),
+        pin: svg('<path d="M12 21s-6-5.3-6-11a6 6 0 0 1 12 0c0 5.7-6 11-6 11z"/><circle cx="12" cy="10" r="2"/>'),
+        clap: svg('<rect x="3" y="9" width="18" height="11" rx="1.5"/><path d="M3 9l2.5-5 15 2.5L19 9"/>')
+    };
+    const KIND = {
+        station: 'Station', logic: 'Logic', crew: 'Crew', audio: 'Audio', anomaly: 'Anomaly', exit: 'Location',
+        search: 'Action', shield: 'Action', decision: 'Logic'
+    };
+
+    // ---------------------------------------------------------------- the story
+    // One story, two views: both editors hold the same node ids; label + meta are kept in sync.
+    const scenes = [
+        {id: 's1', label: 'Int. Space Station', kind: 'station', art: 'station', code: 'SEQ_01_SHOT_001',
+            desc: 'Establishing shot of the station orbiting the planet.', tags: ['establishing', 'exterior']},
+        {id: 's2', label: 'Alarm Trigger', kind: 'logic', art: 'alarm', code: 'LOGIC_02',
+            desc: 'System malfunction detected. Red alert initiated across the station.', tags: ['alarm', 'system', 'critical'],
+            severity: 'High', source: 'System Core', delay: 0.8},
+        {id: 's3', label: 'Crew Reacts', kind: 'crew', art: 'crew', code: 'SEQ_01_SHOT_002',
+            desc: 'Crew dons suits and rushes to the airlock.', tags: ['crew']},
+        {id: 's4', label: 'AI Voice Over', kind: 'audio', art: 'ai', code: 'AUDIO_04',
+            desc: 'AI provides status update and protocol instructions.', tags: ['vo', 'ai']},
+        {id: 's6', label: 'Exit Station', kind: 'exit', art: 'corridor', code: 'SEQ_01_SHOT_003',
+            desc: 'Crew exits station and heads toward the anomaly.', tags: ['crew', 'interior']},
+        {id: 's5', label: 'Discover Anomaly', kind: 'anomaly', art: 'anomaly', code: 'SEQ_01_SHOT_004',
+            desc: 'An enormous anomaly appears in deep space.', tags: ['vfx', 'hero shot']},
+        {id: 's7', label: 'Anomaly Stable?', kind: 'decision', art: 'control', code: 'LOGIC_05',
+            desc: 'Evaluate readings and determine next action.', tags: ['branch'], severity: 'Medium', source: 'Sensor Array', delay: 1.2},
+        {id: 's8', label: 'Investigate', kind: 'search', art: 'investigate', code: 'SEQ_01_SHOT_005',
+            desc: 'Proceed with caution and gather more data.', tags: ['eva']},
+        {id: 's9', label: 'Emergency Retreat', kind: 'shield', art: 'retreat', code: 'SEQ_01_SHOT_006',
+            desc: 'Retreat to safe distance and recalibrate systems.', tags: ['action', 'vfx']}
+    ];
+    const metaOf = (s) => ({kind: s.kind, art: s.art, code: s.code, desc: s.desc, tags: s.tags,
+        severity: s.severity ?? 'Low', source: s.source ?? 'Director', delay: s.delay ?? 0});
+    const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]);
+
+    // ---------------------------------------------------------------- shot paintings
+    // Every still is painted once into a 480×260 canvas (seeded, so it is the same on every load).
+    const Art = (() => {
+        const W = 480, H = 260;
+        const rng = (seed) => () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+        const stars = (c, r, n, alpha = 1) => {
+            for (let i = 0; i < n; i++) {
+                const s = r() ** 3 * 1.6 + 0.3;
+                c.fillStyle = `rgba(${200 + r() * 55 | 0},${210 + r() * 45 | 0},255,${(0.25 + r() * 0.75) * alpha})`;
+                c.fillRect(r() * W, r() * H, s, s);
+            }
+        };
+        const glow = (c, x, y, rad, color, a = 1) => {
+            const g = c.createRadialGradient(x, y, 0, x, y, rad);
+            g.addColorStop(0, color.replace('A', a));
+            g.addColorStop(1, color.replace('A', 0));
+            c.fillStyle = g;
+            c.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+        };
+        const vignette = (c) => {
+            const g = c.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.62);
+            g.addColorStop(0, 'rgba(0,0,0,0)');
+            g.addColorStop(1, 'rgba(0,0,0,0.75)');
+            c.fillStyle = g;
+            c.fillRect(0, 0, W, H);
+        };
+        const astronaut = (c, x, y, s, rim, face = 0.6) => {
+            c.save();
+            c.translate(x, y);
+            c.scale(s, s);
+            c.fillStyle = '#0b0f17';
+            c.beginPath();                                   // torso + pack
+            c.moveTo(-30, 120); c.lineTo(-34, 40); c.quadraticCurveTo(-32, 12, 0, 10);
+            c.quadraticCurveTo(32, 12, 34, 40); c.lineTo(30, 120); c.closePath();
+            c.fill();
+            c.beginPath(); c.arc(0, -4, 22, 0, Math.PI * 2); c.fill();   // helmet
+            c.strokeStyle = rim; c.lineWidth = 2.2;
+            c.beginPath(); c.arc(0, -4, 22, -Math.PI * 0.95, -Math.PI * 0.2); c.stroke();
+            c.beginPath(); c.moveTo(-34, 40); c.quadraticCurveTo(-32, 12, 0, 10); c.stroke();
+            const v = c.createLinearGradient(-14, -14, 14, 8);    // visor
+            v.addColorStop(0, `rgba(160,200,255,${face})`);
+            v.addColorStop(1, 'rgba(20,30,60,0.2)');
+            c.fillStyle = v;
+            c.beginPath(); c.ellipse(0, -4, 15, 11, 0, 0, Math.PI * 2); c.fill();
+            c.restore();
+        };
+        const corridor = (c, wall, light) => {
+            const vx = W / 2, vy = H * 0.48;
+            for (let i = 0; i < 9; i++) {
+                const t = 1 - i / 9, w = 30 + 420 * t ** 1.6, h = 22 + 250 * t ** 1.6;
+                c.strokeStyle = wall.replace('A', 0.25 + 0.5 * (1 - t));
+                c.lineWidth = 1 + 3 * t;
+                c.strokeRect(vx - w / 2, vy - h / 2, w, h);
+                c.fillStyle = light.replace('A', 0.5 * (1 - t) + 0.2);
+                c.fillRect(vx - w / 2 + w * 0.12, vy - h / 2 + 2, w * 0.76, 2 + 3 * t);
+            }
+            c.strokeStyle = wall.replace('A', 0.35);
+            c.lineWidth = 1;
+            for (const [x, y] of [[0, 0], [W, 0], [0, H], [W, H]]) { c.beginPath(); c.moveTo(x, y); c.lineTo(vx, vy); c.stroke(); }
+            for (let i = 0; i < 18; i++) {                  // floor grating
+                c.beginPath(); c.moveTo(vx + (i - 9) * 4, vy + 11); c.lineTo(vx + (i - 9) * 60, H); c.stroke();
+            }
+        };
+        const painters = {
+            station(c, r) {
+                c.fillStyle = '#02040a'; c.fillRect(0, 0, W, H);
+                stars(c, r, 260);
+                const p = c.createRadialGradient(400, 420, 60, 380, 400, 260);
+                p.addColorStop(0, '#2a6fd6'); p.addColorStop(0.55, '#123d86'); p.addColorStop(0.9, '#06173a'); p.addColorStop(1, 'rgba(6,23,58,0)');
+                c.fillStyle = p; c.beginPath(); c.arc(380, 400, 250, 0, Math.PI * 2); c.fill();
+                c.strokeStyle = 'rgba(140,200,255,0.8)'; c.lineWidth = 3;
+                c.beginPath(); c.arc(380, 400, 248, Math.PI * 1.08, Math.PI * 1.62); c.stroke();
+                glow(c, 300, 170, 90, 'rgba(120,180,255,A)', 0.25);
+                for (let i = 0; i < 40; i++) {                 // cloud bands
+                    c.strokeStyle = `rgba(200,225,255,${0.04 + r() * 0.08})`; c.lineWidth = 2 + r() * 6;
+                    c.beginPath(); c.arc(380, 400, 120 + r() * 125, Math.PI * (1.1 + r() * 0.2), Math.PI * (1.3 + r() * 0.3)); c.stroke();
+                }
+                c.save(); c.translate(170, 105); c.rotate(-0.18);
+                c.fillStyle = '#9aa7bd'; c.fillRect(-70, -7, 140, 14);       // truss
+                for (const sx of [-1, 1]) {
+                    for (let k = 0; k < 2; k++) {
+                        const x0 = sx * (60 + k * 56) - (sx < 0 ? 46 : 0);
+                        c.fillStyle = '#1d3a6e'; c.fillRect(x0, -34, 46, 26); c.fillRect(x0, 8, 46, 26);
+                        c.strokeStyle = 'rgba(140,180,255,0.6)'; c.lineWidth = 0.8;
+                        for (let g = 1; g < 6; g++) { c.beginPath(); c.moveTo(x0 + g * 7.7, -34); c.lineTo(x0 + g * 7.7, -8); c.moveTo(x0 + g * 7.7, 8); c.lineTo(x0 + g * 7.7, 34); c.stroke(); }
+                    }
+                }
+                const m = c.createLinearGradient(0, -18, 0, 18);
+                m.addColorStop(0, '#e2e8f2'); m.addColorStop(1, '#4b5568');
+                c.fillStyle = m; c.beginPath(); c.roundRect(-34, -16, 68, 32, 14); c.fill();
+                c.fillStyle = '#ffd98a'; for (let w = 0; w < 6; w++) c.fillRect(-24 + w * 9, -3, 4, 3);
+                c.restore();
+                glow(c, 150, 100, 40, 'rgba(255,255,255,A)', 0.25);
+                vignette(c);
+            },
+            alarm(c, r) {
+                c.fillStyle = '#140203'; c.fillRect(0, 0, W, H);
+                corridor(c, 'rgba(255,70,60,A)', 'rgba(255,60,40,A)');
+                glow(c, W / 2, H * 0.48, 120, 'rgba(255,40,30,A)', 0.55);
+                for (const x of [70, 410]) { glow(c, x, 40, 60, 'rgba(255,30,20,A)', 0.9); c.fillStyle = '#ff6b55'; c.fillRect(x - 14, 34, 28, 8); }
+                c.fillStyle = 'rgba(255,90,70,0.85)'; c.font = '700 14px system-ui'; c.textAlign = 'center';
+                c.fillText('⚠  ALERT', W / 2, H * 0.49 + 5);
+                vignette(c);
+            },
+            crew(c, r) {
+                const g = c.createLinearGradient(0, 0, 0, H);
+                g.addColorStop(0, '#0d1a33'); g.addColorStop(1, '#02050c');
+                c.fillStyle = g; c.fillRect(0, 0, W, H);
+                glow(c, 250, 60, 220, 'rgba(110,160,255,A)', 0.4);
+                c.strokeStyle = 'rgba(120,160,230,0.15)'; c.lineWidth = 2;
+                for (let i = 0; i < 9; i++) { c.beginPath(); c.moveTo(i * 60, 0); c.lineTo(i * 60 - 20, H); c.stroke(); }
+                astronaut(c, 120, 120, 1.05, 'rgba(150,200,255,0.9)');
+                astronaut(c, 360, 125, 1.0, 'rgba(150,200,255,0.9)');
+                astronaut(c, 240, 95, 1.35, 'rgba(180,215,255,1)', 0.75);
+                vignette(c);
+            },
+            ai(c, r) {
+                c.fillStyle = '#01040a'; c.fillRect(0, 0, W, H);
+                glow(c, 150, 130, 170, 'rgba(40,120,255,A)', 0.45);
+                c.save(); c.translate(70, 10);
+                const face = new Path2D('M150 20 C110 18 80 50 82 95 C83 118 76 128 66 142 C62 148 70 152 78 152 C80 162 76 168 82 172 C78 178 84 186 92 186 C98 200 112 206 130 202 L134 250 L230 250 C220 210 222 180 226 150 C236 110 226 60 196 36 C184 26 168 21 150 20 Z');
+                const fg = c.createLinearGradient(60, 0, 240, 0);
+                fg.addColorStop(0, '#9fd2ff'); fg.addColorStop(0.25, '#245ea8'); fg.addColorStop(1, '#030915');
+                c.fillStyle = fg; c.fill(face);
+                c.strokeStyle = 'rgba(170,220,255,0.95)'; c.lineWidth = 2; c.stroke(face);
+                c.strokeStyle = 'rgba(120,190,255,0.35)'; c.lineWidth = 1;
+                for (let i = 0; i < 12; i++) { c.beginPath(); c.moveTo(110 + i * 9, 40 + i * 3); c.lineTo(100 + i * 10, 240); c.stroke(); }
+                c.fillStyle = '#d9f0ff'; c.beginPath(); c.ellipse(108, 88, 6, 2.5, -0.2, 0, Math.PI * 2); c.fill();
+                c.restore();
+                for (let i = 0; i < 46; i++) {               // the voice
+                    const x = 300 + i * 3.6, h = (Math.sin(i * 0.55) * 0.5 + 0.6) * (20 + r() * 50) * Math.sin(Math.PI * i / 46);
+                    c.fillStyle = `rgba(110,180,255,${0.5 + r() * 0.5})`;
+                    c.fillRect(x, 130 - h / 2, 2, h);
+                }
+                glow(c, 380, 130, 80, 'rgba(80,160,255,A)', 0.25);
+                vignette(c);
+            },
+            corridor(c, r) {
+                c.fillStyle = '#05080e'; c.fillRect(0, 0, W, H);
+                corridor(c, 'rgba(150,175,215,A)', 'rgba(200,225,255,A)');
+                glow(c, W / 2, H * 0.47, 110, 'rgba(220,235,255,A)', 0.8);
+                c.fillStyle = 'rgba(240,248,255,0.9)'; c.fillRect(W / 2 - 16, H * 0.47 - 12, 32, 24);
+                astronaut(c, 200, 140, 0.8, 'rgba(220,235,255,0.9)', 0.3);
+                astronaut(c, 290, 150, 0.72, 'rgba(220,235,255,0.9)', 0.3);
+                vignette(c);
+            },
+            anomaly(c, r) {
+                c.fillStyle = '#01030a'; c.fillRect(0, 0, W, H);
+                stars(c, r, 320);
+                const cx = 250, cy = 130;
+                glow(c, cx, cy, 200, 'rgba(40,90,220,A)', 0.55);
+                for (let i = 0; i < 520; i++) {
+                    const t = r(), a = t * 12 + r() * 0.6, d = 8 + t * 190;
+                    c.strokeStyle = `rgba(${130 + 120 * (1 - t) | 0},${180 + 70 * (1 - t) | 0},255,${0.08 + (1 - t) * 0.35})`;
+                    c.lineWidth = 0.6 + (1 - t) * 2.4;
+                    c.beginPath(); c.ellipse(cx, cy, d, d * 0.42, -0.25, a, a + 0.5 + r() * 0.6); c.stroke();
+                }
+                glow(c, cx, cy, 46, 'rgba(255,255,255,A)', 0.95);
+                c.fillStyle = '#000'; c.beginPath(); c.ellipse(cx, cy, 11, 6, -0.25, 0, Math.PI * 2); c.fill();
+                vignette(c);
+            },
+            control(c, r) {
+                c.fillStyle = '#03070f'; c.fillRect(0, 0, W, H);
+                c.fillStyle = '#071631'; c.beginPath(); c.moveTo(70, 20); c.lineTo(410, 20); c.lineTo(450, 150); c.lineTo(30, 150); c.closePath(); c.fill();
+                stars(c, r, 60, 0.6);
+                glow(c, 245, 75, 110, 'rgba(170,210,255,A)', 0.9);
+                c.strokeStyle = 'rgba(255,255,255,0.7)'; c.lineWidth = 1.2;
+                for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; c.beginPath(); c.moveTo(245, 75); c.lineTo(245 + Math.cos(a) * 70, 75 + Math.sin(a) * 70); c.stroke(); }
+                c.strokeStyle = '#0c1424'; c.lineWidth = 8;
+                for (const x of [70, 190, 300, 410]) { c.beginPath(); c.moveTo(x, 18); c.lineTo(x + (x - 240) * 0.18, 152); c.stroke(); }
+                c.fillStyle = '#060b15'; c.fillRect(0, 150, W, H - 150);
+                for (let i = 0; i < 7; i++) {
+                    const x = 30 + i * 62, w = 48;
+                    c.fillStyle = '#0d1a33'; c.fillRect(x, 172, w, 30);
+                    c.fillStyle = `rgba(80,${150 + r() * 80 | 0},255,0.85)`; c.fillRect(x + 4, 176, w - 8, 20);
+                    glow(c, x + w / 2, 186, 40, 'rgba(60,140,255,A)', 0.3);
+                }
+                astronaut(c, 150, 190, 0.7, 'rgba(160,200,255,0.8)', 0.2);
+                astronaut(c, 340, 196, 0.66, 'rgba(160,200,255,0.8)', 0.2);
+                vignette(c);
+            },
+            investigate(c, r) {
+                c.fillStyle = '#020610'; c.fillRect(0, 0, W, H);
+                stars(c, r, 200);
+                glow(c, 300, 95, 170, 'rgba(160,210,255,A)', 0.75);
+                glow(c, 300, 95, 30, 'rgba(255,255,255,A)', 1);
+                c.strokeStyle = 'rgba(230,245,255,0.8)';
+                for (const [a, l] of [[0, 150], [Math.PI / 2, 110], [Math.PI, 150], [-Math.PI / 2, 90]]) {
+                    c.lineWidth = 1.5; c.beginPath(); c.moveTo(300, 95); c.lineTo(300 + Math.cos(a) * l, 95 + Math.sin(a) * l); c.stroke();
+                }
+                c.fillStyle = '#05070c'; c.beginPath(); c.moveTo(0, 200);
+                for (let x = 0; x <= W; x += 20) c.lineTo(x, 196 + Math.sin(x * 0.03) * 8 + r() * 6);
+                c.lineTo(W, H); c.lineTo(0, H); c.fill();
+                astronaut(c, 120, 128, 0.95, 'rgba(210,230,255,0.95)', 0.4);
+                astronaut(c, 420, 150, 0.7, 'rgba(210,230,255,0.85)', 0.4);
+                vignette(c);
+            },
+            retreat(c, r) {
+                c.fillStyle = '#02040a'; c.fillRect(0, 0, W, H);
+                stars(c, r, 180);
+                const p = c.createRadialGradient(80, 330, 40, 80, 330, 200);
+                p.addColorStop(0, '#5a3a20'); p.addColorStop(0.7, '#21140c'); p.addColorStop(1, 'rgba(0,0,0,0)');
+                c.fillStyle = p; c.beginPath(); c.arc(80, 330, 190, 0, Math.PI * 2); c.fill();
+                for (let i = 0; i < 26; i++) {                // debris
+                    c.fillStyle = `rgba(${150 + r() * 80 | 0},${110 + r() * 60 | 0},80,${0.4 + r() * 0.5})`;
+                    c.save(); c.translate(260 + r() * 220, 30 + r() * 200); c.rotate(r() * 6);
+                    c.fillRect(-2, -1, 3 + r() * 9, 2 + r() * 4); c.restore();
+                }
+                glow(c, 420, 70, 70, 'rgba(255,140,40,A)', 0.55);
+                c.save(); c.translate(250, 140); c.rotate(-0.22);
+                glow(c, -110, 0, 70, 'rgba(255,140,40,A)', 0.95);
+                glow(c, -95, 0, 22, 'rgba(255,240,200,A)', 1);
+                const hull = c.createLinearGradient(0, -24, 0, 24);
+                hull.addColorStop(0, '#c7cfdc'); hull.addColorStop(0.5, '#59647a'); hull.addColorStop(1, '#1c2230');
+                c.fillStyle = hull;
+                c.beginPath(); c.moveTo(130, 0); c.lineTo(20, -18); c.lineTo(-40, -46); c.lineTo(-72, -40); c.lineTo(-92, -14);
+                c.lineTo(-92, 14); c.lineTo(-72, 40); c.lineTo(-40, 46); c.lineTo(20, 18); c.closePath(); c.fill();
+                c.strokeStyle = 'rgba(255,190,120,0.7)'; c.lineWidth = 1.2; c.stroke();
+                c.fillStyle = '#7fc4ff'; c.fillRect(60, -3, 22, 6);
+                c.restore();
+                vignette(c);
+            },
+            blank(c, r) {
+                c.fillStyle = '#060a14'; c.fillRect(0, 0, W, H);
+                stars(c, r, 120, 0.7);
+                c.strokeStyle = 'rgba(120,160,230,0.35)'; c.setLineDash([6, 6]); c.lineWidth = 1.5;
+                c.strokeRect(20.5, 20.5, W - 41, H - 41); c.setLineDash([]);
+                c.fillStyle = 'rgba(160,190,240,0.6)'; c.font = '600 16px system-ui'; c.textAlign = 'center';
+                c.fillText('no frame yet', W / 2, H / 2 + 6);
+            }
+        };
+        let salt = 0;
+        const cache = new Map();
+        return {
+            names: Object.keys(painters).filter((n) => n !== 'blank'),
+            url(name) {
+                const key = `${name}:${salt}`;
+                if (!cache.has(key)) {
+                    const cv = document.createElement('canvas');
+                    cv.width = W; cv.height = H;
+                    let seed = salt * 977;
+                    for (const ch of name) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+                    (painters[name] ?? painters.blank)(cv.getContext('2d'), rng(seed || 1));
+                    cache.set(key, cv.toDataURL('image/jpeg', 0.86));
+                }
+                return cache.get(key);
+            },
+            reroll() { salt++; }
+        };
+    })();
+
+    // ---------------------------------------------------------------- node types
+    const portsIn = [{id: 'in'}, {id: 'top', side: 'top'}];
+    const wfTypes = [
+        {type: 'scene', label: 'Scene', color: '#2f7cff', width: 200, height: 128, inputs: portsIn,
+            outputs: [{id: 'out'}, {id: 'down', side: 'bottom'}],
+            render(node, body) {
+                const m = node.meta ?? {};
+                body.innerHTML = `<div class="card"><div class="hd"><span class="ic">${ICONS[m.kind] ?? ICONS.clap}</span>
+                    <div class="tt"><div class="ti">${esc(node.label)}</div><div class="ki">${esc(KIND[m.kind] ?? 'Scene')}</div></div></div>
+                    <div class="ds">${esc(m.desc)}</div><div class="cd">${esc(m.code)}</div></div>`;
+            }},
+        {type: 'decision', label: 'Decision', color: '#2f7cff', width: 200, height: 200, inputs: portsIn,
+            outputs: [{id: 'true'}, {id: 'false', side: 'bottom'}],
+            render(node, body) {
+                const m = node.meta ?? {};
+                body.innerHTML = `<div class="sb-diamond"><div class="in"><div class="q">?</div><div class="ti">${esc(node.label)}</div>
+                    <div class="ds">${esc(m.desc)}</div><div class="cd">${esc(m.code)}</div></div></div>`;
+            }}
+    ];
+    const cvTypes = [
+        {type: 'shot', label: 'Shot', color: '#5aa0ff', width: 260, height: 262, inputs: portsIn,
+            outputs: [{id: 'out'}, {id: 'down', side: 'bottom'}], render: (n, b) => shotBody(n, b)},
+        {type: 'branch', label: 'Branch shot', color: '#7b5cff', width: 260, height: 262, inputs: portsIn,
+            outputs: [{id: 'yes'}, {id: 'no', side: 'bottom'}], render: (n, b) => shotBody(n, b)},
+        {type: 'scribble', label: 'Note', width: 200, height: 120, render(node, body) {
+            const m = node.meta ?? {};
+            body.innerHTML = `<div class="scribble${m.boxed ? ' boxed' : ''}"><svg viewBox="0 0 200 120" preserveAspectRatio="none">
+                ${m.arrow ? `<path d="${m.arrow}"/>` : ''}</svg><div class="tx" style="${m.textStyle ?? 'left:0;right:0;top:0'}">${esc(m.text)}</div></div>`;
+        }}
+    ];
+    // Shot numbers follow the story order of the canvas document.
+    let shotNumber = (id) => '';
+    function shotBody(node, body) {
+        const m = node.meta ?? {};
+        body.innerHTML = `<div class="shot"><div class="hd"><span class="num">${shotNumber(node.id)}</span>
+            <span class="ic">${ICONS[m.kind] ?? ICONS.clap}</span><span class="tx">${esc(node.label)}</span><span class="more">···</span></div>
+            <img alt="" src="${Art.url(m.art ?? 'blank')}"><div class="ds">${esc(m.desc)}</div>
+            <div class="ft"><span class="ic">${ICONS.clap.replace('class="icon"', 'class="icon" style="width:12px;height:12px"')}</span>${esc(m.code)}
+            <span class="r">${(m.tags ?? []).length} tags</span></div></div>`;
+        queueMicrotask(() => body.parentElement?.classList.toggle('decision', node.type === 'branch'));
+    }
+
+    // ---------------------------------------------------------------- documents
+    const byId = Object.fromEntries(scenes.map((s) => [s.id, s]));
+    const node = (id, type, x, y) => ({id, type, x, y, label: byId[id].label, meta: metaOf(byId[id])});
+    const link = (id, a, ap, b, bp, label) => ({id, from: {node: a, port: ap}, to: {node: b, port: bp}, ...(label ? {label} : {})});
+    const wfDoc = {
+        nodes: [
+            node('s1', 'scene', 0, 0), node('s2', 'scene', 280, 40), node('s3', 'scene', 560, 60), node('s6', 'scene', 840, 20),
+            node('s4', 'scene', 200, 300), node('s5', 'scene', 760, 300),
+            node('s7', 'decision', 360, 580), node('s8', 'scene', 720, 620), node('s9', 'scene', 600, 880)
+        ],
+        connections: [
+            link('c1', 's1', 'out', 's2', 'in'), link('c2', 's2', 'out', 's3', 'in'), link('c3', 's3', 'out', 's6', 'in'),
+            link('c4', 's2', 'down', 's4', 'top'), link('c5', 's6', 'down', 's5', 'top'),
+            link('dash-1', 's4', 'out', 's5', 'in'), link('dash-2', 's4', 'down', 's7', 'in'), link('c6', 's5', 'down', 's7', 'top'),
+            link('ok-1', 's7', 'true', 's8', 'in', 'TRUE'), link('no-1', 's7', 'false', 's9', 'in', 'FALSE')
+        ]
+    };
+    const cvDoc = {
+        nodes: [
+            node('s1', 'shot', 0, 0), node('s2', 'shot', 360, 60), node('s3', 'shot', 740, 120),
+            node('s4', 'shot', 0, 400), node('s6', 'shot', 360, 400), node('s5', 'shot', 740, 420),
+            node('s7', 'branch', 300, 760), node('s8', 'shot', 720, 760), node('s9', 'shot', 660, 1100),
+            {id: 'n1', type: 'scribble', x: 630, y: -10, label: 'Note',
+                meta: {text: 'Add alarm\nSFX', textStyle: 'left:22px;top:0;width:110px', arrow: 'M70 46 C 62 80, 40 96, 4 104 M 12 96 L 3 104 L 14 110'}},
+            {id: 'n2', type: 'scribble', x: -230, y: 560, label: 'Note',
+                meta: {text: 'Consider tighter\non AI face', textStyle: 'left:0;top:70px;width:170px', arrow: 'M70 64 C 74 36, 110 22, 220 16 M 208 9 L 220 16 L 209 24'}},
+            {id: 'n3', type: 'scribble', x: -10, y: 980, label: 'Note',
+                meta: {text: 'Maybe add\nlighting contrast\nhere?', boxed: true, textStyle: 'left:0;top:6px;width:150px;padding:10px 6px',
+                    arrow: 'M154 64 C 200 60, 230 50, 280 40 M 268 34 L 281 40 L 270 48'}}
+        ],
+        connections: [
+            link('k1', 's1', 'out', 's2', 'in'), link('k2', 's2', 'out', 's3', 'in'), link('dash-k3', 's2', 'down', 's6', 'top'),
+            link('dash-k4', 's4', 'out', 's6', 'in'), link('dash-k5', 's6', 'out', 's5', 'in'), link('k6', 's6', 'down', 's7', 'top'),
+            link('ok-k7', 's7', 'yes', 's8', 'in', 'YES'), link('no-k8', 's7', 'no', 's9', 'in', 'NO')
+        ]
+    };
+    shotNumber = (id) => {
+        const order = ['s1', 's2', 's3', 's4', 's6', 's5', 's7', 's8', 's9'];
+        const i = order.indexOf(id);
+        return String(i < 0 ? order.length + extraShots.indexOf(id) + 1 : i + 1).padStart(2, '0');
+    };
+    const extraShots = [];
+
+    // ---------------------------------------------------------------- editors
+    const wf = new WorkflowEditor($('wf-editor'), {types: wfTypes, document: wfDoc, minimap: true, grid: 20, colorPorts: false});
+    const cv = new WorkflowEditor($('cv-editor'), {types: cvTypes, document: cvDoc, grid: 20, fitOnLoad: false});
+    const editors = {wf, cv};
+    // fit() knows nothing about the floating bars over the canvas view: shrink a little and move down.
+    const fitView = (ed, animate = true) => {
+        if (ed !== cv) return ed.fit(animate);
+        const types = Object.fromEntries(cvTypes.map((t) => [t.type, t]));
+        const nodes = cv.getDocument().nodes;
+        if (nodes.length === 0) return;
+        const x0 = Math.min(...nodes.map((n) => n.x)), y0 = Math.min(...nodes.map((n) => n.y));
+        const x1 = Math.max(...nodes.map((n) => n.x + (types[n.type]?.width ?? 200)));
+        const y1 = Math.max(...nodes.map((n) => n.y + (types[n.type]?.height ?? 120)));
+        const r = cv.element.getBoundingClientRect();
+        const wide = r.width > 820;
+        const pad = {l: 70, r: wide ? 200 : 16, t: 70, b: 70};   // tool rail, mini map, top bar, bottom bar
+        const w = r.width - pad.l - pad.r, h = r.height - pad.t - pad.b;
+        const scale = Math.min(1, w / (x1 - x0), h / (y1 - y0));
+        cv.setViewport({scale, offsetX: pad.l + (w - (x1 - x0) * scale) / 2 - x0 * scale,
+            offsetY: pad.t + (h - (y1 - y0) * scale) / 2 - y0 * scale});
+        lastFit = JSON.stringify(cv.getViewport());
+    };
+    // Refit on resize while the canvas still shows our last fit (the user has not moved it).
+    let lastFit = '';
+    new ResizeObserver(() => {
+        if (active === 'cv' && (lastFit === '' || JSON.stringify(cv.getViewport()) === lastFit)) fitView(cv, false);
+    }).observe($('cv-editor'));
+    let active = 'wf';
+
+    const toast = (() => {
+        let t = 0;
+        return (text) => {
+            $('toast').textContent = text;
+            $('toast').classList.add('show');
+            clearTimeout(t);
+            t = setTimeout(() => $('toast').classList.remove('show'), 2200);
+        };
+    })();
+
+    // ---- keep the story in sync between the two views (label + meta of shared ids)
+    function mirror(from, to, ids) {
+        for (const id of ids) {
+            const a = from.getNode(id);
+            const b = to.getNode(id);
+            if (!a || !b || a.type === 'scribble') continue;
+            if (a.label === b.label && JSON.stringify(a.meta) === JSON.stringify(b.meta)) continue;
+            to.updateNode(id, {label: a.label, meta: a.meta});
+        }
+    }
+    let savedAt = Date.now();
+    const markSaved = () => { savedAt = Date.now(); $('saved').textContent = 'Saving…'; setTimeout(() => $('saved').textContent = 'Saved just now', 450); };
+    setInterval(() => {
+        const s = Math.round((Date.now() - savedAt) / 60000);
+        if (s >= 1) $('saved').textContent = `Saved ${s} min ago`;
+    }, 15000);
+    wf.on('change', (c) => {
+        if (c.kind === 'updateNode' || c.kind === 'undo' || c.kind === 'redo') mirror(wf, cv, c.nodes);
+        markSaved();
+        counts();
+        if (selected) renderDetails();
+    });
+    cv.on('change', (c) => {
+        if (c.kind === 'updateNode' || c.kind === 'undo' || c.kind === 'redo') mirror(cv, wf, c.nodes);
+        drawMini();
+    });
+
+    // ---- view switch
+    document.querySelectorAll('#views button').forEach((b) => b.onclick = () => {
+        active = b.dataset.view;
+        document.querySelectorAll('#views button').forEach((x) => x.classList.toggle('on', x === b));
+        $('view-wf').classList.toggle('on', active === 'wf');
+        $('view-cv').classList.toggle('on', active === 'cv');
+        // two frames: the editor's own resize observer fits first when the view appears
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            fitView(editors[active], false);
+            if (active === 'cv') { drawStars(); drawMini(); }
+        }));
+        try { history.replaceState(null, '', active === 'cv' ? '#canvas' : '#workflow'); } catch {}
+    });
+
+    // ================= workflow view =================
+    let selected = null;
+    wf.on('selectionChange', (s) => {
+        selected = s.nodes.length === 1 ? s.nodes[0] : null;
+        renderDetails();
+        $('wf-panel').classList.toggle('open', selected !== null);
+    });
+    $('wf-close').onclick = () => { wf.clearSelection(); };
+
+    function renderDetails() {
+        const box = $('wf-details');
+        const n = selected && wf.getNode(selected);
+        if (!n) {
+            box.innerHTML = '<div class="empty">Select a node to see its details.<br>Drag a port to link shots,<br>Shift+drag to select several.</div>';
+            $('wf-run').disabled = false;
+            return;
+        }
+        const m = n.meta ?? {};
+        const doc = wf.getDocument();
+        const outs = doc.connections.filter((c) => c.from.node === n.id);
+        const nameOf = (id) => wf.getNode(id)?.label ?? id;
+        box.innerHTML = `
+            <div class="pn-title"><span class="ic">${ICONS[m.kind] ?? ICONS.clap}</span><div style="min-width:0;flex:1">
+                <input id="d-label" value="${esc(n.label)}" aria-label="Name"><div class="code">${esc(m.code)}</div></div></div>
+            <div class="field"><label>Type</label><select id="d-kind">${Object.entries(KIND).filter(([k]) => (k === 'decision') === (n.type === 'decision'))
+                .map(([k, v]) => `<option value="${k}" ${k === m.kind ? 'selected' : ''}>${v} — ${k}</option>`).join('')}</select></div>
+            <div class="field"><label>Description</label><textarea id="d-desc">${esc(m.desc)}</textarea></div>
+            <div class="sect">OUTPUTS</div>
+            <div class="outs">${outs.map((c) => `<button data-go="${c.to.node}"><span class="pt"></span>${esc(nameOf(c.to.node))}
+                <span style="margin-left:auto;color:var(--sb-dim);font-size:11px">${esc(c.label ?? c.from.port)}</span></button>`).join('')}
+                <button class="add" id="d-add">+ Add Output</button></div>
+            <div class="sect">PROPERTIES</div>
+            <div class="field"><label>Severity</label><select id="d-sev">${['Low', 'Medium', 'High', 'Critical']
+                .map((v) => `<option ${v === m.severity ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+            <div class="field"><label>Trigger source</label><select id="d-src">${['Director', 'System Core', 'Sensor Array', 'Crew', 'Timeline']
+                .map((v) => `<option ${v === m.source ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+            <div class="field"><label>Delay (s)</label><input id="d-delay" type="number" min="0" step="0.1" value="${m.delay ?? 0}"></div>
+            <div class="sect">TAGS</div>
+            <div class="tags">${(m.tags ?? []).map((t, i) => `<span class="tag">${esc(t)}<button data-tag="${i}" title="Remove">×</button></span>`).join('')}
+                <input id="d-tag" placeholder="+ tag"></div>`;
+        const patch = (p) => wf.updateNode(n.id, {meta: {...wf.getNode(n.id).meta, ...p}});
+        $('d-label').onchange = (e) => wf.updateNode(n.id, {label: e.target.value.trim() || n.label});
+        $('d-kind').onchange = (e) => patch({kind: e.target.value});
+        $('d-desc').onchange = (e) => patch({desc: e.target.value});
+        $('d-sev').onchange = (e) => patch({severity: e.target.value});
+        $('d-src').onchange = (e) => patch({source: e.target.value});
+        $('d-delay').onchange = (e) => patch({delay: Math.max(0, Number(e.target.value) || 0)});
+        $('d-tag').onkeydown = (e) => {
+            if (e.key === 'Enter' && e.target.value.trim()) {
+                patch({tags: [...(m.tags ?? []), e.target.value.trim()]});
+                setTimeout(() => $('d-tag')?.focus());
+            }
+        };
+        box.querySelectorAll('[data-tag]').forEach((b) => b.onclick = () => patch({tags: (m.tags ?? []).filter((_, i) => i !== Number(b.dataset.tag))}));
+        box.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => { wf.select([b.dataset.go]); wf.focusNode(b.dataset.go, undefined, true); });
+        $('d-add').onclick = () => {
+            const port = n.type === 'decision' ? 'true' : 'out';
+            const added = wf.addNodeFrom({node: n.id, port}, 'out', {type: 'scene', label: 'New Shot',
+                meta: {kind: 'station', art: 'blank', code: `SEQ_01_SHOT_${String(wf.getDocument().nodes.length + 1).padStart(3, '0')}`,
+                    desc: 'Describe the shot.', tags: [], severity: 'Low', source: 'Director', delay: 0}});
+            if (added) { wf.select([added.id]); toast(`${added.label} added after ${n.label}`); }
+        };
+    }
+
+    // ---- simulated "render" run: walks downstream, the decision node rolls its sensor readings
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    let running = false;
+    async function run(fromId) {
+        if (running) return;
+        running = true;
+        $('wf-run').disabled = true;
+        wf.clearStatus();
+        const doc = wf.getDocument();
+        const seen = new Set();
+        const touched = new Set();
+        let queue = [fromId];
+        for (const id of queue) wf.setNodeStatus(id, 'waiting');
+        while (queue.length > 0) {
+            const next = [];
+            for (const id of queue) {
+                if (seen.has(id)) continue;
+                seen.add(id);
+                const n = wf.getNode(id);
+                wf.setNodeStatus(id, 'running');
+                toast(`Rendering ${n.meta?.code ?? id} — ${n.label}`);
+                await sleep(500 + (n.meta?.delay ?? 0) * 400);
+                let outs = doc.connections.filter((c) => c.from.node === id);
+                if (n.type === 'decision') {
+                    const stable = Math.random() < 0.55;
+                    outs = outs.filter((c) => c.from.port === (stable ? 'true' : 'false'));
+                    toast(`${n.label} → readings ${stable ? 'stable: investigate' : 'unstable: retreat'}`);
+                }
+                wf.setNodeStatus(id, 'success');
+                for (const c of outs) {
+                    touched.add(c.id);
+                    wf.setConnectionStatus(c.id, {active: true, status: c.id.startsWith('no-') ? 'error' : 'success'});
+                    if (!seen.has(c.to.node)) { wf.setNodeStatus(c.to.node, 'waiting'); next.push(c.to.node); }
+                }
+            }
+            await sleep(350);
+            for (const id of touched) wf.setConnectionStatus(id, {status: id.startsWith('no-') ? 'error' : 'success'});
+            queue = next;
+        }
+        wf.setRunPath(seen, touched);
+        toast(`Rendered ${seen.size} nodes`);
+        running = false;
+        $('wf-run').disabled = false;
+    }
+    const firstNode = () => {
+        const doc = wf.getDocument();
+        return doc.nodes.find((n) => !doc.connections.some((c) => c.to.node === n.id))?.id ?? doc.nodes[0]?.id;
+    };
+    $('wf-run').onclick = () => run(selected ?? firstNode());
+    $('wf-play').onclick = () => run(firstNode());
+    $('wf-publish').onclick = () => toast('Published “Eclipse Protocol” — v13');
+
+    // ---- zoom bar
+    $('wf-fit').onclick = () => wf.fit();
+    $('wf-in').onclick = () => wf.zoomBy(1.2);
+    $('wf-out').onclick = () => wf.zoomBy(1 / 1.2);
+    $('wf-mini').onclick = () => { wf.setMinimap(!wf.hasMinimap); $('wf-mini').classList.toggle('on', wf.hasMinimap); };
+    $('wf-mini').classList.add('on');
+    $('wf-lock').onclick = () => {
+        wf.setReadOnly(!wf.readOnly);
+        $('wf-lock').classList.toggle('on', wf.readOnly);
+        toast(wf.readOnly ? 'Locked — view only' : 'Unlocked — editing');
+    };
+    $('cv-fit').onclick = () => fitView(cv);
+    $('cv-in').onclick = () => cv.zoomBy(1.2);
+    $('cv-out').onclick = () => cv.zoomBy(1 / 1.2);
+    const pct = () => {
+        $('wf-pct').textContent = `${Math.round(wf.getViewport().scale * 100)}%`;
+        $('cv-pct').textContent = `${Math.round(cv.getViewport().scale * 100)}%`;
+    };
+
+    // ---- sidebar
+    const counts = () => {
+        const d = wf.getDocument();
+        $('n-nodes').textContent = d.nodes.length;
+        $('n-audio').textContent = d.nodes.filter((n) => n.meta?.kind === 'audio').length;
+    };
+    counts();
+    document.querySelectorAll('#wf-side button').forEach((b) => b.onclick = () => {
+        const what = b.dataset.side;
+        if (what === 'tidy') return wf.tidyUp();
+        if (what === 'undo') return wf.undo();
+        if (what === 'validate') {
+            const d = wf.getDocument();
+            const loose = d.nodes.filter((n) => !d.connections.some((c) => c.from.node === n.id || c.to.node === n.id));
+            const dead = d.nodes.filter((n) => n.type === 'decision' && d.connections.filter((c) => c.from.node === n.id).length < 2);
+            const issues = [...loose.map((n) => `${n.label} is not linked`), ...dead.map((n) => `${n.label} has an open branch`)];
+            wf.select([...loose, ...dead].map((n) => n.id));
+            return toast(issues.length ? issues.join(' · ') : 'Story is valid — every shot is linked');
+        }
+        if (what === 'search') {
+            const box = b.querySelector('input') ?? Object.assign(document.createElement('input'), {placeholder: 'find a shot…'});
+            if (!box.isConnected) {
+                box.style.cssText = 'width:100%;height:26px;margin-left:-4px;border-radius:5px;border:1px solid var(--sb-line-2);background:var(--sb-panel-2);padding:0 6px;outline:none';
+                b.replaceChildren(box);
+                box.oninput = () => {
+                    const q = box.value.trim().toLowerCase();
+                    const hit = q && wf.getDocument().nodes.find((n) => `${n.label} ${n.meta?.code} ${(n.meta?.tags ?? []).join(' ')}`.toLowerCase().includes(q));
+                    if (hit) { wf.select([hit.id]); wf.focusNode(hit.id, undefined, true); }
+                };
+                box.onblur = () => setTimeout(() => b.replaceChildren('Search'), 150);
+            }
+            return box.focus();
+        }
+        if (what === 'nodes') return wf.fit();
+        if (what === 'audio') {
+            const ids = wf.getDocument().nodes.filter((n) => n.meta?.kind === 'audio').map((n) => n.id);
+            wf.select(ids);
+            return ids[0] && wf.focusNode(ids[0], undefined, true);
+        }
+        toast(`${b.textContent.trim()} — not part of this demo`);
+    });
+
+    // ================= canvas view =================
+    // Star field behind the board; drawn per resize, it drifts slightly with the camera.
+    const starCanvas = $('stars');
+    const starSeed = Array.from({length: 520}, (_, i) => {
+        const r = (n) => ((Math.sin(i * 127.1 + n * 311.7) * 43758.5453) % 1 + 1) % 1;
+        return {x: r(1), y: r(2), s: r(3) ** 4 * 1.8 + 0.3, a: 0.2 + r(4) * 0.7, d: 0.02 + r(5) * 0.06};
+    });
+    function drawStars() {
+        const r = starCanvas.getBoundingClientRect();
+        if (r.width === 0) return;
+        const dpr = devicePixelRatio || 1;
+        if (starCanvas.width !== Math.round(r.width * dpr)) { starCanvas.width = Math.round(r.width * dpr); starCanvas.height = Math.round(r.height * dpr); }
+        const c = starCanvas.getContext('2d');
+        c.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const g = c.createRadialGradient(r.width * 0.55, r.height * 0.45, 0, r.width * 0.55, r.height * 0.45, Math.max(r.width, r.height) * 0.75);
+        g.addColorStop(0, '#0b1630'); g.addColorStop(0.6, '#050a17'); g.addColorStop(1, '#02040a');
+        c.fillStyle = g; c.fillRect(0, 0, r.width, r.height);
+        const v = cv.getViewport();
+        for (const s of starSeed) {
+            const x = ((s.x * r.width + v.offsetX * s.d) % r.width + r.width) % r.width;
+            const y = ((s.y * r.height + v.offsetY * s.d) % r.height + r.height) % r.height;
+            c.fillStyle = `rgba(200,220,255,${s.a})`;
+            c.fillRect(x, y, s.s, s.s);
+        }
+    }
+
+    // Own overview map for the canvas (top right, like the reference) — draws the shots as thumbnails.
+    const mini = $('cv-mini-c');
+    let miniBox = null;
+    function drawMini() {
+        const doc = cv.getDocument();
+        const c = mini.getContext('2d');
+        c.clearRect(0, 0, mini.width, mini.height);
+        if (doc.nodes.length === 0) return;
+        const types = Object.fromEntries(cvTypes.map((t) => [t.type, t]));
+        const rects = doc.nodes.map((n) => ({n, w: types[n.type]?.width ?? 200, h: types[n.type]?.height ?? 120}));
+        const x0 = Math.min(...rects.map((r) => r.n.x)) - 40, y0 = Math.min(...rects.map((r) => r.n.y)) - 40;
+        const x1 = Math.max(...rects.map((r) => r.n.x + r.w)) + 40, y1 = Math.max(...rects.map((r) => r.n.y + r.h)) + 40;
+        const k = Math.min(mini.width / (x1 - x0), mini.height / (y1 - y0));
+        const ox = (mini.width - (x1 - x0) * k) / 2, oy = (mini.height - (y1 - y0) * k) / 2;
+        miniBox = {x0, y0, k, ox, oy};
+        c.strokeStyle = 'rgba(201,211,230,0.35)'; c.lineWidth = 1;
+        const byNode = Object.fromEntries(rects.map((r) => [r.n.id, r]));
+        for (const l of doc.connections) {
+            const a = byNode[l.from.node], b = byNode[l.to.node];
+            if (!a || !b) continue;
+            c.beginPath();
+            c.moveTo(ox + (a.n.x + a.w / 2 - x0) * k, oy + (a.n.y + a.h / 2 - y0) * k);
+            c.lineTo(ox + (b.n.x + b.w / 2 - x0) * k, oy + (b.n.y + b.h / 2 - y0) * k);
+            c.stroke();
+        }
+        for (const r of rects) {
+            const x = ox + (r.n.x - x0) * k, y = oy + (r.n.y - y0) * k;
+            if (r.n.type === 'scribble') { c.fillStyle = 'rgba(111,168,255,0.5)'; c.fillRect(x, y + r.h * k * 0.3, r.w * k * 0.6, 3); continue; }
+            c.fillStyle = r.n.type === 'branch' ? '#2a2357' : '#121b2e';
+            c.fillRect(x, y, r.w * k, r.h * k);
+            c.fillStyle = '#2f5ea8';
+            c.fillRect(x + 2, y + 6, r.w * k - 4, r.h * k * 0.5);
+        }
+        const v = cv.getViewport();
+        const er = cv.element.getBoundingClientRect();
+        c.strokeStyle = '#5aa0ff'; c.lineWidth = 1.5;
+        c.strokeRect(ox + (-v.offsetX / v.scale - x0) * k, oy + (-v.offsetY / v.scale - y0) * k, er.width / v.scale * k, er.height / v.scale * k);
+    }
+    mini.addEventListener('pointerdown', (e) => {
+        if (!miniBox) return;
+        const r = mini.getBoundingClientRect();
+        const mx = (e.clientX - r.left) * mini.width / r.width, my = (e.clientY - r.top) * mini.height / r.height;
+        const wx = (mx - miniBox.ox) / miniBox.k + miniBox.x0, wy = (my - miniBox.oy) / miniBox.k + miniBox.y0;
+        const v = cv.getViewport();
+        const er = cv.element.getBoundingClientRect();
+        cv.setViewport({scale: v.scale, offsetX: er.width / 2 - wx * v.scale, offsetY: er.height / 2 - wy * v.scale});
+    });
+
+    // Tools
+    const centre = (ed) => {
+        const r = ed.element.getBoundingClientRect();
+        return ed.screenToWorld(r.left + r.width / 2, r.top + r.height / 2);
+    };
+    let shotCount = 0;
+    function addShot() {
+        const p = centre(cv);
+        const id = `x${++shotCount}`;
+        extraShots.push(id);
+        const art = Art.names[(shotCount * 3) % Art.names.length];
+        const added = cv.addNode({id, type: 'shot', x: Math.round((p.x - 130) / 20) * 20, y: Math.round((p.y - 130) / 20) * 20,
+            label: 'New Shot', meta: {kind: 'station', art, code: `SEQ_02_SHOT_${String(shotCount).padStart(3, '0')}`,
+                desc: 'Double-check framing — placeholder frame.', tags: [], severity: 'Low', source: 'Director', delay: 0}});
+        cv.select([added.id]);
+        toast('Shot added — drag a port onto another shot to link it');
+    }
+    function addNote() {
+        const p = centre(cv);
+        const added = cv.addNode({type: 'scribble', x: Math.round((p.x - 100) / 20) * 20, y: Math.round((p.y - 60) / 20) * 20, label: 'Note',
+            meta: {text: 'New note', textStyle: 'left:0;right:0;top:30px'}});
+        cv.select([added.id]);
+        editScribble(added.id);
+    }
+    $('cv-add').onclick = addShot;
+    document.querySelectorAll('#cv-tools [data-tool]').forEach((b) => b.onclick = () => {
+        const t = b.dataset.tool;
+        if (t === 'fit') fitView(cv);
+        else if (t === 'shot') addShot();
+        else if (t === 'note') addNote();
+        else if (t === 'tidy') cv.tidyUp();
+        else if (t === 'undo') cv.undo();
+    });
+    $('cv-reroll').onclick = () => {
+        Art.reroll();
+        const d = cv.getDocument();
+        for (const n of d.nodes) if (n.type !== 'scribble') cv.updateNode(n.id, {meta: n.meta}, {commit: false});
+        toast('Frames repainted');
+    };
+    $('cv-share').onclick = () => toast('Link copied — anyone at the studio can view');
+
+    // Handwritten notes: double-click to write in place.
+    function editScribble(id) {
+        const tx = cv.element.querySelector(`[data-wf-node="${id}"] .scribble .tx`);
+        if (!tx || cv.readOnly) return;
+        tx.contentEditable = 'true';
+        tx.focus();
+        const sel = getSelection();
+        sel.selectAllChildren(tx);
+        tx.onblur = () => {
+            tx.contentEditable = 'false';
+            const n = cv.getNode(id);
+            const text = tx.innerText.replace(/\n$/, '');
+            if (n && text !== n.meta.text) cv.updateNode(id, {meta: {...n.meta, text}});
+        };
+        tx.onkeydown = (e) => { if (e.key === 'Escape') tx.blur(); };
+    }
+    cv.on('nodeDblClick', (e) => {
+        const n = cv.getNode(e.id);
+        if (n?.type === 'scribble') editScribble(e.id);
+        else if (n) {
+            // Jump to the same shot in the workflow view.
+            document.querySelector('#views [data-view="wf"]').click();
+            setTimeout(() => { if (wf.getNode(e.id)) { wf.select([e.id]); wf.focusNode(e.id, 1, true); } }, 60);
+        }
+    });
+    wf.on('nodeDblClick', (e) => {
+        document.querySelector('#views [data-view="cv"]').click();
+        setTimeout(() => { if (cv.getNode(e.id)) { cv.select([e.id]); cv.focusNode(e.id, 1, true); } }, 60);
+    });
+
+    // Camera follow-ups (zoom label, stars, mini map) — once per frame while something moves.
+    let lastV = '';
+    (function tick() {
+        const v = JSON.stringify([wf.getViewport(), cv.getViewport()]);
+        if (v !== lastV) {
+            lastV = v;
+            pct();
+            if (active === 'cv') { drawStars(); drawMini(); }
+        }
+        requestAnimationFrame(tick);
+    })();
+    addEventListener('resize', () => { drawStars(); drawMini(); });
+    document.fonts?.addEventListener?.('loadingdone', () => drawMini());
+
+    renderDetails();
+    if (location.hash === '#canvas') document.querySelector('#views [data-view="cv"]').click();
+    window.storyboard = {wf, cv};
+})();
+</script>
+</body>
+</html>
