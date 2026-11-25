@@ -28,7 +28,7 @@
     #presets button.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 16%, #11151f); }
     #stageWrap { position: relative; flex: 1; min-height: 0; }
     #stage { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; display: block; }
-    #hint { position: absolute; left: 12px; top: 10px; font: 12px system-ui, sans-serif; color: #8791ab; pointer-events: none;
+    #hint { position: absolute; left: 12px; right: 270px; top: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 12px system-ui, sans-serif; color: #8791ab; pointer-events: none;
         text-shadow: 0 1px 2px #000; }
     #stats { position: absolute; right: 12px; top: 10px; font: 12px ui-monospace, monospace; color: #8791ab; pointer-events: none;
         text-shadow: 0 1px 2px #000; }
@@ -101,7 +101,7 @@
         <div id="presets"></div>
         <div id="stageWrap">
             <canvas id="stage"></canvas>
-            <div id="hint">Click the arena to cast the effect there</div>
+            <div id="hint">Click the floor to cast the effect there</div>
             <div id="stats"></div>
         </div>
         <div id="sheet"></div>
@@ -309,10 +309,14 @@
 
     /** A mask tinted with one colour; grey shading of the mask survives (multiply). */
     const tints = new Map();
+    const TINT_CAP = 400;                   // ~15 MB of 96×96 canvases
     function tint(mask, color) {
         const key = `${mask}|${color}`;
         let c = tints.get(key);
-        if (!c) {
+        if (c) {
+            // least recently used order: a hit moves to the end
+            tints.delete(key);
+        } else {
             c = canvas();
             const g = c.getContext('2d');
             g.drawImage(MASKS[mask], 0, 0);
@@ -321,8 +325,9 @@
             g.fillRect(0, 0, S, S);
             g.globalCompositeOperation = 'destination-in';
             g.drawImage(MASKS[mask], 0, 0);
-            tints.set(key, c);
         }
+        tints.set(key, c);
+        if (tints.size > TINT_CAP) tints.delete(tints.keys().next().value);
         return c;
     }
 
@@ -389,7 +394,8 @@
     ];
     const DEF = Object.fromEntries(DEFS.map((d) => [d.type, d]));
     const defaults = (def) => Object.fromEntries(def.params.filter((p) => p.key).map((p) => [p.key, p.def]));
-    const metaOf = (n) => ({...defaults(DEF[n.type]), ...(n.meta ?? {})});
+    // nodes of foreign types (pasted from another page) keep their meta and are ignored by compile()
+    const metaOf = (n) => ({...(DEF[n.type] ? defaults(DEF[n.type]) : {}), ...(n.meta ?? {})});
     const ROW = 30;
 
     // ---- node bodies ----------------------------------------------------------
@@ -777,6 +783,7 @@
         }))});
     }
     function castAll(at = origin) {
+        paused = false;                     // ?at= froze the first cast; any cast plays again
         for (const o of outputs) {
             cast(o, at);
             nextAt.set(o.id, simTime + o.repeat);
@@ -1272,9 +1279,11 @@
     }
 
     stage.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
         const r = stage.getBoundingClientRect();
         const x = (e.clientX - r.left - view.ox) / view.k;
         const z = (e.clientY - r.top - view.oy) / (view.k * SQ);
+        if (z < -280) { status('click the floor to cast there'); return; }
         origin = {x: clamp(x, -400, 400), z: clamp(z, -250, 250)};
         castAll();
     });

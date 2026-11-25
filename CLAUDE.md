@@ -174,7 +174,7 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   Shake/Decal sources and Delay. The page compiles the document into layers (one per emitter→render path, keyed by its node
   ids so running effects pick up slider moves) and plays them on a 2.5D canvas arena with sprites painted once as grey masks
   and tinted per gradient step; floor hits leave splat decals stretched along the drop's path; wires show live particle
-  counts via `setConnectionStatus`. Presets lightning/fog/explosion/blood/fire/spirit (`#name`), `?at=s` freezes the first cast.
+  counts via `setConnectionStatus`. Presets lightning/fog/explosion/blood/fire/spirit (`#name`), `?at=s` freezes the first cast (any cast plays on).
 
 - `widget/` — small standalone dashboard widgets (SVG, no canvas), subpath `jsngraph/widget`. `DayClock`
   (taken over from kavula's dashboard, without d3/jQuery): a day on one 24 h dial (00:00 top, clockwise), elapsed
