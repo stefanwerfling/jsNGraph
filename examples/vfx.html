@@ -1,0 +1,1299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jsNGraph — effect graph</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+    html, body { height: 100%; overflow: hidden; background: #07080d; }
+    #app { position: absolute; inset: 45px 0 0 0; display: flex; }
+    #graph { position: relative; flex: 1 1 52%; min-width: 0; border-right: 1px solid #1d2234; }
+    #editor { position: absolute; inset: 0 0 46px 0; }
+    #palette { position: absolute; left: 0; right: 0; bottom: 0; height: 46px; display: flex; gap: 6px; align-items: center;
+        overflow-x: auto; padding: 0 10px; background: #0b0e17; border-top: 1px solid #1d2234; scrollbar-width: thin; }
+    #palette .sep { flex: none; width: 1px; height: 22px; background: #232a3f; margin: 0 4px; }
+    #palette .item { flex: none; display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px 0 5px; border-radius: 7px;
+        font: 600 12px system-ui, sans-serif; color: #d6deee; cursor: grab; user-select: none; touch-action: none;
+        border: 1px solid color-mix(in srgb, var(--c) 55%, #10141f); background: color-mix(in srgb, var(--c) 10%, #10141f); }
+    #palette .item:hover { background: color-mix(in srgb, var(--c) 24%, #10141f); }
+
+    #view { flex: 0 0 48%; display: flex; flex-direction: column; min-width: 0; background: #05060a; }
+    #presets { display: flex; gap: 6px; padding: 8px 10px; flex-wrap: wrap; border-bottom: 1px solid #1d2234; }
+    #presets button, #controls button { height: 30px; padding: 0 12px; border-radius: 7px; border: 1px solid #262d44;
+        background: #11151f; color: #d6deee; font: 600 12.5px system-ui, sans-serif; cursor: pointer;
+        display: inline-flex; align-items: center; gap: 7px; }
+    #presets button i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
+    #presets button:hover, #controls button:hover { border-color: #3b4566; }
+    #presets button.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 16%, #11151f); }
+    #stageWrap { position: relative; flex: 1; min-height: 0; }
+    #stage { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; display: block; }
+    #hint { position: absolute; left: 12px; top: 10px; font: 12px system-ui, sans-serif; color: #8791ab; pointer-events: none;
+        text-shadow: 0 1px 2px #000; }
+    #stats { position: absolute; right: 12px; top: 10px; font: 12px ui-monospace, monospace; color: #8791ab; pointer-events: none;
+        text-shadow: 0 1px 2px #000; }
+    #sheet { display: flex; gap: 8px; padding: 8px 10px; overflow-x: auto; border-top: 1px solid #1d2234; scrollbar-width: thin; }
+    #sheet .tile { flex: none; width: 62px; cursor: pointer; text-align: center; font: 10.5px system-ui, sans-serif; color: #7d87a1; }
+    #sheet canvas { width: 62px; height: 62px; border-radius: 7px; border: 1px solid #1f2538; display: block;
+        background: repeating-conic-gradient(#0f1220 0 25%, #0b0d17 0 50%) 0 0 / 12px 12px; }
+    #sheet .tile.used canvas { border-color: #b57bff; box-shadow: 0 0 10px #b57bff55; }
+    #sheet .tile.used { color: #d6deee; }
+    #controls { display: flex; gap: 8px; align-items: center; padding: 8px 10px 10px; flex-wrap: wrap;
+        font: 12px system-ui, sans-serif; color: #a5afc6; }
+    #controls button.cast { background: #b8433f; border-color: #d0524d; color: #fff; }
+    #controls label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+    #controls .grow { flex: 1; }
+    #status { color: #7d87a1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+    #picker { position: fixed; z-index: 80; min-width: 170px; padding: 4px; display: none; background: #121622;
+        border: 1px solid #2a3150; border-radius: 9px; box-shadow: 0 10px 30px #000a; font: 12.5px system-ui, sans-serif; }
+    #picker .head { padding: 6px 8px 4px; font-size: 10.5px; color: #7d87a1; text-transform: uppercase; letter-spacing: .05em; }
+    #picker button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px;
+        background: none; color: #d6deee; font: inherit; cursor: pointer; text-align: left; }
+    #picker button:hover { background: #1d2336; }
+
+    @media (max-width: 900px) {
+        #app { flex-direction: column; }
+        #view { order: -1; flex: 0 0 56%; border-bottom: 1px solid #1d2234; }
+        #graph { border-right: 0; }
+        #sheet, #hint { display: none; }
+    }
+
+    /* Node bodies (rendered by the page through WorkflowNodeType.render). */
+    .wf-node:has(> .wf-node-custom) { padding: 0; align-items: stretch; }
+    .wf-node-custom { flex-direction: column; align-items: stretch !important; gap: 0 !important; width: 100%;
+        padding: 0 12px 8px; box-sizing: border-box; font: 11px system-ui, sans-serif; color: #c2cadb; }
+    .fx-head { display: flex; align-items: center; gap: 8px; height: 38px; flex: none; }
+    .fx-chip { flex: none; height: 19px; padding: 0 6px; border-radius: 5px; border: 0; cursor: pointer;
+        font: 800 9.5px/19px system-ui, sans-serif; letter-spacing: .06em; color: #0a0c12; background: var(--wf-node-color); }
+    .fx-title { font: 600 13px system-ui, sans-serif; color: #eef2fa; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fx-bypass { flex: none; width: 13px; height: 13px; padding: 0; border-radius: 50%; cursor: pointer;
+        background: var(--wf-node-color); border: 2px solid #121622; box-shadow: 0 0 0 1px var(--wf-node-color); }
+    .wf-disabled .fx-bypass { background: transparent; }
+    .fx-row { height: 30px; display: grid; grid-template-columns: 1fr auto; grid-template-rows: 13px 15px; align-items: center; }
+    .fx-row span:nth-of-type(2) { text-align: right; color: #eef2fa; font-variant-numeric: tabular-nums; }
+    .fx-row input[type=range] { grid-column: 1 / 3; width: 100%; margin: 0; height: 14px; accent-color: var(--wf-node-color); cursor: pointer; }
+    .fx-line { height: 30px; display: flex; align-items: center; gap: 5px; }
+    .fx-line > span { width: 48px; flex: none; color: #8791ab; }
+    .fx-line button, .fx-line select { height: 21px; padding: 0 7px; border-radius: 5px; border: 1px solid #2a3150;
+        background: #191e2e; color: #c2cadb; font: 11px system-ui, sans-serif; cursor: pointer; min-width: 0; }
+    .fx-line button { flex: 1; }
+    .fx-line button.on { background: var(--wf-node-color); border-color: var(--wf-node-color); color: #0a0c12; font-weight: 700; }
+    .fx-line select { flex: 1; }
+    .fx-count { height: 30px; display: flex; align-items: center; justify-content: space-between; color: #8791ab; }
+    .fx-count b { color: #3ddc97; font: 700 13px ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<nav id="nav">
+    <span class="brand">jsNGraph</span>
+    <a href="index.html">Overview</a>
+    <a href="workflow.html">Workflow</a>
+    <a href="vfx.html" class="active">Effect graph</a>
+</nav>
+
+<div id="app">
+    <section id="graph">
+        <div id="editor"></div>
+        <div id="palette"></div>
+    </section>
+    <section id="view">
+        <div id="presets"></div>
+        <div id="stageWrap">
+            <canvas id="stage"></canvas>
+            <div id="hint">Click the arena to cast the effect there</div>
+            <div id="stats"></div>
+        </div>
+        <div id="sheet"></div>
+        <div id="controls">
+            <button id="cast" class="cast">Cast</button>
+            <label><input id="auto" type="checkbox" checked> Repeat</label>
+            <label><input id="slow" type="checkbox"> Slow motion</label>
+            <button id="clear">Clear marks</button>
+            <span id="status" class="grow">Drag sliders, rewire, bypass a node (its dot): the effect follows the graph.</span>
+        </div>
+    </section>
+</div>
+<div id="picker"></div>
+
+<script src="../dist/jsngraph.global.js"></script>
+<script>
+    // A visual-effects graph: emitters feed motion modules, a Render node turns
+    // particles into a layer, layers (plus lightning, flashes, shockwaves, shakes
+    // and decals) meet in the Effect node. jsNGraph's WorkflowEditor draws and
+    // edits the graph; this page compiles the document into layers and plays them
+    // on a 2D canvas with sprites it paints itself (no image files).
+
+    const {WorkflowEditor} = JSNGraph;
+    const $ = (id) => document.getElementById(id);
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+    const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const rand = (a = 0, b = 1) => a + Math.random() * (b - a);
+
+    // ---- colours ------------------------------------------------------------
+
+    const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+    const GRADS = {
+        fire: ['#fff6d2', '#ffd56a', '#ff8a1e', '#d2380c', '#5a1206'],
+        ember: ['#fff4c8', '#ffbe4d', '#ff6a1a', '#8f1a06'],
+        smoke: ['#6a5f58', '#45403d', '#2d2b2d', '#1c1c20'],
+        'hot smoke': ['#ffb050', '#7a5040', '#403a3a', '#252427'],
+        blood: ['#d0182a', '#9c0d1a', '#62060e'],
+        mist: ['#e04050', '#a01828', '#5a0c14'],
+        electric: ['#ffffff', '#d4ecff', '#6abaff', '#3550ff'],
+        fog: ['#a7b6c8', '#8395aa', '#68798f'],
+        spirit: ['#f0fffb', '#86ffe4', '#5ec8ff', '#8d5fff', '#3a1a80'],
+        toxic: ['#f0ffb8', '#a6ff3e', '#33c24e', '#0d4a22'],
+        debris: ['#5a4838', '#3a2e25', '#241d18'],
+        white: ['#ffffff', '#ffffff']
+    };
+    const GRAD_RGB = Object.fromEntries(Object.entries(GRADS).map(([k, v]) => [k, v.map(hex)]));
+    const LIGHTS = {cold: '#8fd0ff', warm: '#ffb24a', red: '#ff3b3b', violet: '#b07bff', green: '#8dff6a', white: '#ffffff'};
+
+    /** Colour of a gradient at t (0…1) in 16 steps, as a CSS string — few distinct
+     *  values, so tinted sprites can be cached per step. */
+    function gradStep(name, t) {
+        const stops = GRAD_RGB[name] ?? GRAD_RGB.white;
+        const s = Math.min(15, Math.floor(clamp(t) * 16));
+        const f = s / 15 * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(f)), u = f - i;
+        const c = stops[i].map((v, k) => Math.round(lerp(v, stops[i + 1][k], u)));
+        return `rgb(${c[0]},${c[1]},${c[2]})`;
+    }
+
+    // ---- noise ------------------------------------------------------------
+
+    function hash2(x, y) {
+        let h = Math.imul(x, 374761393) + Math.imul(y, 668265263);
+        h = Math.imul(h ^ (h >>> 13), 1274126177);
+        return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+    }
+    function vnoise(x, y) {
+        const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+        const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+        const a = hash2(xi, yi), b = hash2(xi + 1, yi), c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
+        return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+    }
+    const fbm = (x, y) => (vnoise(x, y) + vnoise(x * 2, y * 2) / 2 + vnoise(x * 4, y * 4) / 4 + vnoise(x * 8, y * 8) / 8) / 1.875;
+
+    // ---- sprites: grey masks painted once, tinted on demand -----------------
+
+    const S = 96;
+    function canvas(w = S, h = w) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+    /** Per-pixel mask: fn(u, v) in −1…1 returns alpha or [lum, alpha]. */
+    function pixels(fn) {
+        const c = canvas(), g = c.getContext('2d'), img = g.createImageData(S, S);
+        for (let y = 0; y < S; y++) {
+            for (let x = 0; x < S; x++) {
+                const r = fn((x + 0.5) / S * 2 - 1, (y + 0.5) / S * 2 - 1);
+                const [l, a] = Array.isArray(r) ? r : [1, r];
+                const i = (y * S + x) * 4;
+                img.data[i] = img.data[i + 1] = img.data[i + 2] = clamp(l) * 255;
+                img.data[i + 3] = clamp(a) * 255;
+            }
+        }
+        g.putImageData(img, 0, 0);
+        return c;
+    }
+    function drawn(paint) { const c = canvas(); paint(c.getContext('2d')); return c; }
+
+    const MASKS = {
+        glow: pixels((u, v) => Math.max(0, 1 - Math.hypot(u, v)) ** 2.4),
+        spark: pixels((u, v) => Math.exp(-(u * u * 3 + v * v * 110)) + 0.25 * Math.exp(-(u * u * 6 + v * v * 20))),
+        ember: pixels((u, v) => { const r = Math.hypot(u, v); return Math.exp(-r * r * 22) + 0.3 * Math.max(0, 1 - r) ** 4; }),
+        puff: pixels((u, v) => {
+            const r = Math.hypot(u, v), n = fbm(u * 2.2 + 3, v * 2.2 + 7);
+            const rr = r / (0.62 + 0.38 * n);
+            return [0.72 + 0.28 * clamp(0.5 - v * 0.5), Math.max(0, 1 - rr) ** 1.2 * (0.55 + 0.45 * fbm(u * 4 + 1, v * 4 + 2))];
+        }),
+        smoke: pixels((u, v) => {
+            const r = Math.hypot(u, v), n = fbm(u * 2.6 + 11, v * 2.6 + 5);
+            return [0.65 + 0.35 * n, clamp((n - 0.28) * 2.4) * Math.max(0, 1 - r) ** 1.1];
+        }),
+        droplet: drawn((g) => {
+            g.fillStyle = '#d8d8d8';
+            g.beginPath();
+            g.arc(S * 0.64, S / 2, S * 0.2, -Math.PI / 2, Math.PI / 2);
+            g.quadraticCurveTo(S * 0.36, S * 0.66, S * 0.08, S / 2);
+            g.quadraticCurveTo(S * 0.36, S * 0.34, S * 0.64, S * 0.3);
+            g.fill();
+            g.fillStyle = '#ffffff';
+            g.beginPath();
+            g.ellipse(S * 0.68, S * 0.42, S * 0.07, S * 0.04, -0.4, 0, Math.PI * 2);
+            g.fill();
+        }),
+        shard: drawn((g) => {
+            const pts = [...Array(7)].map((_, i) => {
+                const a = i / 7 * Math.PI * 2 + hash2(i, 3) * 0.5, r = S * (0.22 + 0.24 * hash2(i, 9));
+                return [S / 2 + Math.cos(a) * r, S / 2 + Math.sin(a) * r];
+            });
+            pts.forEach((p, i) => {
+                const q = pts[(i + 1) % pts.length];
+                const l = Math.round(110 + 145 * hash2(i, 21));
+                g.fillStyle = `rgb(${l},${l},${l})`;
+                g.beginPath(); g.moveTo(S / 2, S / 2); g.lineTo(p[0], p[1]); g.lineTo(q[0], q[1]); g.closePath(); g.fill();
+            });
+        }),
+        wisp: pixels((u, v) => {
+            const r = Math.hypot(u, v), a = Math.atan2(v, u);
+            const t = (a + Math.PI * 0.85) / (Math.PI * 1.3);
+            const taper = t > 0 && t < 1 ? Math.sin(Math.PI * t) ** 1.5 : 0;
+            return Math.exp(-(((r - 0.58) / 0.12) ** 2)) * taper + 0.18 * Math.max(0, 1 - r) ** 2;
+        }),
+        // decals
+        splat: (() => {
+            const drops = [...Array(9)].map((_, i) => {
+                const a = hash2(i, 41) * Math.PI * 2, d = 0.62 + 0.3 * hash2(i, 42);
+                return [Math.cos(a) * d, Math.sin(a) * d, 0.035 + 0.06 * hash2(i, 43)];
+            });
+            return pixels((u, v) => {
+                const r = Math.hypot(u, v), a = Math.atan2(v, u);
+                const edge = 0.36 + 0.16 * fbm(Math.cos(a) * 1.5 + 5, Math.sin(a) * 1.5 + 5)
+                    + 0.3 * Math.max(0, vnoise(a * 2.6 + 10, 1.7) - 0.62) * 2.6;
+                let al = clamp((edge - r) * 30);
+                for (const [x, y, s] of drops) al = Math.max(al, clamp((s - Math.hypot(u - x, v - y)) * 60));
+                return [0.75 + 0.25 * fbm(u * 5, v * 5), al * 0.95];
+            });
+        })(),
+        scorch: pixels((u, v) => {
+            const r = Math.hypot(u, v), n = fbm(u * 3 + 20, v * 3 + 20);
+            return [0.4 + 0.3 * n, clamp(1 - r / (0.55 + 0.45 * n)) ** 0.8 * 0.95];
+        }),
+        frost: drawn((g) => {
+            g.translate(S / 2, S / 2);
+            g.strokeStyle = '#fff';
+            g.lineCap = 'round';
+            g.shadowColor = '#fff';
+            g.shadowBlur = 5;
+            for (let i = 0; i < 7; i++) {
+                g.save();
+                g.rotate(i / 7 * Math.PI * 2 + hash2(i, 5) * 0.3);
+                const len = S * (0.3 + 0.15 * hash2(i, 6));
+                g.lineWidth = 2.2;
+                g.beginPath(); g.moveTo(0, 0); g.lineTo(len, 0); g.stroke();
+                g.lineWidth = 1.3;
+                for (let k = 1; k < 4; k++) {
+                    const x = len * k / 4, b = len * 0.22 * (1 - k / 5);
+                    g.beginPath(); g.moveTo(x, 0); g.lineTo(x + b * 0.6, -b); g.moveTo(x, 0); g.lineTo(x + b * 0.6, b); g.stroke();
+                }
+                g.restore();
+            }
+        }),
+        rune: drawn((g) => {
+            g.translate(S / 2, S / 2);
+            g.strokeStyle = '#fff';
+            g.shadowColor = '#fff';
+            g.shadowBlur = 4;
+            g.lineWidth = 1.6;
+            g.beginPath(); g.arc(0, 0, S * 0.44, 0, Math.PI * 2); g.stroke();
+            g.beginPath(); g.arc(0, 0, S * 0.35, 0, Math.PI * 2); g.stroke();
+            for (const off of [0, Math.PI]) {
+                g.beginPath();
+                for (let i = 0; i <= 3; i++) {
+                    const a = off + i / 3 * Math.PI * 2 - Math.PI / 2;
+                    g[i ? 'lineTo' : 'moveTo'](Math.cos(a) * S * 0.35, Math.sin(a) * S * 0.35);
+                }
+                g.stroke();
+            }
+            g.lineWidth = 1.3;
+            for (let i = 0; i < 12; i++) {
+                const a = i / 12 * Math.PI * 2;
+                g.save(); g.rotate(a); g.translate(S * 0.395, 0);
+                g.beginPath(); g.moveTo(-3, -3); g.lineTo(3, 0); g.lineTo(-3, 3);
+                if (i % 3 === 0) { g.moveTo(0, -4); g.lineTo(0, 4); }
+                g.stroke(); g.restore();
+            }
+        })
+    };
+    const SPRITES = ['glow', 'spark', 'ember', 'puff', 'smoke', 'droplet', 'shard', 'wisp'];
+
+    /** A mask tinted with one colour; grey shading of the mask survives (multiply). */
+    const tints = new Map();
+    function tint(mask, color) {
+        const key = `${mask}|${color}`;
+        let c = tints.get(key);
+        if (!c) {
+            c = canvas();
+            const g = c.getContext('2d');
+            g.drawImage(MASKS[mask], 0, 0);
+            g.globalCompositeOperation = 'multiply';
+            g.fillStyle = color;
+            g.fillRect(0, 0, S, S);
+            g.globalCompositeOperation = 'destination-in';
+            g.drawImage(MASKS[mask], 0, 0);
+            tints.set(key, c);
+        }
+        return c;
+    }
+
+    // ---- node types -----------------------------------------------------------
+
+    const fmt = {
+        n: (v) => `${Math.round(v)}`,
+        s: (v) => `${v.toFixed(2)} s`,
+        ms: (v) => v >= 1000 ? `${(v / 1000).toFixed(1)} s` : `${Math.round(v)} ms`,
+        pct: (v) => `${Math.round(v)} %`,
+        rate: (v) => `${Math.round(v)} /s`,
+        px: (v) => `${Math.round(v)}`,
+        x10: (v) => `${(v / 10).toFixed(1)}×`
+    };
+    const range = (key, label, min, max, def, f, opts = {}) => ({kind: 'range', key, label, min, max, def, fmt: f, ...opts});
+    const select = (key, label, options, def) => ({kind: 'select', key, label, options, def});
+    const toggle = (key, label, options, def) => ({kind: 'toggle', key, label, options, def});
+    const SHAPES = ['sphere', 'ring', 'disc', 'area', 'column'];
+
+    const DEFS = [
+        {type: 'burst', label: 'Burst', tag: 'EMIT', color: '#ff9f43', out: 'p', params: [
+            range('count', 'Count', 1, 400, 60, fmt.n), range('life', 'Lifetime', 0.1, 6, 1, fmt.s, {step: 0.05}),
+            select('shape', 'Shape', SHAPES, 'sphere'), range('radius', 'Radius', 0, 420, 10, fmt.px),
+            range('height', 'Height', 0, 300, 40, fmt.px)]},
+        {type: 'stream', label: 'Stream', tag: 'EMIT', color: '#ff9f43', out: 'p', params: [
+            range('rate', 'Rate', 1, 300, 40, fmt.rate), range('life', 'Lifetime', 0.1, 10, 1.5, fmt.s, {step: 0.05}),
+            range('duration', 'Duration', 0.1, 10, 3, fmt.s, {step: 0.05}), select('shape', 'Shape', SHAPES, 'disc'),
+            range('radius', 'Radius', 0, 420, 20, fmt.px), range('height', 'Height', 0, 300, 0, fmt.px)]},
+        {type: 'motion', label: 'Motion', tag: 'MOVE', color: '#4cc2ff', in: 'p', out: 'p', params: [
+            toggle('dir', 'Away', ['out', 'up', 'random'], 'out'), range('speed', 'Speed', 0, 900, 200, fmt.n),
+            range('spread', 'Spread', 0, 100, 30, fmt.pct), range('gravity', 'Gravity', -600, 1500, 0, fmt.n, {step: 10}),
+            range('drag', 'Drag', 0, 6, 0.5, (v) => v.toFixed(1), {step: 0.1})]},
+        {type: 'noise', label: 'Turbulence', tag: 'NOISE', color: '#4cc2ff', in: 'p', out: 'p', params: [
+            range('strength', 'Strength', 0, 600, 80, fmt.n), range('scale', 'Detail', 1, 40, 10, fmt.n),
+            range('wind', 'Wind', -300, 300, 0, fmt.n)]},
+        {type: 'collide', label: 'Floor', tag: 'HIT', color: '#4cc2ff', in: 'p', out: 'p', params: [
+            range('bounce', 'Bounce', 0, 100, 30, fmt.pct), toggle('splat', 'Splat', ['off', 'on'], 'off'),
+            range('splatSize', 'Splat size', 2, 60, 14, fmt.px)]},
+        {type: 'sprite', label: 'Render', tag: 'DRAW', color: '#b57bff', in: 'p', out: 'l', params: [
+            select('sprite', 'Sprite', SPRITES, 'glow'), select('grad', 'Colour', Object.keys(GRADS), 'fire'),
+            toggle('blend', 'Blend', ['add', 'alpha'], 'add'), range('size', 'Size start', 1, 400, 30, fmt.px),
+            range('end', 'Size end', 0, 500, 10, fmt.px), range('opacity', 'Opacity', 0, 100, 90, fmt.pct),
+            range('stretch', 'Stretch', 0, 40, 0, fmt.x10)]},
+        {type: 'bolt', label: 'Lightning', tag: 'BOLT', color: '#ffd166', out: 'l', params: [
+            range('strikes', 'Strikes', 1, 8, 3, fmt.n), range('branches', 'Branches', 0, 10, 4, fmt.n),
+            range('jitter', 'Jitter', 0, 100, 55, fmt.pct), range('height', 'Height', 80, 440, 360, fmt.px),
+            select('color', 'Colour', Object.keys(LIGHTS), 'cold')]},
+        {type: 'flash', label: 'Flash', tag: 'LIGHT', color: '#ffd166', out: 'l', params: [
+            select('color', 'Colour', Object.keys(LIGHTS), 'warm'), range('radius', 'Radius', 20, 600, 260, fmt.px),
+            range('intensity', 'Intensity', 0, 100, 80, fmt.pct), range('duration', 'Duration', 50, 10000, 400, fmt.ms, {log: true}),
+            range('hold', 'Hold', 0, 100, 0, fmt.pct), range('flicker', 'Flicker', 0, 100, 0, fmt.pct)]},
+        {type: 'wave', label: 'Shockwave', tag: 'WAVE', color: '#ffd166', out: 'l', params: [
+            select('color', 'Colour', Object.keys(LIGHTS), 'warm'), range('radius', 'Radius', 20, 500, 200, fmt.px),
+            range('duration', 'Duration', 100, 2000, 500, fmt.ms), range('thickness', 'Thickness', 1, 40, 8, fmt.px)]},
+        {type: 'shake', label: 'Shake', tag: 'SHAKE', color: '#ffd166', out: 'l', params: [
+            range('amount', 'Amount', 0, 40, 10, fmt.px), range('duration', 'Duration', 50, 2000, 400, fmt.ms)]},
+        {type: 'mark', label: 'Decal', tag: 'MARK', color: '#ffd166', out: 'l', params: [
+            select('kind', 'Kind', ['scorch', 'blood', 'frost', 'rune'], 'scorch'), range('size', 'Size', 10, 300, 80, fmt.px),
+            range('fade', 'Fades after', 1, 60, 14, (v) => `${Math.round(v)} s`)]},
+        {type: 'delay', label: 'Delay', tag: 'WAIT', color: '#9aa6c0', in: 'l', out: 'l', params: [
+            range('delay', 'Delay', 0, 3000, 200, fmt.ms, {step: 10})]},
+        {type: 'effect', label: 'Effect', tag: 'OUT', color: '#3ddc97', in: 'l', params: [
+            range('repeat', 'Repeat every', 0.5, 10, 3, fmt.s, {step: 0.1}), {kind: 'count'}]}
+    ];
+    const DEF = Object.fromEntries(DEFS.map((d) => [d.type, d]));
+    const defaults = (def) => Object.fromEntries(def.params.filter((p) => p.key).map((p) => [p.key, p.def]));
+    const metaOf = (n) => ({...defaults(DEF[n.type]), ...(n.meta ?? {})});
+    const ROW = 30;
+
+    // ---- node bodies ----------------------------------------------------------
+
+    const toSlider = (p, v) => p.log ? 1000 * Math.log(v / p.min) / Math.log(p.max / p.min) : v;
+    const fromSlider = (p, s) => p.log ? p.min * (p.max / p.min) ** (s / 1000) : Number(s);
+
+    function renderBody(def) {
+        return (node, body, ctx) => {
+            const meta = metaOf(node);
+            const head = el('div', 'fx-head');
+            const chip = el('button', 'fx-chip', def.tag);
+            const bypass = el('button', 'fx-bypass');
+            chip.type = bypass.type = 'button';
+            chip.title = node.collapsed ? 'Expand' : 'Collapse';
+            bypass.title = node.disabled ? 'Bypassed — click to enable' : 'Bypass';
+            chip.onclick = () => ctx.toggleCollapsed();
+            bypass.onclick = () => ctx.toggleDisabled();
+            head.append(chip, el('span', 'fx-title', node.label ?? def.label), bypass);
+            body.appendChild(head);
+            if (node.collapsed) return;
+
+            for (const p of def.params) {
+                if (p.kind === 'range') {
+                    const row = el('div', 'fx-row');
+                    const value = el('span', '', p.fmt(meta[p.key]));
+                    const input = el('input');
+                    input.type = 'range';
+                    input.min = p.log ? 0 : p.min;
+                    input.max = p.log ? 1000 : p.max;
+                    input.step = p.log ? 1 : p.step ?? 1;
+                    input.value = toSlider(p, meta[p.key]);
+                    const read = () => { meta[p.key] = fromSlider(p, input.value); value.textContent = p.fmt(meta[p.key]); };
+                    // live while dragging (no undo step, so recompile by hand), committed on release
+                    input.oninput = () => { read(); ctx.update({meta: {...meta}}, {live: true}); compile(); };
+                    input.onchange = () => { read(); ctx.update({meta: {...meta}}); };
+                    row.append(el('span', '', p.label), value, input);
+                    body.appendChild(row);
+                } else if (p.kind === 'select') {
+                    const line = el('div', 'fx-line');
+                    const sel = el('select');
+                    for (const o of p.options) sel.appendChild(new Option(o, o, false, o === meta[p.key]));
+                    sel.onchange = () => { meta[p.key] = sel.value; ctx.update({meta: {...meta}}); };
+                    line.append(el('span', '', p.label), sel);
+                    body.appendChild(line);
+                } else if (p.kind === 'toggle') {
+                    const line = el('div', 'fx-line');
+                    line.appendChild(el('span', '', p.label));
+                    for (const o of p.options) {
+                        const b = el('button', o === meta[p.key] ? 'on' : '', o);
+                        b.type = 'button';
+                        b.onclick = () => {
+                            meta[p.key] = o;
+                            line.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+                            ctx.update({meta: {...meta}});
+                        };
+                        line.appendChild(b);
+                    }
+                    body.appendChild(line);
+                } else if (p.kind === 'count') {
+                    const line = el('div', 'fx-count');
+                    const b = el('b', '', '0');
+                    b.dataset.count = node.id;
+                    line.append(el('span', '', 'Live particles'), b);
+                    body.appendChild(line);
+                }
+            }
+        };
+    }
+
+    const types = DEFS.map((d) => ({
+        type: d.type,
+        label: d.label,
+        color: d.color,
+        width: 200,
+        height: 46 + d.params.length * ROW,
+        collapsedHeight: 40,
+        inputs: d.in ? [{id: 'in', kind: d.in}] : [],
+        outputs: d.out ? [{id: 'out', kind: d.out}] : [],
+        render: renderBody(d)
+    }));
+
+    const editor = new WorkflowEditor($('editor'), {
+        types,
+        colorPorts: true,
+        canConnect: (from, to) => from.node === to.node ? 'a node cannot feed itself' : true
+    });
+    editor.setStyleVars({
+        bg: '#090b12', grid: '#151a29', 'node-bg': '#11141f', 'node-border': '#252b40',
+        edge: '#5d6688', text: '#e6ebf6', subtext: '#8791ab', 'port-bg': '#090b12'
+    });
+
+    // ---- presets: every layer is a chain that ends in the Effect node --------
+
+    const C = (type, meta = {}, label) => ({type, meta, label});
+    const PRESETS = {
+        lightning: {label: 'Lightning', color: '#8fd0ff', repeat: 2.6, layers: [
+            [C('bolt', {strikes: 3, branches: 5, jitter: 60, height: 380, color: 'cold'})],
+            [C('flash', {color: 'cold', radius: 300, intensity: 90, duration: 520, flicker: 60})],
+            [C('burst', {count: 70, life: 0.7, shape: 'sphere', radius: 4, height: 4}, 'Impact sparks'),
+                C('motion', {dir: 'out', speed: 420, spread: 45, gravity: 1000, drag: 1.2}), C('collide', {bounce: 40}),
+                C('sprite', {sprite: 'spark', grad: 'electric', blend: 'add', size: 12, end: 3, opacity: 100, stretch: 18})],
+            [C('burst', {count: 14, life: 1.6, shape: 'disc', radius: 20, height: 0}, 'Dust'),
+                C('motion', {dir: 'out', speed: 90, spread: 40, gravity: -30, drag: 1.5}),
+                C('sprite', {sprite: 'smoke', grad: 'fog', blend: 'alpha', size: 40, end: 120, opacity: 35})],
+            [C('wave', {color: 'cold', radius: 150, duration: 420, thickness: 6})],
+            [C('mark', {kind: 'scorch', size: 70, fade: 10})],
+            [C('shake', {amount: 7, duration: 320})]
+        ]},
+        fog: {label: 'Fog', color: '#a7b6c8', repeat: 6, prewarm: 8, layers: [
+            [C('stream', {rate: 9, life: 9, duration: 6.2, shape: 'area', radius: 420, height: 30}, 'Ground fog'),
+                C('motion', {dir: 'random', speed: 12, spread: 60, gravity: -2, drag: 0.2}),
+                C('noise', {strength: 26, scale: 6, wind: 16}),
+                C('sprite', {sprite: 'smoke', grad: 'fog', blend: 'alpha', size: 190, end: 330, opacity: 26})],
+            [C('stream', {rate: 5, life: 11, duration: 6.2, shape: 'area', radius: 460, height: 90}, 'High veil'),
+                C('motion', {dir: 'random', speed: 8, spread: 80, gravity: -4, drag: 0.2}),
+                C('noise', {strength: 18, scale: 4, wind: 24}),
+                C('sprite', {sprite: 'puff', grad: 'fog', blend: 'alpha', size: 280, end: 420, opacity: 13})],
+            [C('stream', {rate: 6, life: 4, duration: 6.2, shape: 'area', radius: 380, height: 40}, 'Will-o’-wisps'),
+                C('motion', {dir: 'random', speed: 18, spread: 100, gravity: -6, drag: 0.4}),
+                C('noise', {strength: 70, scale: 12, wind: 10}),
+                C('sprite', {sprite: 'ember', grad: 'spirit', blend: 'add', size: 9, end: 4, opacity: 80})]
+        ]},
+        explosion: {label: 'Explosion', color: '#ff8a1e', repeat: 3.2, layers: [
+            [C('burst', {count: 34, life: 2.6, shape: 'sphere', radius: 30, height: 50}, 'Smoke'),
+                C('motion', {dir: 'out', speed: 150, spread: 40, gravity: -70, drag: 1.8}),
+                C('noise', {strength: 60, scale: 10, wind: 14}),
+                C('sprite', {sprite: 'smoke', grad: 'hot smoke', blend: 'alpha', size: 50, end: 200, opacity: 70}),
+                C('delay', {delay: 90})],
+            [C('burst', {count: 42, life: 0.85, shape: 'sphere', radius: 20, height: 45}, 'Fireball'),
+                C('motion', {dir: 'out', speed: 270, spread: 35, gravity: -140, drag: 3.6}),
+                C('sprite', {sprite: 'puff', grad: 'fire', blend: 'add', size: 44, end: 120, opacity: 90})],
+            [C('burst', {count: 120, life: 1.3, shape: 'sphere', radius: 10, height: 35}, 'Sparks'),
+                C('motion', {dir: 'out', speed: 640, spread: 60, gravity: 650, drag: 1.2}),
+                C('collide', {bounce: 35}),
+                C('sprite', {sprite: 'spark', grad: 'ember', blend: 'add', size: 9, end: 3, opacity: 100, stretch: 22})],
+            [C('burst', {count: 26, life: 1.8, shape: 'sphere', radius: 10, height: 30}, 'Debris'),
+                C('motion', {dir: 'out', speed: 430, spread: 50, gravity: 950, drag: 0.4}),
+                C('collide', {bounce: 30}),
+                C('sprite', {sprite: 'shard', grad: 'debris', blend: 'alpha', size: 13, end: 11, opacity: 100})],
+            [C('flash', {color: 'warm', radius: 340, intensity: 100, duration: 520})],
+            [C('wave', {color: 'warm', radius: 230, duration: 520, thickness: 10})],
+            [C('shake', {amount: 14, duration: 520})],
+            [C('mark', {kind: 'scorch', size: 130, fade: 12})]
+        ]},
+        blood: {label: 'Blood', color: '#d0182a', repeat: 2.8, layers: [
+            [C('burst', {count: 70, life: 1.6, shape: 'sphere', radius: 6, height: 70}, 'Droplets'),
+                C('motion', {dir: 'out', speed: 330, spread: 60, gravity: 1150, drag: 0.7}),
+                C('collide', {bounce: 0, splat: 'on', splatSize: 20}),
+                C('sprite', {sprite: 'droplet', grad: 'blood', blend: 'alpha', size: 9, end: 7, opacity: 100, stretch: 12})],
+            [C('stream', {rate: 70, life: 1.4, duration: 0.35, shape: 'sphere', radius: 3, height: 70}, 'Gush'),
+                C('motion', {dir: 'random', speed: 250, spread: 30, gravity: 1150, drag: 0.5}),
+                C('collide', {bounce: 0, splat: 'on', splatSize: 15}),
+                C('sprite', {sprite: 'droplet', grad: 'blood', blend: 'alpha', size: 7, end: 5, opacity: 100, stretch: 10}),
+                C('delay', {delay: 160})],
+            [C('burst', {count: 16, life: 0.7, shape: 'sphere', radius: 8, height: 70}, 'Mist'),
+                C('motion', {dir: 'out', speed: 120, spread: 50, gravity: 80, drag: 3}),
+                C('sprite', {sprite: 'puff', grad: 'mist', blend: 'alpha', size: 24, end: 80, opacity: 45})],
+            [C('mark', {kind: 'blood', size: 70, fade: 16}), C('delay', {delay: 650})],
+            [C('flash', {color: 'red', radius: 140, intensity: 35, duration: 180})],
+            [C('shake', {amount: 5, duration: 220})]
+        ]},
+        fire: {label: 'Fire', color: '#ffbe4d', repeat: 4, prewarm: 3, layers: [
+            [C('stream', {rate: 18, life: 3.4, duration: 4.2, shape: 'disc', radius: 22, height: 80}, 'Smoke'),
+                C('motion', {dir: 'up', speed: 60, spread: 30, gravity: -30, drag: 0.5}),
+                C('noise', {strength: 50, scale: 9, wind: 26}),
+                C('sprite', {sprite: 'smoke', grad: 'smoke', blend: 'alpha', size: 40, end: 170, opacity: 40})],
+            [C('stream', {rate: 90, life: 1, duration: 4.2, shape: 'disc', radius: 30, height: 0}, 'Flames'),
+                C('motion', {dir: 'up', speed: 130, spread: 25, gravity: -320, drag: 1.2}),
+                C('noise', {strength: 150, scale: 18, wind: 10}),
+                C('sprite', {sprite: 'puff', grad: 'fire', blend: 'add', size: 58, end: 8, opacity: 42, stretch: 5})],
+            [C('stream', {rate: 14, life: 2.4, duration: 4.2, shape: 'disc', radius: 18, height: 10}, 'Embers'),
+                C('motion', {dir: 'up', speed: 90, spread: 60, gravity: -60, drag: 0.4}),
+                C('noise', {strength: 170, scale: 14, wind: 20}),
+                C('sprite', {sprite: 'ember', grad: 'ember', blend: 'add', size: 7, end: 2, opacity: 100})],
+            [C('flash', {color: 'warm', radius: 230, intensity: 40, duration: 4200, hold: 90, flicker: 35})],
+            [C('mark', {kind: 'scorch', size: 60, fade: 30})]
+        ]},
+        spirit: {label: 'Spirit', color: '#86ffe4', repeat: 5, prewarm: 3, layers: [
+            [C('stream', {rate: 7, life: 4, duration: 5.2, shape: 'disc', radius: 120, height: 0}, 'Ground mist'),
+                C('motion', {dir: 'random', speed: 10, spread: 100, gravity: -6, drag: 0.3}),
+                C('noise', {strength: 30, scale: 8, wind: 0}),
+                C('sprite', {sprite: 'smoke', grad: 'spirit', blend: 'add', size: 90, end: 210, opacity: 16})],
+            [C('stream', {rate: 42, life: 2.3, duration: 5.2, shape: 'ring', radius: 55, height: 50}, 'Wisps'),
+                C('motion', {dir: 'up', speed: 30, spread: 40, gravity: -45, drag: 0.8}),
+                C('noise', {strength: 230, scale: 12, wind: 0}),
+                C('sprite', {sprite: 'wisp', grad: 'spirit', blend: 'add', size: 40, end: 8, opacity: 65})],
+            [C('stream', {rate: 30, life: 1.8, duration: 5.2, shape: 'ring', radius: 70, height: 10}, 'Sparkles'),
+                C('motion', {dir: 'up', speed: 40, spread: 60, gravity: -60, drag: 0.6}),
+                C('noise', {strength: 160, scale: 16, wind: 0}),
+                C('sprite', {sprite: 'ember', grad: 'spirit', blend: 'add', size: 8, end: 2, opacity: 100})],
+            [C('stream', {rate: 26, life: 0.9, duration: 5.2, shape: 'sphere', radius: 12, height: 110}, 'Soul'),
+                C('motion', {dir: 'random', speed: 24, spread: 100, gravity: -10, drag: 1}),
+                C('sprite', {sprite: 'glow', grad: 'spirit', blend: 'add', size: 70, end: 24, opacity: 55})],
+            [C('flash', {color: 'violet', radius: 240, intensity: 45, duration: 5200, hold: 90, flicker: 25})],
+            [C('mark', {kind: 'rune', size: 130, fade: 6})]
+        ]}
+    };
+
+    /** A preset as a document: chains right-aligned so every last node sits in one
+     *  column next to the Effect node, one row per chain. */
+    const FOLDED = new Set(['wave', 'shake', 'mark']);   // start collapsed (click the tag to open)
+    function presetDoc(p) {
+        const nodes = [], connections = [];
+        const gapX = 270, gapY = 28;
+        const cols = Math.max(...p.layers.map((l) => l.length));
+        let y = 0, n = 0;
+        for (const chain of p.layers) {
+            let prev = null;
+            const h = Math.max(...chain.map((c) => FOLDED.has(c.type) ? 40 : 46 + DEF[c.type].params.length * ROW));
+            chain.forEach((c, i) => {
+                const id = `${c.type}${++n}`;
+                nodes.push({id, type: c.type, x: (cols - chain.length + i) * gapX, y,
+                    meta: {...defaults(DEF[c.type]), ...c.meta}, ...(c.label ? {label: c.label} : {}),
+                    ...(FOLDED.has(c.type) ? {collapsed: true} : {})});
+                if (prev) connections.push({id: `w${connections.length + 1}`, from: {node: prev, port: 'out'}, to: {node: id, port: 'in'}});
+                prev = id;
+            });
+            connections.push({id: `w${connections.length + 1}`, from: {node: prev, port: 'out'}, to: {node: 'out', port: 'in'}});
+            y += h + gapY;
+        }
+        nodes.push({id: 'out', type: 'effect', x: cols * gapX + 40, y: Math.max(0, y / 2 - 100), meta: {repeat: p.repeat}});
+        return {nodes, connections};
+    }
+
+    // ---- compile: document → layers ---------------------------------------------
+
+    let outputs = [];                     // [{id, repeat, layers}]
+    const current = new Map();            // layer key → layer, so running effects follow slider moves
+    const LAYER_SOURCES = new Set(['bolt', 'flash', 'wave', 'shake', 'mark']);
+    const MODULES = new Set(['motion', 'noise', 'collide']);
+
+    function compile() {
+        const doc = editor.getDocument();
+        const nodes = new Map(doc.nodes.map((n) => [n.id, n]));
+        const into = new Map();
+        for (const c of doc.connections) {
+            if (!into.has(c.to.node)) into.set(c.to.node, []);
+            into.get(c.to.node).push(c);
+        }
+
+        // particle chains upstream of a Render node: emitter + the modules after it
+        const chains = (id, conns, seen) => {
+            const n = nodes.get(id);
+            if (!n || seen.has(id)) return [];
+            seen = new Set(seen).add(id);
+            if (n.type === 'burst' || n.type === 'stream') {
+                return n.disabled ? [] : [{emit: {type: n.type, ...metaOf(n)}, mods: {}, nodes: [id], conns}];
+            }
+            if (!MODULES.has(n.type)) return [];
+            return (into.get(id) ?? []).flatMap((c) => chains(c.from.node, [c.id, ...conns], seen).map((ch) => ({
+                ...ch, nodes: [...ch.nodes, id], mods: n.disabled ? ch.mods : {...ch.mods, [n.type]: metaOf(n)}
+            })));
+        };
+        const layers = (id, delay, conns, path, seen) => {
+            const n = nodes.get(id);
+            if (!n || seen.has(id)) return [];
+            seen = new Set(seen).add(id);
+            path = [id, ...path];
+            const m = metaOf(n);
+            if (n.type === 'delay') {
+                const d = delay + (n.disabled ? 0 : m.delay / 1000);
+                return (into.get(id) ?? []).flatMap((c) => layers(c.from.node, d, [c.id, ...conns], path, seen));
+            }
+            if (n.disabled) return [];
+            if (LAYER_SOURCES.has(n.type)) return [{key: path.join('>'), kind: n.type, p: m, delay, conns, nodes: path}];
+            if (n.type !== 'sprite') return [];
+            return (into.get(id) ?? []).flatMap((c) => chains(c.from.node, [c.id], seen).map((ch) => ({
+                key: [...ch.nodes, ...path].join('>'), kind: 'particles', delay, look: m, emit: ch.emit, mods: ch.mods,
+                conns: [...ch.conns, ...conns], nodes: [...ch.nodes, ...path]
+            })));
+        };
+
+        outputs = doc.nodes.filter((n) => n.type === 'effect' && !n.disabled).map((o) => ({
+            id: o.id,
+            repeat: metaOf(o).repeat,
+            layers: (into.get(o.id) ?? []).flatMap((c) => layers(c.from.node, 0, [c.id], [o.id], new Set()))
+        }));
+        current.clear();
+        for (const o of outputs) for (const l of o.layers) current.set(l.key, l);
+        markUsedSprites(doc);
+    }
+
+    // ---- the arena: projection, background ------------------------------------
+
+    const stage = $('stage'), g = stage.getContext('2d');
+    const SQ = 0.45;                        // floor squash (z → screen y)
+    const view = {w: 0, h: 0, dpr: 1, k: 1, ox: 0, oy: 0};
+    let bg = null;
+    const sx = (x) => view.ox + x * view.k;
+    const sy = (y, z) => view.oy + (z * SQ - y) * view.k;
+
+    function resize() {
+        const r = stage.getBoundingClientRect();
+        if (r.width < 2 || r.height < 2) return;
+        view.dpr = Math.min(2, devicePixelRatio || 1);
+        view.w = r.width; view.h = r.height;
+        stage.width = Math.round(r.width * view.dpr);
+        stage.height = Math.round(r.height * view.dpr);
+        view.k = Math.min(r.width / 960, r.height / 610);
+        view.ox = r.width / 2;
+        view.oy = r.height - 150 * view.k;
+        bg = paintBackground();
+    }
+
+    function paintBackground() {
+        const c = canvas(stage.width, stage.height), b = c.getContext('2d');
+        b.scale(view.dpr, view.dpr);
+        const {w, h, k} = view;
+        const horizon = sy(0, -280);
+        const sky = b.createLinearGradient(0, 0, 0, horizon);
+        sky.addColorStop(0, '#04040a');
+        sky.addColorStop(1, '#151226');
+        b.fillStyle = sky;
+        b.fillRect(0, 0, w, h);
+        for (let i = 0; i < 140; i++) {
+            const x = hash2(i, 1) * w, y = hash2(i, 2) * horizon * 0.95;
+            b.fillStyle = `rgba(200,210,255,${0.15 + 0.5 * hash2(i, 3) ** 3})`;
+            b.fillRect(x, y, 1.2, 1.2);
+        }
+        // broken pillars on the horizon
+        b.fillStyle = '#0b0a14';
+        for (let i = 0; i < 9; i++) {
+            const x = sx(-520 + i * 130 + 40 * hash2(i, 7)), pw = (14 + 10 * hash2(i, 8)) * k;
+            const ph = (60 + 120 * hash2(i, 9)) * k;
+            b.beginPath();
+            b.moveTo(x - pw / 2, horizon + 2);
+            b.lineTo(x - pw / 2, horizon - ph);
+            b.lineTo(x - pw * 0.1, horizon - ph - 10 * k * hash2(i, 10));
+            b.lineTo(x + pw / 2, horizon - ph + 8 * k);
+            b.lineTo(x + pw / 2, horizon + 2);
+            b.fill();
+        }
+        // stone floor
+        const X = 480, Z = 280, T = 60;
+        b.fillStyle = '#121119';
+        b.fillRect(0, horizon, w, h - horizon);
+        for (let x = -X; x < X; x += T) {
+            for (let z = -Z; z < Z; z += T) {
+                const l = 18 + 9 * hash2(x / T + 40, z / T + 40) + 10 * (z + Z) / (2 * Z);
+                b.fillStyle = `rgb(${l},${l - 1},${l + 5})`;
+                const j = 2;
+                b.beginPath();
+                b.moveTo(sx(x + j), sy(0, z + j)); b.lineTo(sx(x + T - j), sy(0, z + j));
+                b.lineTo(sx(x + T - j), sy(0, z + T - j)); b.lineTo(sx(x + j), sy(0, z + T - j));
+                b.fill();
+            }
+        }
+        // faint casting circle
+        b.save();
+        b.translate(sx(0), sy(0, 0));
+        b.scale(1, SQ);
+        b.strokeStyle = 'rgba(150,140,200,0.10)';
+        b.lineWidth = 2 * k;
+        b.beginPath(); b.arc(0, 0, 150 * k, 0, Math.PI * 2); b.stroke();
+        b.beginPath(); b.arc(0, 0, 136 * k, 0, Math.PI * 2); b.stroke();
+        b.restore();
+        // distance haze and vignette
+        const haze = b.createLinearGradient(0, horizon - 40 * k, 0, horizon + 90 * k);
+        haze.addColorStop(0, 'rgba(40,34,70,0)');
+        haze.addColorStop(0.5, 'rgba(40,34,70,0.35)');
+        haze.addColorStop(1, 'rgba(40,34,70,0)');
+        b.fillStyle = haze;
+        b.fillRect(0, horizon - 40 * k, w, 130 * k);
+        const v = b.createRadialGradient(w / 2, h * 0.55, Math.min(w, h) * 0.3, w / 2, h * 0.55, Math.max(w, h) * 0.75);
+        v.addColorStop(0, 'rgba(0,0,0,0)');
+        v.addColorStop(1, 'rgba(0,0,0,0.7)');
+        b.fillStyle = v;
+        b.fillRect(0, 0, w, h);
+        return c;
+    }
+
+    // ---- simulation ----------------------------------------------------------
+
+    const MAX_PARTICLES = 7000;
+    let live = [];                          // running effect instances
+    let decals = [];
+    let simTime = 0, total = 0;
+    let origin = {x: 0, z: 0};
+    const nextAt = new Map();               // output id → sim time of the next repeat
+
+    function cast(out, at = origin) {
+        live.push({out: out.id, ox: at.x, oz: at.z, t: 0, layers: out.layers.map((def) => ({
+            key: def.key, def, ps: [], fired: false, carry: 0, done: false, strike: -1, bolt: null, seed: Math.random() * 1000
+        }))});
+    }
+    function castAll(at = origin) {
+        for (const o of outputs) {
+            cast(o, at);
+            nextAt.set(o.id, simTime + o.repeat);
+        }
+    }
+
+    function randDir() {
+        const z = rand(-1, 1), a = rand(0, Math.PI * 2), r = Math.sqrt(1 - z * z);
+        return [Math.cos(a) * r, z, Math.sin(a) * r];
+    }
+    function spawn(L, inst, def) {
+        if (total >= MAX_PARTICLES) return;
+        const e = def.emit, mo = def.mods.motion;
+        let pos, out;
+        const R = e.radius, H = e.height;
+        if (e.shape === 'ring') {
+            const a = rand(0, Math.PI * 2);
+            pos = [Math.cos(a) * R, H, Math.sin(a) * R]; out = [Math.cos(a), 0, Math.sin(a)];
+        } else if (e.shape === 'disc') {
+            const a = rand(0, Math.PI * 2), r = R * Math.sqrt(Math.random());
+            pos = [Math.cos(a) * r, H, Math.sin(a) * r]; out = [Math.cos(a) * 0.9, 0.44, Math.sin(a) * 0.9];
+        } else if (e.shape === 'area') {
+            const a = rand(0, Math.PI * 2);
+            pos = [rand(-R, R), H * Math.random(), rand(-R, R) * 0.6]; out = [Math.cos(a), 0, Math.sin(a)];
+        } else if (e.shape === 'column') {
+            const a = rand(0, Math.PI * 2);
+            pos = [0, H + R * Math.random(), 0]; out = [Math.cos(a), 0, Math.sin(a)];
+        } else {
+            const d = randDir(), r = R * Math.cbrt(Math.random());
+            pos = [d[0] * r, H + d[1] * r, d[2] * r]; out = d;
+        }
+        let v = [0, 0, 0];
+        if (mo) {
+            const dir = mo.dir === 'up' ? [0, 1, 0] : mo.dir === 'random' ? randDir() : out;
+            const s = mo.spread / 100, rd = randDir();
+            const d = [dir[0] + rd[0] * s * 1.2, dir[1] + rd[1] * s * 1.2, dir[2] + rd[2] * s * 1.2];
+            const len = Math.hypot(...d) || 1, sp = mo.speed * (1 - s * 0.5 * Math.random());
+            v = d.map((c) => c / len * sp);
+        }
+        L.ps.push({x: pos[0], y: pos[1], z: pos[2], vx: v[0], vy: v[1], vz: v[2], age: 0,
+            life: e.life * rand(0.7, 1.3), sz: rand(0.75, 1.25), rot: rand(0, 6.283), rs: rand(-1.5, 1.5), splat: false});
+        total++;
+    }
+
+    function stepParticles(L, inst, def, lt, dt) {
+        const e = def.emit;
+        if (e.type === 'burst') {
+            if (!L.fired) { L.fired = true; for (let i = 0; i < e.count; i++) spawn(L, inst, def); }
+        } else if (lt < e.duration) {
+            L.carry += e.rate * dt;
+            while (L.carry >= 1) { L.carry--; spawn(L, inst, def); }
+        }
+        const mo = def.mods.motion, no = def.mods.noise, co = def.mods.collide;
+        const grav = mo?.gravity ?? 0, drag = Math.exp(-(mo?.drag ?? 0) * dt);
+        const f = (no?.scale ?? 10) / 1000, str = no?.strength ?? 0, wind = no?.wind ?? 0;
+        const keep = [];
+        for (const p of L.ps) {
+            p.age += dt;
+            if (p.age >= p.life) { total--; continue; }
+            p.vy -= grav * dt;
+            if (str) {
+                const a = vnoise(p.x * f + L.seed, p.y * f + simTime * 0.35) * Math.PI * 4;
+                p.vx += Math.cos(a) * str * dt;
+                p.vy += Math.sin(a) * str * dt;
+                p.vz += Math.cos(a * 1.3 + 1) * str * 0.5 * dt;
+            }
+            p.vx += wind * dt;
+            p.vx *= drag; p.vy *= drag; p.vz *= drag;
+            p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+            if (co && p.y < 0 && p.vy < 0) {
+                const hit = -p.vy;
+                p.y = 0;
+                if (co.splat === 'on' && !p.splat && hit > 60) {
+                    p.splat = true;
+                    const t = p.age / p.life;
+                    // streak along the way the drop travelled, darker than the drop itself
+                    const along = Math.hypot(p.vx, p.vz);
+                    addDecal(inst.ox + p.x, inst.oz + p.z, co.splatSize * rand(0.6, 1.4) * p.sz, 'splat',
+                        gradStep(def.look.grad, Math.min(1, t + rand(0.3, 0.7))), false, 18,
+                        Math.atan2(p.vz, p.vx), Math.min(2.4, 1 + along / 260));
+                    if (co.bounce < 5) { total--; continue; }
+                }
+                p.vy = hit * co.bounce / 100;
+                p.vx *= 0.7; p.vz *= 0.7;
+                if (p.vy < 25) p.vy = 0;
+            }
+            keep.push(p);
+        }
+        L.ps = keep;
+        const emitting = e.type === 'burst' ? !L.fired : lt < e.duration;
+        L.done = !emitting && L.ps.length === 0;
+    }
+
+    function addDecal(x, z, r, mask, color, glow, fade, rot = rand(0, 6.283), stretch = 1) {
+        // a repeated mark on the same spot refreshes instead of piling up
+        const same = decals.find((d) => d.mask === mask && d.color === color && Math.hypot(d.x - x, d.z - z) < 4 && Math.abs(d.r - r) < 2);
+        if (same) { same.born = simTime; return; }
+        decals.push({x, z, r, mask, color, glow, fade, born: simTime, rot, stretch});
+        if (decals.length > 600) decals.splice(0, decals.length - 600);
+    }
+    const MARKS = {
+        scorch: {mask: 'scorch', color: '#0b0706', glow: false},
+        blood: {mask: 'splat', color: '#6a0812', glow: false},
+        frost: {mask: 'frost', color: '#bfe8ff', glow: true},
+        rune: {mask: 'rune', color: '#9d7bff', glow: true}
+    };
+
+    /** Duration of a non-particle layer in seconds. */
+    const span = (def) => def.kind === 'bolt' ? 0.2 + def.p.strikes * 0.15 : def.kind === 'mark' ? 0 : def.p.duration / 1000;
+
+    function step(dt) {
+        simTime += dt;
+        for (const inst of live) {
+            inst.t += dt;
+            for (const L of inst.layers) {
+                if (L.done) continue;
+                const def = current.get(L.key) ?? L.def;
+                L.def = def;
+                const lt = inst.t - def.delay;
+                if (lt < 0) continue;
+                if (def.kind === 'particles') {
+                    stepParticles(L, inst, def, lt, dt);
+                } else if (def.kind === 'mark') {
+                    const m = MARKS[def.p.kind];
+                    addDecal(inst.ox, inst.oz, def.p.size, m.mask, m.color, m.glow, def.p.fade);
+                    L.done = true;
+                } else {
+                    L.done = lt > span(def);
+                }
+            }
+        }
+        live = live.filter((inst) => {
+            if (inst.layers.every((L) => L.done)) return false;
+            return true;
+        });
+        decals = decals.filter((d) => simTime - d.born < d.fade + 6);
+        if ($('auto').checked) {
+            for (const o of outputs) {
+                const at = nextAt.get(o.id);
+                if (at === undefined || at > simTime + o.repeat) nextAt.set(o.id, simTime + (at === undefined ? 0 : o.repeat));
+                if (simTime >= nextAt.get(o.id)) { cast(o); nextAt.set(o.id, simTime + o.repeat); }
+            }
+        }
+    }
+
+    // ---- drawing ---------------------------------------------------------------
+
+    function drawParticles(L, inst, def) {
+        const {k, dpr} = view, look = def.look;
+        const add = look.blend === 'add';
+        g.globalCompositeOperation = add ? 'lighter' : 'source-over';
+        const ps = add ? L.ps : [...L.ps].sort((a, b) => a.z - b.z);
+        const stretch = look.stretch / 10;
+        for (const p of ps) {
+            const t = p.age / p.life;
+            const a = look.opacity / 100 * clamp(t / 0.08) * (1 - clamp((t - 0.55) / 0.45) ** 2);
+            if (a <= 0.004) continue;
+            const size = Math.max(0.5, lerp(look.size, look.end, t) * p.sz * k);
+            const img = tint(look.sprite, gradStep(look.grad, t));
+            const x = sx(inst.ox + p.x) + shake.x, y = sy(p.y, inst.oz + p.z) + shake.y;
+            let c, s, lx = size, ly = size;
+            if (stretch > 0) {
+                const vx = p.vx, vy = p.vz * SQ - p.vy, sp = Math.hypot(vx, vy);
+                const ang = Math.atan2(vy, vx);
+                c = Math.cos(ang); s = Math.sin(ang);
+                lx = size * (1 + stretch * sp / 300);
+                ly = size * (look.sprite === 'spark' ? 1 : 0.9);
+            } else {
+                const r = p.rot + p.rs * p.age;
+                c = Math.cos(r); s = Math.sin(r);
+            }
+            g.globalAlpha = a;
+            g.setTransform(dpr * c * lx, dpr * s * lx, -dpr * s * ly, dpr * c * ly, dpr * x, dpr * y);
+            g.drawImage(img, -0.5, -0.5, 1, 1);
+        }
+        g.globalAlpha = 1;
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    /** Midpoint displacement between two 3D points. */
+    function crack(a, b, depth, jitter) {
+        if (depth === 0) return [a, b];
+        const len = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+        const m = [(a[0] + b[0]) / 2 + rand(-1, 1) * len * jitter * 0.5, (a[1] + b[1]) / 2 + rand(-1, 1) * len * jitter * 0.12,
+            (a[2] + b[2]) / 2 + rand(-1, 1) * len * jitter * 0.3];
+        return [...crack(a, m, depth - 1, jitter).slice(0, -1), ...crack(m, b, depth - 1, jitter)];
+    }
+    function makeBolt(p) {
+        const j = p.jitter / 100;
+        const top = [rand(-80, 80), p.height, rand(-30, 30)];
+        const main = crack(top, [0, 0, 0], 7, j * 0.9);
+        const branches = [];
+        for (let i = 0; i < p.branches; i++) {
+            const at = main[Math.floor(rand(0.12, 0.75) * main.length)];
+            const len = rand(0.25, 0.6) * p.height;
+            const end = [at[0] + rand(-1, 1) * len * 0.8, Math.max(8, at[1] - len * rand(0.4, 0.9)), at[2] + rand(-1, 1) * len * 0.3];
+            branches.push(crack(at, end, 5, j));
+        }
+        return {main, branches};
+    }
+    function drawBolt(L, inst, def, lt) {
+        const p = def.p, per = 0.15;
+        const i = Math.min(p.strikes - 1, Math.floor(lt / per));
+        if (i !== L.strike) { L.strike = i; L.bolt = makeBolt(p); }
+        const u = (lt - i * per) / per;
+        if (u > 1) return;
+        const a = (1 - u) ** 1.4 * rand(0.6, 1);
+        const col = LIGHTS[p.color], k = view.k;
+        g.globalCompositeOperation = 'lighter';
+        g.lineJoin = g.lineCap = 'round';
+        const path = (pts) => {
+            g.beginPath();
+            pts.forEach((q, n) => g[n ? 'lineTo' : 'moveTo'](sx(inst.ox + q[0]) + shake.x, sy(q[1], inst.oz + q[2]) + shake.y));
+        };
+        for (const [pts, w] of [[L.bolt.main, 1], ...L.bolt.branches.map((b) => [b, 0.45])]) {
+            path(pts);
+            for (const [lw, al, c] of [[16, 0.08, col], [6, 0.3, col], [1.8, 0.95, '#ffffff']]) {
+                g.lineWidth = Math.max(0.8, lw * w * k);
+                g.strokeStyle = c;
+                g.globalAlpha = al * a;
+                g.stroke();
+            }
+        }
+        // impact glow on the floor
+        groundGlow(inst, col, 120, 0.7 * a);
+        g.globalAlpha = 1;
+    }
+    function groundGlow(inst, col, radius, alpha) {
+        const k = view.k;
+        g.save();
+        g.globalCompositeOperation = 'lighter';
+        g.translate(sx(inst.ox) + shake.x, sy(0, inst.oz) + shake.y);
+        g.scale(1, SQ);
+        const gr = g.createRadialGradient(0, 0, 0, 0, 0, radius * k);
+        gr.addColorStop(0, col);
+        gr.addColorStop(1, 'rgba(0,0,0,0)');
+        g.globalAlpha = clamp(alpha);
+        g.fillStyle = gr;
+        g.beginPath(); g.arc(0, 0, radius * k, 0, Math.PI * 2); g.fill();
+        g.restore();
+    }
+    function flashEnvelope(p, lt, seed) {
+        const u = lt / (p.duration / 1000), hold = p.hold / 100;
+        let e = u < hold ? 1 : (1 - (u - hold) / Math.max(0.001, 1 - hold)) ** 2;
+        e *= clamp(lt / 0.04);
+        if (p.flicker) e *= 1 - p.flicker / 100 * 0.6 * vnoise(simTime * 14, seed);
+        return clamp(e) * p.intensity / 100;
+    }
+    function drawFlash(L, inst, def, lt) {
+        const p = def.p, e = flashEnvelope(p, lt, L.seed), col = LIGHTS[p.color], k = view.k;
+        if (e <= 0.003) return;
+        g.globalCompositeOperation = 'lighter';
+        const x = sx(inst.ox) + shake.x, y = sy(45, inst.oz) + shake.y;
+        const gr = g.createRadialGradient(x, y, 0, x, y, p.radius * k);
+        gr.addColorStop(0, col);
+        gr.addColorStop(0.35, col + '55');
+        gr.addColorStop(1, col + '00');
+        g.globalAlpha = e * 0.75;
+        g.fillStyle = gr;
+        g.fillRect(x - p.radius * k, y - p.radius * k, p.radius * 2 * k, p.radius * 2 * k);
+        g.globalAlpha = 1;
+        groundGlow(inst, col, p.radius * 1.3, e * 0.55);
+    }
+    function drawWave(L, inst, def, lt) {
+        const p = def.p, u = clamp(lt / (p.duration / 1000)), k = view.k;
+        const r = p.radius * (1 - (1 - u) ** 3);
+        g.save();
+        g.globalCompositeOperation = 'lighter';
+        g.translate(sx(inst.ox) + shake.x, sy(0, inst.oz) + shake.y);
+        g.scale(1, SQ);
+        g.strokeStyle = LIGHTS[p.color];
+        g.globalAlpha = (1 - u) ** 1.5 * 0.85;
+        g.lineWidth = p.thickness * k * (1 - u * 0.6);
+        g.beginPath(); g.arc(0, 0, r * k, 0, Math.PI * 2); g.stroke();
+        g.globalAlpha *= 0.35;
+        g.lineWidth *= 3;
+        g.beginPath(); g.arc(0, 0, r * 0.94 * k, 0, Math.PI * 2); g.stroke();
+        g.restore();
+    }
+    function drawDecals() {
+        const k = view.k;
+        for (const d of decals) {
+            const age = simTime - d.born;
+            let a = 1 - clamp((age - d.fade) / 6);
+            if (d.mask === 'rune') a *= clamp(age / 0.4) * (0.75 + 0.25 * Math.sin(simTime * 3));
+            if (a <= 0.01) continue;
+            g.save();
+            g.globalCompositeOperation = d.glow ? 'lighter' : 'source-over';
+            g.globalAlpha = a * (d.glow ? 0.8 : 0.9);
+            g.translate(sx(d.x) + shake.x, sy(0, d.z) + shake.y);
+            g.scale(1, SQ);
+            g.rotate(d.rot);
+            g.scale(d.stretch, 1 / Math.sqrt(d.stretch));
+            const r = d.r * k;
+            g.drawImage(tint(d.mask, d.color), -r, -r, r * 2, r * 2);
+            g.restore();
+        }
+    }
+
+    const shake = {x: 0, y: 0};
+    function draw() {
+        const {dpr, w, h} = view;
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.globalCompositeOperation = 'source-over';
+        g.globalAlpha = 1;
+        // camera shake: sum of the running shake layers
+        let amp = 0;
+        for (const inst of live) {
+            for (const L of inst.layers) {
+                const lt = inst.t - L.def.delay;
+                if (L.def.kind === 'shake' && lt >= 0 && !L.done) amp += L.def.p.amount * (1 - lt / (L.def.p.duration / 1000)) ** 2;
+            }
+        }
+        shake.x = rand(-1, 1) * amp * view.k;
+        shake.y = rand(-1, 1) * amp * view.k;
+        if (bg) g.drawImage(bg, shake.x * dpr, shake.y * dpr);
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        drawDecals();
+        // origin marker
+        g.save();
+        g.translate(sx(origin.x), sy(0, origin.z));
+        g.scale(1, SQ);
+        g.strokeStyle = 'rgba(180,170,255,0.25)';
+        g.lineWidth = 1.5;
+        g.beginPath(); g.arc(0, 0, 18 * view.k, 0, Math.PI * 2); g.stroke();
+        g.restore();
+        // layers in the order they are wired into the Effect node
+        for (const inst of live) {
+            for (const L of inst.layers) {
+                const def = L.def, lt = inst.t - def.delay;
+                if (lt < 0) continue;
+                if (def.kind === 'particles') drawParticles(L, inst, def);
+                else if (L.done) continue;
+                else if (def.kind === 'bolt') drawBolt(L, inst, def, lt);
+                else if (def.kind === 'flash') drawFlash(L, inst, def, lt);
+                else if (def.kind === 'wave') drawWave(L, inst, def, lt);
+            }
+        }
+        g.globalCompositeOperation = 'source-over';
+        g.globalAlpha = 1;
+    }
+
+    // ---- loop ------------------------------------------------------------------
+
+    let last = performance.now(), frameMs = 0, paused = false, statusAt = 0;
+    function frame(now) {
+        const dt = Math.min(0.05, (now - last) / 1000);
+        last = now;
+        const t0 = performance.now();
+        if (!paused) step(dt * ($('slow').checked ? 0.25 : 1));
+        if (view.w) draw();
+        frameMs = lerp(frameMs, performance.now() - t0, 0.1);
+        if (now - statusAt > 250) { statusAt = now; syncStatus(); }
+        requestAnimationFrame(frame);
+    }
+
+    // run state on the wires: dots while a layer plays, particle counts on the last wire
+    const wireState = new Map();
+    function syncStatus() {
+        const active = new Set(), counts = new Map(), perOut = new Map();
+        for (const inst of live) {
+            for (const L of inst.layers) {
+                const def = L.def;
+                if (L.done || inst.t < def.delay) continue;
+                def.conns.forEach((c) => active.add(c));
+                if (def.kind === 'particles') {
+                    const lastWire = def.conns[def.conns.length - 1];
+                    counts.set(lastWire, (counts.get(lastWire) ?? 0) + L.ps.length);
+                    perOut.set(inst.out, (perOut.get(inst.out) ?? 0) + L.ps.length);
+                }
+            }
+        }
+        const doc = editor.getDocument();
+        for (const c of doc.connections) {
+            const n = counts.get(c.id);
+            const state = active.has(c.id) ? {active: true, ...(n ? {label: `${n} particles`} : {})} : null;
+            const key = JSON.stringify(state);
+            if (wireState.get(c.id) !== key) { wireState.set(c.id, key); editor.setConnectionStatus(c.id, state); }
+        }
+        document.querySelectorAll('[data-count]').forEach((b) => { b.textContent = perOut.get(b.dataset.count) ?? 0; });
+        $('stats').textContent = `${total} particles · ${decals.length} decals · ${frameMs.toFixed(1)} ms`;
+    }
+
+    // ---- sprite sheet ------------------------------------------------------------
+
+    const sheetTiles = new Map();
+    for (const name of [...SPRITES, 'splat', 'scorch', 'frost', 'rune']) {
+        const tile = el('div', 'tile');
+        const c = canvas(62 * 2);
+        c.getContext('2d').drawImage(MASKS[name], 4, 4, 116, 116);
+        tile.append(c, el('div', '', name));
+        tile.title = SPRITES.includes(name) ? `${name} — click to select the Render nodes using it` : `${name} (decal)`;
+        tile.onclick = () => {
+            const doc = editor.getDocument();
+            const ids = doc.nodes.filter((n) => (n.type === 'sprite' && metaOf(n).sprite === name)
+                || (n.type === 'mark' && MARKS[metaOf(n).kind].mask === name)
+                || (n.type === 'collide' && name === 'splat' && metaOf(n).splat === 'on')).map((n) => n.id);
+            editor.select(ids);
+            status(ids.length ? `${ids.length} node${ids.length > 1 ? 's' : ''} use “${name}”` : `nothing uses “${name}” yet`);
+        };
+        sheetTiles.set(name, tile);
+        $('sheet').appendChild(tile);
+    }
+    function markUsedSprites(doc) {
+        const used = new Set();
+        for (const n of doc.nodes) {
+            if (n.disabled) continue;
+            const m = metaOf(n);
+            if (n.type === 'sprite') used.add(m.sprite);
+            if (n.type === 'mark') used.add(MARKS[m.kind].mask);
+            if (n.type === 'collide' && m.splat === 'on') used.add('splat');
+        }
+        for (const [name, tile] of sheetTiles) tile.classList.toggle('used', used.has(name));
+    }
+
+    // ---- palette, picker ------------------------------------------------------------
+
+    const GROUPS = [['burst', 'stream'], ['motion', 'noise', 'collide'], ['sprite'], ['bolt', 'flash', 'wave', 'shake', 'mark', 'delay'], ['effect']];
+    GROUPS.forEach((group, gi) => {
+        if (gi) $('palette').appendChild(el('span', 'sep'));
+        for (const type of group) {
+            const d = DEF[type];
+            const item = el('div', 'item');
+            item.style.setProperty('--c', d.color);
+            const chip = el('span', 'fx-chip', d.tag);
+            chip.style.setProperty('--wf-node-color', d.color);
+            item.append(chip, d.label);
+            item.title = 'Drag into the graph (onto a wire to insert)';
+            item.addEventListener('pointerdown', (e) => editor.beginDrag(type, e));
+            $('palette').appendChild(item);
+        }
+    });
+
+    const picker = $('picker');
+    function openPicker(title, list, ev, pick) {
+        picker.replaceChildren(el('div', 'head', title));
+        for (const t of list) {
+            const b = el('button');
+            const chip = el('span', 'fx-chip', DEF[t.type].tag);
+            chip.style.setProperty('--wf-node-color', t.color);
+            b.append(chip, t.label);
+            b.onclick = () => { picker.style.display = 'none'; pick(t.type); };
+            picker.appendChild(b);
+        }
+        picker.style.display = 'block';
+        const r = picker.getBoundingClientRect();
+        picker.style.left = `${Math.min(ev.clientX, innerWidth - r.width - 8)}px`;
+        picker.style.top = `${Math.min(ev.clientY, innerHeight - r.height - 8)}px`;
+    }
+    addEventListener('pointerdown', (e) => { if (!picker.contains(e.target)) picker.style.display = 'none'; }, true);
+    addEventListener('keydown', (e) => { if (e.key === 'Escape') picker.style.display = 'none'; });
+    editor.on('addRequest', (e) => openPicker('Add node', editor.typesFor(e.port, e.dir), e.originalEvent,
+        (type) => editor.addNodeFrom(e.port, e.dir, {type, meta: defaults(DEF[type])})));
+    editor.on('insertRequest', (e) => {
+        const doc = editor.getDocument();
+        const c = doc.connections.find((x) => x.id === e.connection);
+        const from = c && doc.nodes.find((n) => n.id === c.from.node);
+        const kind = from ? DEF[from.type]?.out : null;
+        const list = types.filter((t) => DEF[t.type].in === kind && DEF[t.type].out === kind);
+        openPicker('Insert node', list, e.originalEvent, (type) => editor.insertNode(e.connection, {type, meta: defaults(DEF[type])}));
+    });
+
+    // ---- wiring the page -------------------------------------------------------------
+
+    const status = (text) => { $('status').textContent = text; };
+    editor.on('change', () => compile());
+    editor.on('connectRefused', (e) => status(`not connected: ${e.reason}`));
+
+    let presetName = null;
+    function loadPreset(name) {
+        const p = PRESETS[name];
+        if (!p) return;
+        presetName = name;
+        editor.setDocument(presetDoc(p));
+        compile();
+        live = []; decals = []; total = 0;
+        nextAt.clear();
+        origin = {x: 0, z: 0};
+        castAll();
+        // continuous effects start already running
+        for (let t = 0; t < (p.prewarm ?? 0); t += 1 / 30) step(1 / 30);
+        document.querySelectorAll('#presets button').forEach((b) => b.classList.toggle('on', b.dataset.p === name));
+        history.replaceState(null, '', `#${name}`);
+        status(`${p.label}: ${outputs[0]?.layers.length ?? 0} layers. Drag sliders, rewire, bypass a node (its dot) — the effect follows the graph.`);
+    }
+    for (const [name, p] of Object.entries(PRESETS)) {
+        const b = el('button');
+        b.dataset.p = name;
+        b.style.setProperty('--c', p.color);
+        b.append(el('i'), p.label);
+        b.onclick = () => loadPreset(name);
+        $('presets').appendChild(b);
+    }
+
+    stage.addEventListener('pointerdown', (e) => {
+        const r = stage.getBoundingClientRect();
+        const x = (e.clientX - r.left - view.ox) / view.k;
+        const z = (e.clientY - r.top - view.oy) / (view.k * SQ);
+        origin = {x: clamp(x, -400, 400), z: clamp(z, -250, 250)};
+        castAll();
+    });
+    $('cast').onclick = () => castAll();
+    $('clear').onclick = () => { decals = []; };
+
+    new ResizeObserver(resize).observe($('stageWrap'));
+    resize();
+    loadPreset(PRESETS[location.hash.slice(1)] ? location.hash.slice(1) : 'explosion');
+
+    // ?at=seconds: stop the first cast at that moment (for screenshots)
+    const at = Number(new URLSearchParams(location.search).get('at'));
+    if (at > 0) {
+        $('auto').checked = false;
+        for (let t = 0; t < at; t += 1 / 60) step(1 / 60);
+        paused = true;
+    }
+    requestAnimationFrame(frame);
+    window.fx = {editor, presets: PRESETS, loadPreset, castAll};
+</script>
+</body>
+</html>

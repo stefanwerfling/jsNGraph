@@ -169,6 +169,12 @@ package or, since some consumers are plain-`<script>` pages with no build step, 
   frames painted once per art key into data URLs, port-less `scribble` nodes as handwritten notes (double-click =
   contenteditable), own fit around the floating bars (`fitOnLoad: false`). Connection colours by id prefix in page CSS
   (`ok-`/`no-`/`dash-`).
+  Example: `examples/vfx.html` — an effect graph for game VFX: port kinds `p` (particles) and `l` (layer); Burst/Stream →
+  Motion/Turbulence/Floor → Render (sprite, gradient, add/alpha, size, stretch) → Effect, plus Lightning/Flash/Shockwave/
+  Shake/Decal sources and Delay. The page compiles the document into layers (one per emitter→render path, keyed by its node
+  ids so running effects pick up slider moves) and plays them on a 2.5D canvas arena with sprites painted once as grey masks
+  and tinted per gradient step; floor hits leave splat decals stretched along the drop's path; wires show live particle
+  counts via `setConnectionStatus`. Presets lightning/fog/explosion/blood/fire/spirit (`#name`), `?at=s` freezes the first cast.
 
 - `widget/` — small standalone dashboard widgets (SVG, no canvas), subpath `jsngraph/widget`. `DayClock`
   (taken over from kavula's dashboard, without d3/jQuery): a day on one 24 h dial (00:00 top, clockwise), elapsed
